@@ -2,6 +2,17 @@ import SwiftUI
 import AppKit
 import ClashCore
 
+enum ConfigAction {
+    case start, reload
+}
+
+struct ConfigPreview: Identifiable {
+    let id = UUID()
+    let settings: ClashCore.Settings
+    let config: Data
+    let action: ConfigAction
+}
+
 @MainActor
 final class DeskModel: ObservableObject {
     @Published var settings = Settings()
@@ -9,6 +20,7 @@ final class DeskModel: ObservableObject {
     @Published var connections: [Connection] = []
     @Published var traffic: [DomainTrafficRow] = []
     @Published var testingNode: String?
+    @Published var configPreview: ConfigPreview?
     @Published var coreRunning = false
     @Published var lastSample: Date?
     @Published var busy = false
@@ -111,22 +123,36 @@ final class DeskModel: ObservableObject {
         }
     }
     func startAll() {
-        perform {
-            if self.nodes.isEmpty { try await self.importSubscriptions(self.settings) }
-            let config = try generateConfig(self.settings)
-            try self.save()
-            try await installAndStartCore(settings: self.settings, config: config, directory: self.directory)
-            try await startStatistics(directory: self.directory)
-            self.message = "服务已交给 launchd。内核可能需要几秒完成订阅初始化。"
-        }
+        prepareConfig(.start)
     }
     func applyLive() {
+        prepareConfig(.reload)
+    }
+    private func prepareConfig(_ action: ConfigAction) {
+        guard configPreview == nil else { return }
         perform {
-            let config = try generateConfig(self.settings)
-            // Apply first, save only after the core accepts it.
-            try await self.api.reload(config)
-            try self.save()
-            self.message = "配置已应用到运行中的内核；重启持久化请点击“安装 / 启动全部”。已有连接保持原路由。"
+            if action == .start, self.nodes.isEmpty { try await self.importSubscriptions(self.settings) }
+            let snapshot = self.settings
+            self.configPreview = ConfigPreview(settings: snapshot, config: try generateConfig(snapshot), action: action)
+        }
+    }
+    func confirmConfig(_ preview: ConfigPreview) {
+        guard !busy, configPreview?.id == preview.id else { return }
+        configPreview = nil
+        perform {
+            switch preview.action {
+            case .start:
+                try saveSettings(preview.settings, to: self.directory)
+                self.settings = preview.settings
+                try await installAndStartCore(settings: preview.settings, config: preview.config, directory: self.directory)
+                try await startStatistics(directory: self.directory)
+                self.message = "已按确认的配置启动服务，退出 GUI 后继续运行。"
+            case .reload:
+                try await CoreAPI(secret: preview.settings.secret).reload(preview.config)
+                try saveSettings(preview.settings, to: self.directory)
+                self.settings = preview.settings
+                self.message = "已应用确认的配置；重启持久化请点击“安装 / 启动全部”。已有连接保持原路由。"
+            }
         }
     }
     func chooseCore() {

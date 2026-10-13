@@ -15,8 +15,18 @@ final class CoreTests: XCTestCase {
                           RouteRule(kind: .processPath, value: "/Applications/Test App.app/Contents/MacOS/Test", node: nil)]
         let data = try generateConfig(settings)
         XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("https://example.com/"))
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertTrue(String(decoding: data, as: UTF8.self).hasPrefix("mode: rule\n"))
+        let json = try configurationObject(settings)
         XCTAssertEqual(json["mode"] as? String, "rule")
+        XCTAssertEqual(json["log-level"] as? String, "info")
+        XCTAssertEqual(json["unified-delay"] as? Bool, true)
+        let tun = try XCTUnwrap(json["tun"] as? [String: Any])
+        XCTAssertEqual(tun["stack"] as? String, "mips")
+        XCTAssertEqual(tun["device"] as? String, "utun1024")
+        XCTAssertEqual(tun["mtu"] as? Int, 1500)
+        let dns = try XCTUnwrap(json["dns"] as? [String: Any])
+        XCTAssertEqual(dns["respect-rules"] as? Bool, true)
+        XCTAssertEqual(dns["nameserver"] as? [String], ["223.5.5.5", "119.29.29.29", "114.114.114.114"])
         let rules = try XCTUnwrap(json["rules"] as? [String])
         XCTAssertTrue(rules[0].hasPrefix("PROCESS-PATH,"))
         XCTAssertTrue(rules[1].hasPrefix("DOMAIN-SUFFIX,"))
@@ -91,7 +101,7 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(settings.defaultDirect, nil)
         settings.subscriptions = [Subscription(name: "Test", url: "https://example.com/sub")]
         settings.defaultDirect = true
-        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: generateConfig(settings)) as? [String: Any])
+        let json = try configurationObject(settings)
         let groups = try XCTUnwrap(json["proxy-groups"] as? [[String: Any]])
         XCTAssertEqual(groups.last?["proxies"] as? [String], ["DIRECT"])
         XCTAssertEqual(json["rules"] as? [String], ["MATCH,CD.Default"])

@@ -75,6 +75,12 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     let configFile = staging.appendingPathComponent("config.yaml")
     try config.write(to: configFile)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
+    // The requested DNS fallback filters require both GeoIP and GeoSite data.
+    let geodata = directory.appendingPathComponent("geodata")
+    try await prepareGeoAssets(corePath: settings.corePath, directory: geodata)
+    for name in geoAssetNames {
+        try FileManager.default.copyItem(at: geodata.appendingPathComponent(name), to: staging.appendingPathComponent(name))
+    }
     // Seed the system core with nodes already downloaded by the GUI, before any network fetch.
     let stagedProviders = staging.appendingPathComponent("providers")
     try FileManager.default.createDirectory(at: stagedProviders, withIntermediateDirectories: false)
@@ -95,6 +101,11 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     ], to: plist)
     let destinationPlist = "/Library/LaunchDaemons/" + coreLabel + ".plist"
     var seedCommands: [String] = ["/bin/test ! -L \(shellQuote(rootDirectory + "/providers"))", "/bin/mkdir -p \(shellQuote(rootDirectory + "/providers"))", "/bin/chmod 700 \(shellQuote(rootDirectory + "/providers"))"]
+    for name in geoAssetNames {
+        let target = rootDirectory + "/" + name
+        seedCommands.append("/bin/test ! -L \(shellQuote(target))")
+        seedCommands.append("/usr/bin/install -o root -g wheel -m 600 \(shellQuote(staging.appendingPathComponent(name).path)) \(shellQuote(target))")
+    }
     for subscription in settings.subscriptions {
         let source = stagedProviders.appendingPathComponent(subscription.id + ".yaml")
         if FileManager.default.fileExists(atPath: source.path) {

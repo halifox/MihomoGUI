@@ -89,9 +89,7 @@ public struct DeskError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
-// Emit JSON with literal slashes: mihomo's YAML parser rejects JSON's optional \/ escape.
-// This avoids handwritten YAML escaping and an additional parser dependency.
-public func generateConfig(_ settings: Settings) throws -> Data {
+public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     guard !settings.subscriptions.isEmpty else { throw DeskError("请先添加 Clash / mihomo 格式订阅") }
     for subscription in settings.subscriptions {
         guard let url = URL(string: subscription.url), url.scheme == "https", url.host != nil else {
@@ -144,18 +142,35 @@ public func generateConfig(_ settings: Settings) throws -> Data {
     }
     rules.append("MATCH,\(defaultGroup)")
     let config: [String: Any] = [
-        "mode": "rule", "mixed-port": 7890, "allow-lan": false, "log-level": "warning",
+        "mode": "rule", "mixed-port": 7890, "allow-lan": false, "log-level": "info",
         "external-controller": "127.0.0.1:19090", "secret": settings.secret,
+        "unified-delay": true, "tcp-concurrent": true, "bind-address": "*",
+        "external-controller-cors": ["allow-private-network": true, "allow-origins": [
+            "tauri://localhost", "http://tauri.localhost", "https://yacd.metacubex.one",
+            "https://metacubex.github.io", "https://board.zash.run.place"]],
         "find-process-mode": "always", "ipv6": false,
-        "profile": ["store-selected": true, "store-fake-ip": false],
-        "tun": ["enable": settings.tun, "stack": "system", "auto-route": true,
-                "auto-detect-interface": true, "dns-hijack": ["any:53"]],
-        "dns": ["enable": true, "listen": "127.0.0.1:1053", "ipv6": false,
+        "profile": ["store-selected": true],
+        "tun": ["enable": settings.tun, "stack": "mips", "auto-route": true,
+                "auto-detect-interface": true, "device": "utun1024", "dns-hijack": ["any:53"],
+                "mtu": 1500, "route-exclude-address": [], "strict-route": false],
+        "dns": ["enable": true, "ipv6": false,
                 "enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16",
-                "default-nameserver": ["1.1.1.1", "8.8.8.8"],
-                "nameserver": ["https://dns.cloudflare.com/dns-query"],
-                "proxy-server-nameserver": ["https://dns.cloudflare.com/dns-query"]],
+                "use-hosts": true, "respect-rules": true,
+                "default-nameserver": ["223.5.5.5", "119.29.29.29", "114.114.114.114"],
+                "nameserver": ["223.5.5.5", "119.29.29.29", "114.114.114.114"],
+                "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29", "114.114.114.114"],
+                "fallback": ["1.1.1.1", "8.8.8.8"],
+                "fallback-filter": ["geoip": true, "geoip-code": "CN", "geosite": ["gfw"],
+                                    "ipcidr": ["240.0.0.0/4"], "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]]],
         "proxy-providers": providerConfig, "proxy-groups": groups, "rules": rules
     ]
-    return try JSONSerialization.data(withJSONObject: config, options: [.prettyPrinted, .sortedKeys, .withoutEscapingSlashes])
+    return config
+}
+
+public func generateConfig(_ settings: Settings) throws -> Data {
+    try yamlData(configurationObject(settings), keyOrder: [
+        "mode", "mixed-port", "allow-lan", "log-level", "ipv6", "external-controller", "secret",
+        "unified-delay", "external-controller-cors", "bind-address", "profile", "tun", "tcp-concurrent",
+        "dns", "find-process-mode", "proxy-providers", "proxy-groups", "rules"
+    ])
 }

@@ -28,7 +28,7 @@ struct DeskView: View {
             HStack(spacing: 12) {
                 Image(systemName: "network").font(.title2).foregroundStyle(.blue)
                 VStack(alignment: .leading) {
-                    Text("ClashDesk · 0.2").font(.title2.bold())
+                    Text("ClashDesk · 0.4").font(.title2.bold())
                     Text("内核 \(model.coreRunning ? "在线" : "离线") · 统计 \(statsStatus)").font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -59,10 +59,43 @@ struct DeskView: View {
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("确定") { model.error = nil }
         } message: { Text(model.error ?? "") }
+        .sheet(item: $model.configPreview) { preview in
+            ConfigPreviewView(preview: preview)
+        }
     }
     var statsStatus: String {
         guard let sample = model.lastSample else { return "未采集" }
         return Date().timeIntervalSince(sample) < 20 ? "采集中" : "采集已暂停"
+    }
+}
+
+struct ConfigPreviewView: View {
+    @EnvironmentObject var model: DeskModel
+    let preview: ConfigPreview
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("确认 mihomo 配置").font(.title2.bold())
+            Text(preview.action == .start ? "确认后才会安装并启动系统代理服务，随后弹出 macOS 管理员授权。" : "确认后才会将下列配置应用到运行中的 mihomo。")
+                .foregroundStyle(.secondary)
+            HStack {
+                Text("config.yaml").font(.headline)
+                Spacer()
+                Text("YAML · 只读预览 · 实际使用此份配置").font(.caption).foregroundStyle(.secondary)
+            }
+            ScrollView([.vertical, .horizontal]) {
+                Text(String(decoding: preview.config, as: UTF8.self))
+                    .font(.system(size: 12, design: .monospaced))
+                    .textSelection(.enabled)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(12)
+            }.background(Color(nsColor: .textBackgroundColor)).border(Color.secondary.opacity(0.3))
+            HStack {
+                Button("取消") { model.configPreview = nil }.keyboardShortcut(.cancelAction)
+                Spacer()
+                Button(preview.action == .start ? "确认并启动" : "确认并应用") { model.confirmConfig(preview) }
+                    .buttonStyle(.borderedProminent).disabled(model.busy)
+            }
+        }.padding(24).frame(width: 900, height: 650)
     }
 }
 
