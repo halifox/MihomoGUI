@@ -6,19 +6,22 @@ struct Integration {
     static func main() async throws {
         guard CommandLine.arguments.count == 3, let proxyPort = Int(CommandLine.arguments[2]) else { throw DeskError("需要传入 mihomo 二进制路径和测试代理端口") }
         let core = CommandLine.arguments[1]
+        let fixtureName = "🇯🇵 Fixture's [1]"
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-test-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         var settings = Settings()
         let subscription = Subscription(name: "Fixture", url: "https://example.com/unused")
         settings.subscriptions = [subscription]
-        settings.defaultNode = Node(provider: subscription.provider, name: "Fixture [1]")
+        settings.defaultNode = Node(provider: subscription.provider, name: fixtureName)
         settings.tun = false
-        settings.rules = [RouteRule(kind: .domain, value: "example.org", node: nil)]
+        let processPath = "/Applications/Test's App.app/Contents/MacOS/Test"
+        settings.rules = [RouteRule(kind: .domain, value: "example.org", node: nil),
+                          RouteRule(kind: .processPath, value: processPath, node: settings.defaultNode)]
         let fixture = directory.appendingPathComponent("provider.yaml")
         try """
         proxies:
-          - name: 'Fixture [1]'
+          - name: '\(fixtureName.replacingOccurrences(of: "'", with: "''"))'
             type: http
             server: 127.0.0.1
             port: \(proxyPort)
@@ -38,13 +41,24 @@ struct Integration {
         }
         guard previewDelay >= 20 else { throw DeskError("离线内核节点延迟测试异常") }
         print("PASS: unprivileged node import, subscription order, local cache and latency without TUN")
-        var config = try JSONSerialization.jsonObject(with: generateConfig(settings)) as! [String: Any]
+        try await prepareGeoAssets(corePath: core, directory: directory)
+        let fullConfig = directory.appendingPathComponent("defaults.yaml")
+        try generateConfig(settings).write(to: fullConfig)
+        let defaultValidation = Process()
+        defaultValidation.executableURL = URL(fileURLWithPath: core)
+        defaultValidation.arguments = ["-t", "-d", directory.path, "-f", fullConfig.path]
+        defaultValidation.standardOutput = FileHandle.standardOutput
+        defaultValidation.standardError = FileHandle.standardError
+        try defaultValidation.run(); defaultValidation.waitUntilExit()
+        guard defaultValidation.terminationStatus == 0 else { throw DeskError("mihomo 不接受用户指定的 DNS / TUN 默认配置") }
+        print("PASS: YAML defaults and DNS geodata validation")
+        var config = try configurationObject(settings)
         config["external-controller"] = "127.0.0.1:19191"
         config["mixed-port"] = 0
         config["dns"] = ["enable": false]
         config["proxy-providers"] = [subscription.provider: ["type": "file", "path": fixture.path]]
         let configURL = directory.appendingPathComponent("config.yaml")
-        try JSONSerialization.data(withJSONObject: config, options: .withoutEscapingSlashes).write(to: configURL)
+        try yamlData(config).write(to: configURL)
         func process(_ arguments: [String]) throws -> Process {
             let process = Process(); process.executableURL = URL(fileURLWithPath: core)
             process.arguments = arguments
@@ -69,10 +83,14 @@ struct Integration {
         guard nodes == imported else { throw DeskError("节点集合解析错误") }
         let groupData = try await api.request("/proxies/CD.Node.0")
         let group = try JSONSerialization.jsonObject(with: groupData) as! [String: Any]
-        guard group["all"] as? [String] == ["Fixture [1]"] else { throw DeskError("精确节点过滤未生效") }
+        guard group["all"] as? [String] == [fixtureName] else { throw DeskError("精确节点过滤未生效") }
+        let rulesObject = try JSONSerialization.jsonObject(with: await api.request("/rules")) as! [String: Any]
+        let loadedRules = rulesObject["rules"] as! [[String: Any]]
+        guard loadedRules.first?["payload"] as? String == processPath else { throw DeskError("YAML 单引号或进程路径发生变化") }
+        print("PASS: YAML emoji, apostrophes, regex and process path round trip")
         _ = try await api.connections()
         print("PASS: real mihomo provider, exact node group and connections API")
-        try await api.reload(JSONSerialization.data(withJSONObject: config, options: .withoutEscapingSlashes))
+        try await api.reload(yamlData(config))
         print("PASS: real mihomo live config reload")
         let unauthorized = CoreAPI(secret: "incorrect", port: 19191)
         do { _ = try await unauthorized.request("/version"); throw DeskError("控制接口没有拒绝错误密钥") }

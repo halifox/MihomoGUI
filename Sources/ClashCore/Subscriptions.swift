@@ -17,6 +17,38 @@ public func saveNodeCache(_ nodes: [Node], directory: URL) throws {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
 
+public let geoAssetNames = ["Country.mmdb", "geosite.dat"]
+
+public func prepareGeoAssets(corePath: String, directory: URL) async throws {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    let coreFolder = URL(fileURLWithPath: corePath).deletingLastPathComponent()
+    var sourceFolders = [coreFolder]
+    if coreFolder.lastPathComponent == "MacOS", coreFolder.deletingLastPathComponent().lastPathComponent == "Contents" {
+        sourceFolders.append(coreFolder.deletingLastPathComponent().appendingPathComponent("Resources/resources"))
+    }
+    for name in geoAssetNames {
+        let target = directory.appendingPathComponent(name)
+        if (try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 > 0 { continue }
+        let candidates = sourceFolders.flatMap { [$0.appendingPathComponent(name), $0.appendingPathComponent(name.lowercased())] }
+        if let source = candidates.first(where: { FileManager.default.isReadableFile(atPath: $0.path) }) {
+            if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
+            try FileManager.default.copyItem(at: source, to: target)
+        } else {
+            let url = URL(string: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/" + name.lowercased())!
+            var request = URLRequest(url: url); request.timeoutInterval = 45
+            let (download, response) = try await URLSession.shared.download(for: request)
+            defer { try? FileManager.default.removeItem(at: download) }
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw DeskError("下载 DNS 地理数据 \(name) 失败，请检查网络后重试")
+            }
+            let size = try download.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size > 0, size <= 100 * 1024 * 1024 else { throw DeskError("DNS 地理数据文件大小无效") }
+            try Data(contentsOf: download).write(to: target, options: .atomic)
+        }
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+    }
+}
+
 private func availablePort() throws -> Int {
     let fd = socket(AF_INET, SOCK_STREAM, 0)
     guard fd >= 0 else { throw DeskError("无法分配节点预览端口") }
@@ -62,7 +94,7 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
         "rules": ["MATCH,REJECT"]
     ]
     let configURL = directory.appendingPathComponent("config.yaml")
-    try JSONSerialization.data(withJSONObject: config, options: .withoutEscapingSlashes).write(to: configURL)
+    try yamlData(config).write(to: configURL)
     var environment = ProcessInfo.processInfo.environment
     // Permit only the exact local provider files, not arbitrary user directories.
     environment["SAFE_PATHS"] = providers.map { $0.1.path }.joined(separator: ":")
