@@ -127,11 +127,7 @@ struct OutboundProxiesView: View {
                     Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
                 }.width(100)
                 TableColumn("延迟") { node in
-                    Button { model.testDelay(node) } label: {
-                        if model.testingNode == node.id { Text("测试中…") }
-                        else if node.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
-                        else { Text(node.delayMilliseconds.map { "\($0) ms" } ?? "未测试") }
-                    }.buttonStyle(.borderless).disabled(model.busy).help("点击测试延迟")
+                    NodeDelayCell(nodeID: node.id)
                 }.width(110)
             }
 
@@ -141,6 +137,21 @@ struct OutboundProxiesView: View {
         .task(id: udpKey) { await model.refreshManualUDP() }
         .sheet(isPresented: $adding) { ProxyEditorView() }
         .sheet(item: $editing) { ProxyEditorView(proxy: $0) }
+    }
+}
+
+struct NodeDelayCell: View {
+    @EnvironmentObject var model: DeskModel
+    let nodeID: String
+    var node: Node? { model.allNodes.first { $0.id == nodeID } }
+    var body: some View {
+        Button {
+            if let node { model.testDelay(node) }
+        } label: {
+            if model.testingNode == nodeID { Text("测试中…") }
+            else if node?.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
+            else { Text(node?.delayMilliseconds.map { "\($0) ms" } ?? "未测试") }
+        }.buttonStyle(.borderless).disabled(model.busy || node == nil).help("点击测试延迟")
     }
 }
 
