@@ -86,15 +86,6 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     for name in geoNames {
         try FileManager.default.copyItem(at: geodata.appendingPathComponent(name), to: staging.appendingPathComponent(name))
     }
-    // Seed the system core with nodes already downloaded by the GUI, before any network fetch.
-    let stagedProviders = staging.appendingPathComponent("providers")
-    try FileManager.default.createDirectory(at: stagedProviders, withIntermediateDirectories: false)
-    for subscription in settings.subscriptions {
-        let cached = providerFile(subscription, directory: directory)
-        if FileManager.default.fileExists(atPath: cached.path) {
-            try FileManager.default.copyItem(at: cached, to: stagedProviders.appendingPathComponent(subscription.id + ".yaml"))
-        }
-    }
     _ = try await runCommand(binary.path, ["-v"])
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
@@ -105,19 +96,11 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
         "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null", "Umask": 0o077
     ], to: plist)
     let destinationPlist = "/Library/LaunchDaemons/" + coreLabel + ".plist"
-    var seedCommands: [String] = ["/bin/test ! -L \(shellQuote(rootDirectory + "/providers"))", "/bin/mkdir -p \(shellQuote(rootDirectory + "/providers"))", "/bin/chmod 700 \(shellQuote(rootDirectory + "/providers"))"]
+    var seedCommands: [String] = []
     for name in geoNames {
         let target = rootDirectory + "/" + name
         seedCommands.append("/bin/test ! -L \(shellQuote(target))")
         seedCommands.append("/usr/bin/install -o root -g wheel -m 600 \(shellQuote(staging.appendingPathComponent(name).path)) \(shellQuote(target))")
-    }
-    for subscription in settings.subscriptions {
-        let source = stagedProviders.appendingPathComponent(subscription.id + ".yaml")
-        if FileManager.default.fileExists(atPath: source.path) {
-            let target = rootDirectory + "/providers/" + subscription.id + ".yaml"
-            seedCommands.append("/bin/test ! -L \(shellQuote(target))")
-            seedCommands.append("/usr/bin/install -o root -g wheel -m 600 \(shellQuote(source.path)) \(shellQuote(target))")
-        }
     }
     let command = """
     set -eu

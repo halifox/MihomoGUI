@@ -20,6 +20,34 @@ public func loadNodeCache(directory: URL) throws -> [Node] {
     return nodes
 }
 
+public func readSubscriptionProxies(_ file: URL) throws -> [[String: Any]] {
+    let output = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-proxies-" + UUID().uuidString)
+    FileManager.default.createFile(atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600])
+    defer { try? FileManager.default.removeItem(at: output) }
+    let handle = try FileHandle(forWritingTo: output)
+    defer { try? handle.close() }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
+    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], true); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); def clean(v); case v; when Hash; v.each_with_object({}) { |(k,x),h| h[k]=clean(x) unless x.nil? }; when Array; v.compact.map { |x| clean(x) }; else v; end; end; puts JSON.generate(clean(rows))"#, file.path]
+    process.standardOutput = handle; process.standardError = FileHandle.nullDevice
+    try process.run(); process.waitUntilExit()
+    guard process.terminationStatus == 0,
+          let proxies = try JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [[String: Any]],
+          proxies.allSatisfy({ $0["name"] is String && $0["type"] is String }) else {
+        throw DeskError("订阅没有有效的 Clash 节点配置")
+    }
+    return proxies
+}
+
+public func cacheSubscriptionProxies(_ settings: inout Settings, directory: URL) throws {
+    var cached: [String: [ConfigValue]] = [:]
+    for subscription in settings.subscriptions {
+        let proxies = try readSubscriptionProxies(providerFile(subscription, directory: directory))
+        cached[subscription.id] = proxies.map { ConfigValue(native: $0) }
+    }
+    settings.subscriptionProxies = cached
+}
+
 // Only extract display metadata; never export subscription passwords into the summary cache.
 public func populateNodeEndpoints(_ nodes: inout [Node], provider: String, file: URL) throws {
     struct Endpoint: Decodable { let name: String; let server: String?; let port: String? }
@@ -123,9 +151,15 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
     defer { try? FileManager.default.removeItem(at: directory) }
     let port = try availablePort()
     let secret = UUID().uuidString
-    let providerConfig = Dictionary(uniqueKeysWithValues: providers.map {
-        ($0.0, ["type": "file", "path": $0.1.path])
-    })
+    var providerConfig: [String: Any] = [:]
+    var safePaths: [String] = []
+    for (index, provider) in providers.enumerated() {
+        let file = directory.appendingPathComponent("nodes-\(index).yaml")
+        try yamlData(["proxies": readSubscriptionProxies(provider.1)]).write(to: file)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+        providerConfig[provider.0] = ["type": "file", "path": file.path]
+        safePaths.append(file.path)
+    }
     let config: [String: Any] = [
         "mode": "rule", "log-level": "silent", "mixed-port": 0,
         "external-controller": "127.0.0.1:\(port)", "secret": secret,
@@ -139,7 +173,7 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
     try yamlData(config).write(to: configURL)
     var environment = ProcessInfo.processInfo.environment
     // Permit only the exact local provider files, not arbitrary user directories.
-    environment["SAFE_PATHS"] = providers.map { $0.1.path }.joined(separator: ":")
+    environment["SAFE_PATHS"] = safePaths.joined(separator: ":")
     let process = Process()
     process.executableURL = URL(fileURLWithPath: corePath)
     process.arguments = ["-d", directory.path, "-f", configURL.path]

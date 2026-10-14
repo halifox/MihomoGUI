@@ -45,6 +45,7 @@ final class DeskModel: ObservableObject {
                 settings.rules = settings.rules.filter { $0.kind.isProcess } + settings.rules.filter { !$0.kind.isProcess }
                 settings.ruleOrderMigrated = true
             }
+            if settings.subscriptionProxies == nil { try cacheSubscriptionProxies(&settings, directory: directory) }
             nodes = try loadNodeCache(directory: directory)
             if settings.defaultNode == nil, settings.defaultDirect != true, settings.defaultPolicy == nil { settings.defaultNode = allNodes.first }
             // Persist the API secret before starting any service.
@@ -118,6 +119,7 @@ final class DeskModel: ObservableObject {
     func importSubscriptions(_ candidate: ClashCore.Settings) async throws {
         let imported = try await fetchSubscriptions(candidate.subscriptions, corePath: candidate.corePath, directory: directory)
         var updated = candidate
+        try cacheSubscriptionProxies(&updated, directory: directory)
         let updatedAt = Date()
         for index in updated.subscriptions.indices { updated.subscriptions[index].lastUpdatedAt = updatedAt }
         if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil { updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first }
@@ -165,6 +167,7 @@ final class DeskModel: ObservableObject {
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try Data(contentsOf: providerFile(subscription, directory: staging)).write(to: target, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        try cacheSubscriptionProxies(&updated, directory: directory)
         try saveNodeCache(merged, directory: directory)
         try saveSettings(updated, to: directory)
         settings = updated; nodes = merged
@@ -303,6 +306,7 @@ final class DeskModel: ObservableObject {
             error = "该订阅仍被规则引用，请先调整相关出口。"; return
         }
         settings.subscriptions.removeAll { $0.id == subscription.id }
+        settings.subscriptionProxies?.removeValue(forKey: subscription.id)
         nodes.removeAll { $0.provider == subscription.provider }
         do { try save(); try saveNodeCache(nodes, directory: directory) }
         catch { self.error = error.localizedDescription }

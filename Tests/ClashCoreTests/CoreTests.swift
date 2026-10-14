@@ -11,10 +11,13 @@ final class CoreTests: XCTestCase {
         settings.subscriptions = [subscription]
         let node = Node(provider: subscription.provider, name: "Node [1], \"quoted\"")
         settings.defaultNode = node
+        settings.subscriptionProxies = [subscription.id: [.object(["name": .string(node.name), "type": .string("http"), "server": .string("127.0.0.1"), "port": .integer(8080)])]]
         settings.rules = [RouteRule(kind: .suffix, value: "example.com", node: node),
                           RouteRule(kind: .processPath, value: "/Applications/Test App.app/Contents/MacOS/Test", node: nil)]
         let data = try generateConfig(settings)
-        XCTAssertTrue(String(decoding: data, as: UTF8.self).contains("https://example.com/"))
+        XCTAssertTrue(!String(decoding: data, as: UTF8.self).contains(subscription.url))
+        XCTAssertTrue(!String(decoding: data, as: UTF8.self).contains(subscription.id))
+        XCTAssertTrue(!String(decoding: data, as: UTF8.self).contains("proxy-providers:"))
         XCTAssertTrue(String(decoding: data, as: UTF8.self).hasPrefix("mode: rule\n"))
         let json = try configurationObject(settings)
         XCTAssertEqual(json["mode"] as? String, "rule")
@@ -32,9 +35,16 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(rules[1].hasPrefix("PROCESS-PATH,"))
         XCTAssertEqual(rules.last, "MATCH,CD.Default")
         let groups = try XCTUnwrap(json["proxy-groups"] as? [[String: Any]])
-        XCTAssertEqual(groups.first?["empty-fallback"] as? String, "REJECT")
-        let regex = try NSRegularExpression(pattern: try XCTUnwrap(groups.first?["filter"] as? String))
-        XCTAssertNotNil(regex.firstMatch(in: node.name, range: NSRange(node.name.startIndex..., in: node.name)))
+        XCTAssertEqual(groups.first?["proxies"] as? [String], ["CD.Proxy.0.0"])
+        let proxies = try XCTUnwrap(json["proxies"] as? [[String: Any]])
+        XCTAssertEqual(proxies.first?["server"] as? String, "127.0.0.1")
+        let second = Subscription(name: "Other", url: "https://example.net/private")
+        settings.subscriptions.append(second)
+        let duplicated = settings.subscriptionProxies?[subscription.id]
+        settings.subscriptionProxies?[second.id] = duplicated
+        let collision = try configurationObject(settings)["proxies"] as! [[String: Any]]
+        XCTAssertEqual(collision.map { $0["name"] as! String }, ["CD.Proxy.0.0", "CD.Proxy.1.0"])
+
     }
 
     func testRejectsRuleInjectionAndDeletedSubscription() throws {
