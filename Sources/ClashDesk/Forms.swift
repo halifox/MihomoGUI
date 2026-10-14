@@ -87,7 +87,7 @@ func optionLabel(_ value: String) -> String {
         "ios": "苹果移动系统",
         "360": "三六零浏览器",
         "qq": "腾讯浏览器",
-        "gecko": "壁虎引擎",
+        "gecko": "Gecko 混淆器",
         "jls": "指纹伪装",
         "restls": "握手伪装",
         "shadow-tls": "影子传输层安全",
@@ -123,7 +123,7 @@ func optionLabel(_ value: String) -> String {
         "DOMAIN-REGEX": "域名正则",
         "GEOSITE": "域名分类",
         "IP-CIDR": "目标网段",
-        "IP-CIDR6": "目标第六版网段",
+        "IP-CIDR6": "目标网段别名",
         "IP-SUFFIX": "目标地址后缀",
         "IP-ASN": "目标自治系统",
         "GEOIP": "目标地理位置",
@@ -168,7 +168,7 @@ struct VisualField: View {
     var compactRow: some View {
         HStack(alignment: field.kind == "list" || field.kind == "map" || field.kind == "object" ? .top : .center, spacing: 12) {
             FieldKeyLabel(title: field.title + (field.required ? " *" : ""), key: field.path,
-                          description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason)
+                          description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
                 .frame(width: 200, alignment: .leading)
             VisualValue(field: field, value: Binding(get: {
                 value ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
@@ -179,7 +179,7 @@ struct VisualField: View {
     var legacyRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                FieldKeyLabel(title: field.title, key: field.path, description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason)
+                FieldKeyLabel(title: field.title, key: field.path, description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
                 if field.required { Text("必填").font(.caption).foregroundStyle(.orange) }
                 Spacer()
                 if allowUnset && !field.required {
@@ -351,7 +351,7 @@ struct CustomFieldEditor: View {
     @State private var kind = "string"
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            formRow("字段路径", help: "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.handshake-timeout。") { TextField("", text: $path) }
+            formRow("字段路径", help: "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.realm-id。") { TextField("", text: $path) }
             formRow("type", help: "额外字段的数据类型，可选择文本、整数、开关、列表或键值表。") {
                 Picker("类型", selection: $kind) {
                     Text("文本（string）").tag("string"); Text("整数（integer）").tag("integer"); Text("开关（boolean）").tag("boolean")
@@ -396,6 +396,7 @@ struct FieldKeyLabel: View {
     var hint = ""
     var kind = ""
     var unavailableReason: String?
+    var helpDocument: String?
     var translate = true
     @State private var platformPresented = false
     @Environment(\.formHelpDocument) private var context
@@ -408,6 +409,7 @@ struct FieldKeyLabel: View {
         HStack(spacing: 6) {
             Text(displayTitle).textSelection(.enabled).help(key)
             FieldHelpButton(key: key, description: description, hint: hint, kind: kind)
+                .environment(\.formHelpDocument, helpDocument ?? context)
             if let reason = unavailableReason {
                 Button { platformPresented.toggle() } label: {
                     Image(systemName: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.orange)
@@ -442,7 +444,6 @@ struct FieldHelpButton: View {
         return "general.md"
     }
     var explanation: String {
-        if key == "allow-lan" { return "允许其他设备经过 Clash 的[代理端口](https://wiki.metacubex.one/config/inbound/port/)访问互联网。" }
         if context == "subscription" {
             return key == "name" ? "订阅在客户端中显示的名称，用于区分不同订阅来源。" : "提供 Clash YAML 节点配置的 HTTPS 订阅地址。"
         }
@@ -450,7 +451,7 @@ struct FieldHelpButton: View {
         let client: [String: String] = [
             "测试地址": "测速时通过所选节点访问的 HTTP / HTTPS 地址。默认使用返回 HTTP 204 的测试页面；仅用于客户端测速。",
             "超时（毫秒）": "单个节点测速请求的最长等待时间，单位毫秒。默认 5000，允许范围为 1–120000；超过该时间显示失败或超时。",
-            "key": "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.handshake-timeout。",
+            "key": "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.realm-id。",
             "address": "CIDR 规则匹配的 IP 地址。IPv4 使用点分十进制，IPv6 使用冒号分隔的地址。",
             "prefix": "CIDR 网络前缀长度：IPv4 为 0–32，IPv6 为 0–128。",
             "expression-mode": "开启后直接输入逻辑表达式；关闭时通过条件列表组合表达式。",
@@ -468,15 +469,8 @@ struct FieldHelpButton: View {
         if key == "type", document.hasPrefix("rule-providers/") { return "规则集来源：http 从网络下载；file 读取本地文件；inline 在配置中直接保存规则内容。" }
         if key == "type", document.hasPrefix("rules/") { return "选择路由规则类型。不同类型会显示对应的匹配条件输入项。" }
         if key == "type", document.hasPrefix("proxies/") { return "选择节点使用的代理协议。协议决定连接参数和表单中需要填写的字段。" }
-        let leaf = key.split(separator: ".").last.map(String.init) ?? key
-        if let text = documentedFieldHelp[document + "|" + key] ?? documentedFieldHelp[document + "|" + leaf.lowercased()] { return text }
-        if document.hasPrefix("proxies/") {
-            for common in ["proxies/index.md", "proxies/tls.md", "proxies/transport.md"] {
-                if let text = documentedFieldHelp[common + "|" + key] ?? documentedFieldHelp[common + "|" + leaf] { return text }
-            }
-        }
-        if document.hasPrefix("proxy-groups/"), let text = documentedFieldHelp["proxy-groups/index.md|" + leaf] { return text }
         if !description.isEmpty { return description }
+        if let text = documentedHelp(document: document, key: key) { return text }
         let url = "https://wiki.metacubex.one/config/" + document.replacingOccurrences(of: "index.md", with: "").replacingOccurrences(of: ".md", with: "/")
         return "[查看对应配置文档](" + url + ")"
     }
@@ -490,6 +484,9 @@ struct FieldHelpButton: View {
                     if explanation.count > 260 {
                         ScrollView { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 200)
                     } else { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true) }
+                    if document.hasSuffix(".md"), let url = URL(string: "https://wiki.metacubex.one/config/" + document.replacingOccurrences(of: "index.md", with: "").replacingOccurrences(of: ".md", with: "/")) {
+                        Link("查看配置文档", destination: url).font(.caption)
+                    }
                 }.padding(14).frame(width: 340, alignment: .leading)
             }
     }

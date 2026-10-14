@@ -357,7 +357,76 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try loadSettings(from: directory).secret, "previous-secret")
         XCTAssertTrue(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("nodes.json").path))
     }
+    func testReviewedHelpKeepsFullPathsAndSources() throws {
+        func check(_ fields: [EditorField], prefix: String = "") throws {
+            for field in fields {
+                if field.kind == "group" { try check(field.children ?? [], prefix: prefix); continue }
+                let path = prefix + field.path
+                let document = try XCTUnwrap(field.document)
+                XCTAssertEqual(field.description, try XCTUnwrap(documentedFieldHelp[document + "|" + path]))
+                XCTAssertTrue(!field.description.isEmpty)
+                if let defaultValue = field.defaultHint, field.kind == "choice" {
+                    XCTAssertTrue((field.choices ?? []).contains(defaultValue))
+                }
+                try check(field.children ?? [], prefix: path + ".")
+            }
+        }
+        for section in documentSchemas.sections + documentSchemas.proxies { try check(section.fields) }
+        try check(documentSchemas.configuration)
+        XCTAssertTrue((documentedHelp(document: "general.md", key: "geo-auto-update") ?? "").contains("是否自动更新"))
+        XCTAssertTrue((documentedHelp(document: "general.md", key: "tls.certificate") ?? "").contains("PEM"))
+        XCTAssertTrue((documentedHelp(document: "proxies/trojan.md", key: "ss-opts.password") ?? "").contains("与节点 password 含义不同"))
+        XCTAssertTrue(documentedHelp(document: "proxies/trojan.md", key: "unknown.password") == nil)
+        XCTAssertTrue(documentedHelp(document: "proxies/wg.md", key: "unknown.mode") == nil)
+        XCTAssertTrue((documentedHelp(document: "proxies/wg.md", key: "amnezia-wg-option.h1") ?? "").contains("v2+"))
+        XCTAssertTrue((documentedHelp(document: "proxies/wg.md", key: "peers.server") ?? "").contains("此 peer"))
+        XCTAssertTrue((documentedHelp(document: "dns/index.md", key: "fake-ip-filter") ?? "").contains("rule 模式"))
+        XCTAssertTrue((documentedHelp(document: "sniff/index.md", key: "sniffer.sniff.HTTP.override-destination") ?? "").contains("覆盖"))
+        XCTAssertTrue((documentedHelp(document: "proxy-groups/fallback.md", key: "empty-fallback") ?? "").contains("客户端未设置时写入 REJECT"))
+        for type in ["select", "url-test", "fallback", "load-balance"] {
+            for field in groupEditorFields(type) { XCTAssertNotNil(documentedHelp(document: "proxy-groups/" + type + ".md", key: field.path)) }
+        }
+        for type in ["http", "file", "inline"] {
+            for field in ruleProviderEditorFields(type) { XCTAssertNotNil(documentedHelp(document: "rule-providers/index.md", key: field.path)) }
+        }
+        for kind in RuleKind.allCases { XCTAssertNotNil(documentedHelp(document: "rules/index.md", key: kind.rawValue)) }
+    }
+
+    func testReviewedProtocolOptionsAndRequirements() throws {
+        func field(_ type: String, _ path: String) throws -> EditorField {
+            try XCTUnwrap(documentSchemas.proxies.first { $0.key == type }?.fields.first { $0.path == path })
+        }
+        XCTAssertEqual(try field("tuic", "congestion-controller").choices, ["cubic", "new_reno", "bbr"])
+        XCTAssertEqual(try field("shadowquic", "congestion-controller").choices, ["cubic", "new_reno", "bbr"])
+        XCTAssertEqual(try field("masque", "network").choices, ["quic", "h2", "h3-l4proxy"])
+        XCTAssertEqual(try field("zerotier", "network").kind, "string")
+        XCTAssertEqual(try field("ss", "plugin-opts.mode").kind, "string")
+        XCTAssertEqual(try field("trusttunnel", "congestion-controller").kind, "string")
+        for type in ["wireguard", "masque", "openvpn", "zerotier"] {
+            XCTAssertEqual(try field(type, "ip-stack.mode").choices, ["auto", "gvisor", "mips"])
+            XCTAssertEqual(try field(type, "ip-stack.mode").defaultHint, "auto")
+        }
+        XCTAssertEqual(try field("anytls", "idle-session-timeout").defaultHint, "30")
+        XCTAssertTrue(try field("openvpn", "ca").required)
+        XCTAssertTrue(try field("easytier", "network-name").required)
+        XCTAssertTrue(try field("vmess", "cipher").required)
+        XCTAssertTrue(try field("vmess", "alterId").required)
+        XCTAssertEqual(try field("tailscale", "auth-key").kind, "secret")
+        XCTAssertTrue(!(documentSchemas.sections.first { $0.key == "dns" }?.fields.contains { $0.path == "proxies" } ?? true))
+        let mieru = ManualProxy(type: "mieru", fields: ["name": .string("range"), "server": .string("example.com"),
+            "port-range": .string("2090-2099"), "username": .string("user"), "password": .string("pass")])
+        XCTAssertEqual(try mieru.configuration()["port-range"] as? String, "2090-2099")
+        let vmess = ManualProxy(type: "vmess", fields: ["name": .string("vmess"), "server": .string("example.com"),
+            "port": .integer(443), "uuid": .string("00000000-0000-0000-0000-000000000001")])
+        XCTAssertThrowsError(try vmess.configuration())
+        var configured = vmess
+        configured.fields["alterId"] = .integer(0); configured.fields["cipher"] = .string("auto")
+        XCTAssertEqual(try configured.configuration()["alterId"] as? Int, 0)
+    }
+
     static var allTests = [
+        ("testReviewedHelpKeepsFullPathsAndSources", testReviewedHelpKeepsFullPathsAndSources),
+        ("testReviewedProtocolOptionsAndRequirements", testReviewedProtocolOptionsAndRequirements),
         ("testInterruptedFileCommitRecoversOnSettingsLoad", testInterruptedFileCommitRecoversOnSettingsLoad),
         ("testSubscriptionRejectsAliasesAndDeepNesting", testSubscriptionRejectsAliasesAndDeepNesting),
         ("testFileCommitRestoresAllFilesAfterWriteFailure", testFileCommitRestoresAllFilesAfterWriteFailure),
