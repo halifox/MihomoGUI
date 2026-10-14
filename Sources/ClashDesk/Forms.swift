@@ -14,7 +14,7 @@ struct VisualField: View {
     var compactRow: some View {
         HStack(alignment: field.kind == "list" || field.kind == "map" || field.kind == "object" ? .top : .center, spacing: 12) {
             FieldKeyLabel(title: field.title + (field.required ? " *" : ""), key: field.path,
-                          description: field.description, hint: field.hint, kind: field.kind)
+                          description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason)
                 .frame(width: 200, alignment: .leading)
             VisualValue(field: field, value: Binding(get: {
                 value ?? (field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
@@ -25,7 +25,7 @@ struct VisualField: View {
     var legacyRow: some View {
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                FieldKeyLabel(title: field.title, key: field.path, description: field.description, hint: field.hint, kind: field.kind)
+                FieldKeyLabel(title: field.title, key: field.path, description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason)
                 if field.required { Text("必填").font(.caption).foregroundStyle(.orange) }
                 Spacer()
                 if allowUnset && !field.required {
@@ -232,7 +232,9 @@ struct FieldKeyLabel: View {
     var description = ""
     var hint = ""
     var kind = ""
+    var unavailableReason: String?
     var translate = true
+    @State private var platformPresented = false
     @Environment(\.formHelpDocument) private var context
     var displayTitle: String {
         guard translate else { return title }
@@ -243,6 +245,16 @@ struct FieldKeyLabel: View {
         HStack(spacing: 6) {
             Text(displayTitle).textSelection(.enabled).help(key)
             FieldHelpButton(key: key, description: description, hint: hint, kind: kind)
+            if let reason = unavailableReason {
+                Button { platformPresented.toggle() } label: {
+                    Image(systemName: "exclamationmark.circle").font(.system(size: 12)).foregroundStyle(.orange)
+                }
+                .buttonStyle(.borderless).help("查看平台说明").accessibilityLabel(key + " 平台说明")
+                .popover(isPresented: $platformPresented, arrowEdge: .top) {
+                    Text(reason).fixedSize(horizontal: false, vertical: true)
+                        .padding(14).frame(width: 280, alignment: .leading)
+                }
+            }
             Spacer(minLength: 0)
         }
     }
