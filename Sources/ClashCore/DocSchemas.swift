@@ -453,6 +453,7 @@ let docSchemaJSON = #"""
           "hint": "arc",
           "description": "支持的算法： - lru: Least Recently Used, 默认值 - arc: Adaptive Replacement Cache",
           "required": false,
+          "defaultHint": "lru",
           "choices": [
             "lru",
             "arc"
@@ -522,6 +523,7 @@ let docSchemaJSON = #"""
           "hint": "fake-ip",
           "description": "可选值 fake-ip/redir-host，默认redir-host mihomo 的 DNS 处理模式",
           "required": false,
+          "defaultHint": "redir-host",
           "choices": [
             "fake-ip",
             "redir-host"
@@ -550,6 +552,7 @@ let docSchemaJSON = #"""
           "hint": "rule",
           "description": "可选 blacklist/whitelist/rule，默认blacklist，whitelist 即只有匹配成功才返回 fake-ip 当fake-ip-filter-mode设置为rule时，开启规则模式，此时fake-ip-filter的写法发生改变:",
           "required": false,
+          "defaultHint": "blacklist",
           "choices": [
             "blacklist",
             "whitelist",
@@ -854,6 +857,7 @@ let docSchemaJSON = #"""
           "hint": "mips",
           "description": "tun 模式堆栈，如无使用问题，建议使用 mips 栈，默认 mips 可用值： system/gvisor/mixed/mips system 使用系统协议栈，可以提供更稳定/全面的 tun 体验，且占用相对其他堆栈更低 gvisor 通过在用户空间中实现网络协议栈，可以提供更高的安全性和隔离性，同时可以避免操作系统内核和用户空间之间的切换，从而在特定情况下具有更好的网络处理性能 mixed 混合堆栈，tcp 使用 system栈，udp 使用 gvisor栈，使用体验可能相对更好 mips 使用 mihomo ",
           "required": false,
+          "defaultHint": "mips",
           "choices": [
             "system",
             "gvisor",
@@ -1172,6 +1176,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic，仅在使用 mips 协议栈时生效",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -1335,6 +1340,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -1515,6 +1521,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -1591,6 +1598,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -1694,6 +1702,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -1762,6 +1771,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -1857,6 +1867,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -2251,6 +2262,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -2410,6 +2422,7 @@ let docSchemaJSON = #"""
           "hint": "dual",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -2590,6 +2603,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -2755,6 +2769,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -2993,6 +3008,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -3282,6 +3298,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic 对于 gVisor IP 协议栈，该选项不会生效。",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -3309,6 +3326,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -3491,6 +3509,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -3603,6 +3622,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -3790,6 +3810,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic 对于 gVisor IP 协议栈，该选项不会生效。",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -3817,6 +3838,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -3995,6 +4017,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -4104,6 +4127,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -4199,6 +4223,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -4329,6 +4354,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "可选，设置拥塞控制算法，可选值为 cubic/new_reno/bbr，默认为 cubic",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -4392,6 +4418,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -4596,6 +4623,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -4763,6 +4791,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -4904,6 +4933,7 @@ let docSchemaJSON = #"""
           "hint": "ipv6",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -5084,6 +5114,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -5208,6 +5239,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -5324,6 +5356,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -5451,6 +5484,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -5570,6 +5604,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -5686,6 +5721,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -5797,6 +5833,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -5967,6 +6004,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -6094,6 +6132,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -6329,6 +6368,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -6590,6 +6630,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -6801,6 +6842,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -7085,6 +7127,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -7289,6 +7332,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -7465,6 +7509,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -7819,6 +7864,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -8050,6 +8096,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -8398,6 +8445,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -8629,6 +8677,7 @@ let docSchemaJSON = #"""
           "hint": "smux",
           "description": "多路复用协议，支持如下协议，默认使用 h2mux | 协议 | 描述 | |---------|--------------------------------------| | smux | <https://github.com/xtaci/smux> | | yamux | <https://github.com/hashicorp/yamux> | | h2mux | <https://golang.org/x/net/http2> |",
           "required": false,
+          "defaultHint": "h2mux",
           "choices": [
             "h2mux",
             "smux",
@@ -9044,6 +9093,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic 对于 gVisor IP 协议栈，该选项不会生效。",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -9071,6 +9121,7 @@ let docSchemaJSON = #"""
           "hint": "ipv4",
           "description": "代理软件出站使用的 ip 版本，如果不是 direct，则会影响 server 为域名时使用的 ip 地址 可选：dual/ipv4/ipv6/ipv4-prefer/ipv6-prefer ,默认使用 dual ipv4: 仅使用 IPv4 ipv6: 仅使用 IPv6 ipv4-prefer: 优先使用 IPv4，对于 TCP 会进行双栈解析，并发链接但是优先使用 IPv4 链接，UDP 则为双栈解析，获取结果中的第一个 IPv4 ipv6-prefer:优先使用 IPv6，对于 TCP 会进行双栈解析，并发链",
           "required": false,
+          "defaultHint": "dual",
           "choices": [
             "dual",
             "ipv4",
@@ -9276,6 +9327,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic 对于 gVisor IP 协议栈，该选项不会生效。",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -9938,6 +9990,7 @@ let docSchemaJSON = #"""
           "hint": "mips",
           "description": "tun 模式堆栈，如无使用问题，建议使用 mips 栈，默认 mips 可用值： system/gvisor/mixed/mips system 使用系统协议栈，可以提供更稳定/全面的 tun 体验，且占用相对其他堆栈更低 gvisor 通过在用户空间中实现网络协议栈，可以提供更高的安全性和隔离性，同时可以避免操作系统内核和用户空间之间的切换，从而在特定情况下具有更好的网络处理性能 mixed 混合堆栈，tcp 使用 system栈，udp 使用 gvisor栈，使用体验可能相对更好 mips 使用 mihomo ",
           "required": false,
+          "defaultHint": "mips",
           "choices": [
             "system",
             "gvisor",
@@ -10019,6 +10072,7 @@ let docSchemaJSON = #"""
           "hint": "cubic",
           "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic，仅在使用 mips 协议栈时生效",
           "required": false,
+          "defaultHint": "cubic",
           "choices": [
             "cubic",
             "reno",
@@ -10480,6 +10534,7 @@ let docSchemaJSON = #"""
           "hint": "arc",
           "description": "支持的算法： - lru: Least Recently Used, 默认值 - arc: Adaptive Replacement Cache",
           "required": false,
+          "defaultHint": "lru",
           "choices": [
             "lru",
             "arc"
@@ -10539,6 +10594,7 @@ let docSchemaJSON = #"""
           "hint": "fake-ip",
           "description": "可选值 fake-ip/redir-host，默认redir-host mihomo 的 DNS 处理模式",
           "required": false,
+          "defaultHint": "redir-host",
           "choices": [
             "fake-ip",
             "redir-host"
@@ -10580,6 +10636,7 @@ let docSchemaJSON = #"""
           "hint": "rule",
           "description": "可选 blacklist/whitelist/rule，默认blacklist，whitelist 即只有匹配成功才返回 fake-ip 当fake-ip-filter-mode设置为rule时，开启规则模式，此时fake-ip-filter的写法发生改变:",
           "required": false,
+          "defaultHint": "blacklist",
           "choices": [
             "blacklist",
             "whitelist",

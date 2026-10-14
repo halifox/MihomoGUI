@@ -105,7 +105,7 @@ public func emptyValue(_ field: EditorField) -> ConfigValue {
     case "boolean": return .boolean(false)
     case "integer": return .integer(Int(field.hint) ?? 0)
     case "number": return .number(Double(field.hint) ?? 0)
-    case "choice": return .string(field.choices?.first ?? "")
+    case "choice": return .string("")
     case "list": return .array([])
     case "map": return .object([:])
     case "object":
@@ -147,6 +147,9 @@ public struct ManualProxy: Codable, Identifiable {
         guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !name.hasPrefix("CD."), !["DIRECT", "REJECT", "REJECT-DROP", "GLOBAL", "PASS"].contains(name),
               !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("代理名称不能为空，不能使用保留名称或控制字符") }
         guard let schema = documentSchemas.proxies.first(where: { $0.key == type }) else { throw DeskError("未知代理类型：\(type)") }
+        let fields = fields.filter { entry in
+            entry.value != .string("") || !schema.fields.contains(where: { $0.path == entry.key && $0.kind == "choice" })
+        }
         for field in schema.fields where field.required {
             if type == "hysteria2", field.path == "port", !(fields["ports"]?.text ?? "").isEmpty { continue }
             guard let value = fields[field.path], !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
@@ -167,6 +170,9 @@ public struct ManualProxy: Codable, Identifiable {
 
 public func validateFieldValues(_ values: [String: ConfigValue], schema: [EditorField]) throws {
     for field in schema {
+        if field.kind == "choice", field.required, (values[field.path]?.text ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw DeskError("请选择必填字段：\(configFieldTitle(field.path))")
+        }
         guard let value = values[field.path] else { continue }
         if !field.required, value == .string("") { continue }
         switch (field.kind, value) {

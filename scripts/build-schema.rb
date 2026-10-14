@@ -72,16 +72,28 @@ def fields(hash,prefix='',desc={})
    info=desc[path.downcase] || desc[key.to_s.downcase] || ''
    field={'path'=>path,'title'=>path,'kind'=>kind,'hint'=>value.nil? ? '' : (value.is_a?(String) ? value : JSON.generate(value)), 'description'=>info,'required'=>false}
    # YAML samples are examples, not defaults. Only explicit documentation defaults become placeholders.
-   if !%w[boolean choice list map secret].include?(kind)
-    default = info.match(/默认(?:值)?(?:为|使用)\s*([A-Za-z0-9][A-Za-z0-9_.:\/-]*)(?=[，。；、\s(（]|$)/)
+   if !%w[boolean list map secret].include?(kind)
+    default = if kind == 'choice'
+     info.match(/默认(?:值)?(?:为|使用)?\s*([A-Za-z0-9][A-Za-z0-9_.:\/-]*)(?=[，。；、\s(（]|$)/)
+    else
+     info.match(/默认(?:值)?(?:为|使用)\s*([A-Za-z0-9][A-Za-z0-9_.:\/-]*)(?=[，。；、\s(（]|$)/)
+    end
     default ||= info.match(/默认\s+(\d+)(?=[，。；、\s(（]|$)/)
     if default
      candidate = default[1]
      candidate = candidate.delete_prefix('v') if path == 'shadow-tls-opts.version'
-     valid = kind != 'integer' || candidate.match?(/\A-?\d+\z/)
+     valid = (kind != 'integer' || candidate.match?(/\A-?\d+\z/)) && (kind != 'choice' || choices.include?(candidate))
      field['defaultHint'] = candidate if valid
     end
     field['defaultHint'] = 'clash.meta' if path == 'global-ua'
+   end
+   if kind == 'choice' && !field['defaultHint']
+    choices.each do |choice|
+     if info.match?(/(?:^|[\s,，])#{Regexp.escape(choice)}:[^。；]*?默认值/)
+      field['defaultHint'] = choice
+      break
+     end
+    end
    end
    field['choices']=choices if choices
    if kind=='list'
