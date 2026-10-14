@@ -62,6 +62,7 @@ struct ApplicationSettingsView: View {
             HStack {
                 Text("应用设置").font(.title2.bold())
                 Spacer()
+                Button { model.previewConfig() } label: { Label("预览配置", systemImage: "doc.text.magnifyingglass") }.disabled(model.busy)
                 Button { model.toggleAllServices() } label: {
                     Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
                 }.controlSize(.regular).disabled(model.busy)

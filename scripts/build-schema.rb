@@ -302,11 +302,13 @@ configuration_order = %w[
  dns.fallback-filter.geosite
  dns.fallback-lazy-query
  dns.nameserver-policy
- proxies
 ]
 ranks = configuration_order.each_with_index.to_h
+# These options have dedicated editors elsewhere in the app. Keep schema/validation data,
+# but do not duplicate their controls on the global configuration page.
+dedicated_editor_keys = %w[proxies proxy-providers proxy-groups rule-providers rules]
 configuration_fields = sections.flat_map do |section|
- section['fields'].map { |field| field.merge('document'=>section['document'], 'title'=>field['path'].split('.').last) }
+ section['fields'].reject { |field| dedicated_editor_keys.include?(field['path'].split('.').first) }.map { |field| field.merge('document'=>section['document'], 'title'=>field['path'].split('.').last) }
 end
 def configuration_tree(fields, ranks, prefix='')
  keys = fields.map { |field| field['path'].delete_prefix(prefix).split('.').first }.uniq
