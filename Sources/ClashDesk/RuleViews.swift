@@ -79,8 +79,6 @@ struct RulesView: View {
                     }
                 }.width(tableColumnWidth("出口", rows.map(targetText), padding: 48))
             }
-            DisclosureGroup("规则集合与子规则（RULE-SET / SUB-RULE）") { RuleResourcesView() }.padding(.vertical, 4)
-
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
         .sheet(item: $editing) { RuleEditorView(rule: $0) }
@@ -214,30 +212,5 @@ struct RuleEditorView: View {
             rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
             try model.saveRule(rule); dismiss()
         } catch { self.error = error.localizedDescription }
-    }
-}
-
-struct RuleResourcesView: View {
-    @EnvironmentObject var model: DeskModel
-    let providers = EditorField("rule-providers", kind: "map", elementKind: "object", children: [
-        EditorField("type", kind: "choice", required: true, choices: ["http", "file", "inline"]),
-        EditorField("behavior", kind: "choice", required: true, choices: ["domain", "ipcidr", "classical"]),
-        EditorField("format", kind: "choice", choices: ["yaml", "text", "mrs"]),
-        EditorField("url", hint: "https://example.com/rules.yaml"),
-        EditorField("path", hint: "./rule-providers/example.yaml"),
-        EditorField("interval", kind: "integer", hint: "86400"),
-        EditorField("payload", kind: "list", elementKind: "string"), EditorField("proxy", hint: "DIRECT")
-    ])
-    let subRules = EditorField("sub-rules", kind: "map", elementKind: "list")
-    var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                VisualField(field: providers, value: Binding(get: { model.settings.options?["rule-providers"] }, set: { model.setOption("rule-providers", value: $0) }))
-                VisualField(field: subRules, value: Binding(get: { model.settings.options?["sub-rules"] }, set: { model.setOption("sub-rules", value: $0) }))
-                Text("子规则列表使用 DOMAIN,example.com,DIRECT 等规则字符串。规则集合支持 http / file / inline。")
-                    .font(.caption).foregroundStyle(.secondary)
-                Button("保存规则资源") { model.saveGeneralConfiguration() }.disabled(model.busy)
-            }
-        }.frame(maxHeight: 260)
     }
 }

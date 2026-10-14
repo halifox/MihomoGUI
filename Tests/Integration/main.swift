@@ -156,6 +156,37 @@ struct Integration {
             try await api.delay(manualHTTP.node, testURL: "http://127.0.0.1:\(proxyPort)/generate_204", timeoutMilliseconds: 25000)
         }
         guard manualDelay >= 20 else { throw DeskError("手动代理延迟接口异常") }
+        try await withProviderCore(corePath: core, providers: [], proxies: [try manualHTTP.configuration()]) { api in
+            let started = Date()
+            let work = Task { try await api.delay(manualHTTP.node, testURL: "http://127.0.0.1:\(proxyPort)/slow", timeoutMilliseconds: 25000) }
+            try await Task.sleep(nanoseconds: 100_000_000)
+            work.cancel()
+            do { _ = try await work.value; throw DeskError("测速取消后仍返回结果") }
+            catch {
+                guard error is CancellationError || (error as? URLError)?.code == .cancelled else { throw error }
+            }
+            guard Date().timeIntervalSince(started) < 1 else { throw DeskError("测速取消未及时中断请求") }
+        }
+        var batchProxies: [[String: Any]] = []
+        for index in 0..<5 {
+            var proxy = try manualHTTP.configuration(); proxy["name"] = "Batch-\(index)"; batchProxies.append(proxy)
+        }
+        try await withProviderCore(corePath: core, providers: [], proxies: batchProxies) { api in
+            let started = Date()
+            let completed = try await withThrowingTaskGroup(of: Int.self) { group in
+                for index in 0..<5 {
+                    group.addTask {
+                        try await api.delay(Node(provider: "manual", name: "Batch-\(index)"), testURL: "http://127.0.0.1:\(proxyPort)/slow")
+                    }
+                }
+                var count = 0
+                for try await delay in group { guard delay > 0 else { throw DeskError("并发测速返回无效结果") }; count += 1 }
+                return count
+            }
+            guard completed == 5, Date().timeIntervalSince(started) < 6 else { throw DeskError("批量测速未并发执行") }
+        }
+        print("PASS: five concurrent node delay requests")
+        print("PASS: delay cancellation interrupts an in-flight request")
         print("PASS: manual Hysteria2, manual proxy latency, nested sniffer options, CIDR, logic, rule providers and sub-rules")
     }
 }

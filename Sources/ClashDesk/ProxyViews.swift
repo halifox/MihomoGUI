@@ -153,8 +153,13 @@ struct OutboundProxiesView: View {
                 Button { if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) } } label: {
                     Label("测延迟", systemImage: "speedometer")
                 }.disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
-                Button { model.testAllDelays() } label: { Label("全部测延迟", systemImage: "gauge.with.dots.needle.50percent") }
-                    .disabled(model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty)
+                Button {
+                    if model.isTestingDelays { model.cancelDelayTests() }
+                    else { model.testAllDelays() }
+                } label: {
+                    Label(model.isTestingDelays ? "取消测延迟" : "全部测延迟",
+                          systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
+                }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
             }
             Table(model.allNodes, selection: $selection) {
                 TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", model.allNodes.map(\.name)))
@@ -191,7 +196,7 @@ struct NodeDelayCell: View {
         Button {
             if let node { model.testDelay(node) }
         } label: {
-            if model.testingNode == nodeID { Text("测试中…") }
+            if model.testingNodes.contains(nodeID) { Text("测试中…") }
             else if node?.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
             else { Text(node?.delayMilliseconds.map { "\($0) ms" } ?? "未测试") }
         }.buttonStyle(.borderless).disabled(model.busy || node == nil).help("点击测试延迟")
