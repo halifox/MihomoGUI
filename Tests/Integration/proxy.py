@@ -7,16 +7,22 @@ class Proxy(http.server.BaseHTTPRequestHandler):
     def do_CONNECT(self):
         self.send_response(200)
         self.end_headers()
-        self.connection.recv(65536)
-        time.sleep(0.03)
-        self.connection.sendall(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        request = self.connection.recv(65536)
+        time.sleep(2 if b"/slow" in request else 0.03)
+        try:
+            self.connection.sendall(b"HTTP/1.1 204 No Content\r\nContent-Length: 0\r\nConnection: close\r\n\r\n")
+        except (BrokenPipeError, ConnectionResetError):
+            pass
         self.close_connection = True
 
     def do_GET(self):
-        time.sleep(0.03)
-        self.send_response(204)
-        self.send_header("Content-Length", "0")
-        self.end_headers()
+        time.sleep(2 if "/slow" in self.path else 0.03)
+        try:
+            self.send_response(204)
+            self.send_header("Content-Length", "0")
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def log_message(self, *args):
         pass

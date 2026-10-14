@@ -19,7 +19,9 @@ final class DeskModel: ObservableObject {
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
     @Published var traffic: [DomainTrafficRow] = []
-    @Published var testingNode: String?
+    @Published var testingNodes: Set<String> = []
+    @Published var isTestingDelays = false
+    private var delayTask: Task<Void, Never>?
     @Published var configPreview: ConfigPreview?
     @Published var coreRunning = false
     @Published var lastSample: Date?
@@ -229,33 +231,58 @@ final class DeskModel: ObservableObject {
     func testDelay(_ node: Node) { testDelays([node]) }
     func testAllDelays() { testDelays(allNodes) }
     private func testDelays(_ targets: [Node]) {
-        guard !targets.isEmpty else { return }
-        perform {
+        guard !busy, !targets.isEmpty else { return }
+        busy = true; isTestingDelays = true
+        delayTask = Task {
+            defer { self.testingNodes = []; self.isTestingDelays = false; self.busy = false; self.delayTask = nil }
+            do {
             let parameters = try self.settings.delayTestParameters()
-            defer { self.testingNode = nil }
             let providers = self.settings.subscriptions.map { ($0.provider, providerFile($0, directory: self.directory)) }
             let proxies = try (self.settings.manualProxies ?? []).map { try $0.configuration() }
             let unified = self.option("unified-delay") != .boolean(false)
             try await withProviderCore(corePath: self.settings.corePath, providers: providers, proxies: proxies, unifiedDelay: unified) { api in
-                for node in targets {
-                    self.testingNode = node.id
-                    let delay: Int?
-                    do { delay = try await api.delay(node, testURL: parameters.url, timeoutMilliseconds: parameters.timeout) }
-                    catch { delay = nil }
-                    if let index = self.nodes.firstIndex(of: node) {
-                        self.nodes[index].delayMilliseconds = delay; self.nodes[index].delayFailed = delay == nil
+                try await withThrowingTaskGroup(of: (Int, Int?).self) { group in
+                    @MainActor func enqueue(_ index: Int) {
+                        let node = targets[index]
+                        self.testingNodes.insert(node.id)
+                        group.addTask {
+                            try Task.checkCancellation()
+                            let delay: Int?
+                            do { delay = try await api.delay(node, testURL: parameters.url, timeoutMilliseconds: parameters.timeout) }
+                            catch { try Task.checkCancellation(); delay = nil }
+                            try Task.checkCancellation()
+                            return (index, delay)
+                        }
                     }
-                    if let index = self.settings.manualProxies?.firstIndex(where: { $0.name == node.name && node.provider == "manual" }) {
-                        self.settings.manualProxies?[index].delayMilliseconds = delay
-                        self.settings.manualProxies?[index].delayFailed = delay == nil
+                    var nextIndex = min(5, targets.count)
+                    for index in 0..<nextIndex { enqueue(index) }
+                    while let (index, delay) = try await group.next() {
+                        try Task.checkCancellation()
+                        let node = targets[index]
+                        self.testingNodes.remove(node.id)
+                        if let cachedIndex = self.nodes.firstIndex(of: node) {
+                            self.nodes[cachedIndex].delayMilliseconds = delay; self.nodes[cachedIndex].delayFailed = delay == nil
+                        }
+                        if let manualIndex = self.settings.manualProxies?.firstIndex(where: { $0.name == node.name && node.provider == "manual" }) {
+                            self.settings.manualProxies?[manualIndex].delayMilliseconds = delay
+                            self.settings.manualProxies?[manualIndex].delayFailed = delay == nil
+                        }
+                        self.message = delay.map { "\(node.name)：\($0) ms" } ?? "\(node.name)：延迟测试失败或超时"
+                        if nextIndex < targets.count { enqueue(nextIndex); nextIndex += 1 }
                     }
-                    self.message = delay.map { "\(node.name)：\($0) ms" } ?? "\(node.name)：延迟测试失败或超时"
                 }
             }
-            try saveNodeCache(self.nodes, directory: self.directory)
-            try self.save()
+            } catch {
+                if Task.isCancelled { self.message = "已取消测速，已完成的结果已保留。" }
+                else { self.error = error.localizedDescription }
+            }
+            do {
+                try saveNodeCache(self.nodes, directory: self.directory)
+                try self.save()
+            } catch { self.error = error.localizedDescription }
         }
     }
+    func cancelDelayTests() { delayTask?.cancel() }
     func startAll() {
         prepareConfig(.start)
     }
