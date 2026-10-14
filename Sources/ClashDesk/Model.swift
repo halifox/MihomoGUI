@@ -226,33 +226,31 @@ final class DeskModel: ObservableObject {
             if snapshot.count == current.count, zip(snapshot, current).allSatisfy({ $0.id == $1.id && $0.type == $1.type && $0.fields == $1.fields }) { manualUDP = support }
         } catch { /* Unsupported or invalid core configuration remains unknown. */ }
     }
-    func testDelay(_ node: Node) {
+    func testDelay(_ node: Node) { testDelays([node]) }
+    func testAllDelays() { testDelays(allNodes) }
+    private func testDelays(_ targets: [Node]) {
+        guard !targets.isEmpty else { return }
         perform {
             let parameters = try self.settings.delayTestParameters()
-            self.testingNode = node.id
             defer { self.testingNode = nil }
-            do {
-                let providers = self.settings.subscriptions.map { ($0.provider, providerFile($0, directory: self.directory)) }
-                let proxies = try (self.settings.manualProxies ?? []).map { try $0.configuration() }
-                let unified = self.option("unified-delay") != .boolean(false)
-                let delay = try await withProviderCore(corePath: self.settings.corePath, providers: providers, proxies: proxies, unifiedDelay: unified) { api in
-                    try await api.delay(node, testURL: parameters.url, timeoutMilliseconds: parameters.timeout)
+            let providers = self.settings.subscriptions.map { ($0.provider, providerFile($0, directory: self.directory)) }
+            let proxies = try (self.settings.manualProxies ?? []).map { try $0.configuration() }
+            let unified = self.option("unified-delay") != .boolean(false)
+            try await withProviderCore(corePath: self.settings.corePath, providers: providers, proxies: proxies, unifiedDelay: unified) { api in
+                for node in targets {
+                    self.testingNode = node.id
+                    let delay: Int?
+                    do { delay = try await api.delay(node, testURL: parameters.url, timeoutMilliseconds: parameters.timeout) }
+                    catch { delay = nil }
+                    if let index = self.nodes.firstIndex(of: node) {
+                        self.nodes[index].delayMilliseconds = delay; self.nodes[index].delayFailed = delay == nil
+                    }
+                    if let index = self.settings.manualProxies?.firstIndex(where: { $0.name == node.name && node.provider == "manual" }) {
+                        self.settings.manualProxies?[index].delayMilliseconds = delay
+                        self.settings.manualProxies?[index].delayFailed = delay == nil
+                    }
+                    self.message = delay.map { "\(node.name)：\($0) ms" } ?? "\(node.name)：延迟测试失败或超时"
                 }
-                if let index = self.nodes.firstIndex(of: node) {
-                    self.nodes[index].delayMilliseconds = delay; self.nodes[index].delayFailed = false
-                }
-                if let index = self.settings.manualProxies?.firstIndex(where: { $0.name == node.name && node.provider == "manual" }) {
-                    self.settings.manualProxies?[index].delayMilliseconds = delay; self.settings.manualProxies?[index].delayFailed = false
-                }
-                self.message = "\(node.name)：\(delay) ms"
-            } catch {
-                if let index = self.nodes.firstIndex(of: node) {
-                    self.nodes[index].delayMilliseconds = nil; self.nodes[index].delayFailed = true
-                }
-                if let index = self.settings.manualProxies?.firstIndex(where: { $0.name == node.name && node.provider == "manual" }) {
-                    self.settings.manualProxies?[index].delayMilliseconds = nil; self.settings.manualProxies?[index].delayFailed = true
-                }
-                self.message = "\(node.name)：延迟测试失败或超时"
             }
             try saveNodeCache(self.nodes, directory: self.directory)
             try self.save()
