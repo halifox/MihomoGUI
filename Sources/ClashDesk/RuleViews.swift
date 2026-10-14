@@ -60,7 +60,7 @@ struct RulesView: View {
                 Button {
                     if let selection { model.deleteRule(selection); self.selection = nil }
                 } label: { Label("删除", systemImage: "minus") }.disabled(selectedIndex == nil || model.busy)
-            }
+            }.pageActions()
             Table(rows, selection: $selection) {
                 TableColumn("类型") { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true))
                 TableColumn("匹配条件") { row in Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled) }.width(tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }))

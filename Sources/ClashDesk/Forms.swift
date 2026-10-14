@@ -312,3 +312,19 @@ struct FieldHelpButton: View {
             }
     }
 }
+
+private struct PageActionLabelStyle: LabelStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        HStack(spacing: 5) {
+            configuration.icon.font(.system(size: 12)).frame(width: 14, height: 14)
+            configuration.title.font(.system(size: 13)).lineLimit(1)
+        }.frame(height: 16)
+    }
+}
+
+extension View {
+    func pageActions() -> some View {
+        self.controlSize(.regular).font(.system(size: 13))
+            .buttonStyle(.bordered).labelStyle(PageActionLabelStyle())
+    }
+}

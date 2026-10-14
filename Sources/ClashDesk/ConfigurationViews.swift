@@ -97,8 +97,8 @@ struct ApplicationSettingsView: View {
                     Button { model.toggleAllServices() } label: {
                         Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
                     }.controlSize(.regular).disabled(model.busy)
-                    Button("应用更改") { model.applyLive() }.controlSize(.regular).disabled(model.busy || !model.coreRunning)
-                }
+                    Button { model.applyLive() } label: { Label("应用更改", systemImage: "checkmark") }.disabled(model.busy || !model.coreRunning)
+                }.pageActions()
                 GroupBox {
                     VStack(alignment: .leading, spacing: 4) {
                         formRow("内核状态", help: "mihomo 控制接口是否可访问。") {

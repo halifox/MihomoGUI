@@ -23,7 +23,7 @@ struct SubscriptionsView: View {
                     .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
                 Button { model.refreshSubscriptions() } label: { Label("全部更新", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
-            }
+            }.pageActions()
             Table(model.settings.subscriptions, selection: $selection) {
                 TableColumn("名称") { subscription in
                     Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
@@ -160,7 +160,7 @@ struct OutboundProxiesView: View {
                     Label(model.isTestingDelays ? "取消测延迟" : "全部延迟",
                           systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
                 }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
-            }
+            }.pageActions()
             Table(model.allNodes, selection: $selection) {
                 TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", model.allNodes.map(\.name)))
                 TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(tableColumnWidth("类型", model.allNodes.map { $0.protocolName ?? "—" }))

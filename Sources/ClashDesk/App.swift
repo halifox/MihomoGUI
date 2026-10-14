@@ -160,7 +160,7 @@ struct StatisticsView: View {
                 Picker("时间范围", selection: $model.hours) {
                     Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
                 }.frame(width: 220)
-            }
+            }.pageActions()
                 Table(model.traffic) {
                     TableColumn("域名 / IP") { row in
                         Text(row.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: row.domain) }
