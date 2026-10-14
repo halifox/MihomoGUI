@@ -61,7 +61,6 @@ struct GeneralConfigurationView: View {
                     model.option(field.path)
                 }, set: { model.setOption(field.path, value: $0) }),
                             allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: fieldEnabled(field.path))
-                Divider()
             }
         }
     }
