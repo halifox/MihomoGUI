@@ -379,7 +379,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "clash.meta",
           "description": "",
-          "required": false
+          "required": false,
+          "defaultHint": "clash.meta"
         },
         {
           "path": "etag-support",
@@ -951,7 +952,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "300",
           "description": "UDP NAT 过期时间，以秒为单位，默认为 300(5 分钟)",
-          "required": false
+          "required": false,
+          "defaultHint": "300"
         },
         {
           "path": "tun.iproute2-table-index",
@@ -960,6 +962,7 @@ let docSchemaJSON = #"""
           "hint": "2022",
           "description": "auto-route 生成的 iproute2 路由表索引，默认使用 2022",
           "required": false,
+          "defaultHint": "2022",
           "unavailableReason": "仅支持 Linux"
         },
         {
@@ -969,6 +972,7 @@ let docSchemaJSON = #"""
           "hint": "9000",
           "description": "auto-route 生成的 iproute2 规则起始索引，默认使用 9000",
           "required": false,
+          "defaultHint": "9000",
           "unavailableReason": "仅支持 Linux"
         },
         {
@@ -1421,7 +1425,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -1983,7 +1988,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "aes-gcm",
           "description": "可选，加密算法，默认值为 aes-gcm。",
-          "required": false
+          "required": false,
+          "defaultHint": "aes-gcm"
         },
         {
           "path": "exit-nodes",
@@ -2097,7 +2103,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1380",
           "description": "可选，MTU 覆盖值，默认值为 1380。",
-          "required": false
+          "required": false,
+          "defaultHint": "1380"
         },
         {
           "path": "network-name",
@@ -2280,7 +2287,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "et.net.",
           "description": "可选，MagicDNS 使用的 TLD DNS 区域，默认值为 et.net.。 在 DNS 配置中可使用 et://<代理名称> 解析 overlay 网络中的 A/PTR 记录，建议配合 nameserver-policy 使用。",
-          "required": false
+          "required": false,
+          "defaultHint": "et.net."
         },
         {
           "path": "udp",
@@ -2492,7 +2500,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -2941,7 +2950,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "30",
           "description": "单位为秒；配置后握手时不受外层连接超时影响；默认值为 0，表示仅使用外层连接超时",
-          "required": false
+          "required": false,
+          "defaultHint": "0"
         },
         {
           "path": "hop-interval",
@@ -2949,7 +2959,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "30",
           "description": "端口跳跃的间隔，单位为秒，默认为 30 支持填写\"15-30\"会每次随机选取其中一个值作为切换间隔，仅支持写一个范围（即不允许出现逗号）",
-          "required": false
+          "required": false,
+          "defaultHint": "30"
         },
         {
           "path": "initial-connection-receive-window",
@@ -3245,7 +3256,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "30",
           "description": "握手超时时间，单位为秒。默认值为 0，表示仅使用外层连接超时",
-          "required": false
+          "required": false,
+          "defaultHint": "0"
         },
         {
           "path": "interface-name",
@@ -3319,7 +3331,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1280",
           "description": "TUN 设备的 MTU 大小，默认为 1280",
-          "required": false
+          "required": false,
+          "defaultHint": "1280"
         },
         {
           "path": "name-cert-verify",
@@ -3500,7 +3513,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "MULTIPLEXING_LOW",
           "description": "多路复用，可以使用的值包括 MULTIPLEXING_OFF, MULTIPLEXING_LOW, MULTIPLEXING_MIDDLE, MULTIPLEXING_HIGH。其中 MULTIPLEXING_OFF 会关闭多路复用功能。默认值为 MULTIPLEXING_LOW",
-          "required": false
+          "required": false,
+          "defaultHint": "MULTIPLEXING_LOW"
         },
         {
           "path": "port-range",
@@ -3758,7 +3772,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "30",
           "description": "可选，握手超时时间，单位为秒。默认值为 0，表示仅使用外层连接超时。",
-          "required": false
+          "required": false,
+          "defaultHint": "0"
         },
         {
           "path": "interface-name",
@@ -3840,7 +3855,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1500",
           "description": "可选，最大传输单元，默认 1500。",
-          "required": false
+          "required": false,
+          "defaultHint": "1500"
         },
         {
           "path": "password",
@@ -3872,7 +3888,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "10",
           "description": "可选，默认值为0。",
-          "required": false
+          "required": false,
+          "defaultHint": "0"
         },
         {
           "path": "ping-restart",
@@ -3880,7 +3897,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "60",
           "description": "可选，默认值为0。",
-          "required": false
+          "required": false,
+          "defaultHint": "0"
         },
         {
           "path": "proto",
@@ -4029,7 +4047,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3600",
           "description": "旧 data key 在 rekey 后保留的秒数；默认 3600，显式设为 0 表示立即过期，应与服务端 --tran-window 对齐",
-          "required": false
+          "required": false,
+          "defaultHint": "3600"
         },
         {
           "path": "udp",
@@ -4323,7 +4342,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "32",
           "description": "可选，设置初始拥塞窗口大小（Initial Congestion Window size），默认为 32",
-          "required": false
+          "required": false,
+          "defaultHint": "32"
         },
         {
           "path": "dialer-proxy",
@@ -4394,7 +4414,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1400",
           "description": "可选，设置允许的最大数据报帧大小，单位为字节，默认为 1400",
-          "required": false
+          "required": false,
+          "defaultHint": "1400"
         },
         {
           "path": "max-open-streams",
@@ -4402,7 +4423,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1024",
           "description": "可选，设置最大同时打开的并发流数量，默认为 1024",
-          "required": false
+          "required": false,
+          "defaultHint": "1024"
         },
         {
           "path": "name-cert-verify",
@@ -4972,7 +4994,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -5345,7 +5368,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "2",
           "description": "UDP over TCP 的协议版本，默认 1。可选值 1/2。",
-          "required": false
+          "required": false,
+          "defaultHint": "1"
         }
       ],
       "document": "proxies/ss.md"
@@ -6325,7 +6349,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "./tailscale",
           "description": "可选，tsnet 状态目录，默认值为 tailscale。",
-          "required": false
+          "required": false,
+          "defaultHint": "tailscale"
         },
         {
           "path": "tfo",
@@ -6480,7 +6505,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1",
           "description": "最大连接数量。默认值为 1 即只使用一条底层链接 与 max-streams 冲突",
-          "required": false
+          "required": false,
+          "defaultHint": "1"
         },
         {
           "path": "grpc-opts.max-streams",
@@ -6685,7 +6711,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -7172,7 +7199,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -7706,7 +7734,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1",
           "description": "最大连接数量。默认值为 1 即只使用一条底层链接 与 max-streams 冲突",
-          "required": false
+          "required": false,
+          "defaultHint": "1"
         },
         {
           "path": "grpc-opts.max-streams",
@@ -7931,7 +7960,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -8283,7 +8313,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1",
           "description": "最大连接数量。默认值为 1 即只使用一条底层链接 与 max-streams 冲突",
-          "required": false
+          "required": false,
+          "defaultHint": "1"
         },
         {
           "path": "grpc-opts.max-streams",
@@ -8508,7 +8539,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "3",
           "description": "支持 v1 / v2 / v3；留空时默认为 v2。",
-          "required": false
+          "required": false,
+          "defaultHint": "2"
         },
         {
           "path": "skip-cert-verify",
@@ -9343,7 +9375,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "1432",
           "description": "可选，ZeroTier UDP 负载 MTU，有效范围为 510-10324，默认值为 1432。",
-          "required": false
+          "required": false,
+          "defaultHint": "1432"
         },
         {
           "path": "planet",
@@ -9415,7 +9448,8 @@ let docSchemaJSON = #"""
           "kind": "string",
           "hint": "auto",
           "description": "可选，TCP 回退模式，可使用以下值： auto：UDP 连接失败后使用中继。 force：仅使用中继。 disable：禁用 TCP 中继回退。 默认值为 auto。",
-          "required": false
+          "required": false,
+          "defaultHint": "auto"
         },
         {
           "path": "tcp-fallback-relay",
@@ -10068,6 +10102,7 @@ let docSchemaJSON = #"""
           "hint": "300",
           "description": "UDP NAT 过期时间，以秒为单位，默认为 300(5 分钟)",
           "required": false,
+          "defaultHint": "300",
           "document": "inbound/tun.md"
         },
         {
@@ -10077,6 +10112,7 @@ let docSchemaJSON = #"""
           "hint": "2022",
           "description": "auto-route 生成的 iproute2 路由表索引，默认使用 2022",
           "required": false,
+          "defaultHint": "2022",
           "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
@@ -10087,6 +10123,7 @@ let docSchemaJSON = #"""
           "hint": "9000",
           "description": "auto-route 生成的 iproute2 规则起始索引，默认使用 9000",
           "required": false,
+          "defaultHint": "9000",
           "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
@@ -10820,6 +10857,7 @@ let docSchemaJSON = #"""
       "hint": "clash.meta",
       "description": "",
       "required": false,
+      "defaultHint": "clash.meta",
       "document": "general.md"
     },
     {
