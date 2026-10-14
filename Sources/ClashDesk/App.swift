@@ -6,9 +6,11 @@ struct ClashDeskApp: App {
     @StateObject private var model = DeskModel()
     var body: some Scene {
         WindowGroup("ClashDesk") {
-            DeskView().environmentObject(model).frame(minWidth: 1240, minHeight: 760)
+            DeskView().environmentObject(model).frame(minWidth: 800, minHeight: 600)
+                .background(InitialWindowSize())
                 .task { model.startMonitor() }
         }
+        .defaultSize(width: 800, height: 600)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("安装 / 启动全部服务") { model.startAll() }.disabled(model.busy)
@@ -17,8 +19,36 @@ struct ClashDeskApp: App {
     }
 }
 
+// Apply once per new window so a restored frame cannot override the requested launch size.
+struct InitialWindowSize: NSViewRepresentable {
+    func makeNSView(context: Context) -> NSView { LaunchSizeView() }
+    func updateNSView(_ nsView: NSView, context: Context) {}
+}
+
+final class LaunchSizeView: NSView {
+    private var sized = false
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        guard !sized, let window else { return }
+        sized = true
+        DispatchQueue.main.async { [weak window] in
+            window?.setContentSize(NSSize(width: 800, height: 600))
+        }
+    }
+}
+
 func bytes(_ value: Int64) -> String {
     ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
+}
+
+func tableColumnWidth(_ title: String, _ values: [String], numeric: Bool = false, monospaced: Bool = false,
+                      padding: CGFloat = 28, maximum: CGFloat = 420) -> CGFloat {
+    let font = monospaced ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        : numeric ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+        : NSFont.systemFont(ofSize: NSFont.systemFontSize)
+    let header = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)]).width
+    let content = values.map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+    return min(maximum, ceil(max(header, content)) + padding)
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
@@ -156,13 +186,13 @@ struct StatisticsView: View {
                 Table(model.traffic) {
                     TableColumn("域名 / IP") { row in
                         Text(row.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: row.domain) }
-                    }
-                    TableColumn("程序数") { row in Text(String(row.processCount)) }.width(80)
-                    TableColumn("出口数") { row in Text(String(row.outboundCount)) }.width(80)
-                    TableColumn("当前连接数") { row in Text(String(counts[row.domain] ?? 0)) }.width(100)
-                    TableColumn("上传") { row in Text(bytes(row.upload)).monospacedDigit() }.width(100)
-                    TableColumn("下载") { row in Text(bytes(row.download)).monospacedDigit() }.width(100)
-                    TableColumn("总流量") { row in Text(bytes(row.upload + row.download)).monospacedDigit() }.width(100)
+                    }.width(tableColumnWidth("域名 / IP", model.traffic.map(\.domain)))
+                    TableColumn("程序数") { row in Text(String(row.processCount)) }.width(tableColumnWidth("程序数", model.traffic.map { String($0.processCount) }, numeric: true))
+                    TableColumn("出口数") { row in Text(String(row.outboundCount)) }.width(tableColumnWidth("出口数", model.traffic.map { String($0.outboundCount) }, numeric: true))
+                    TableColumn("当前连接数") { row in Text(String(counts[row.domain] ?? 0)) }.width(tableColumnWidth("当前连接数", model.traffic.map { String(counts[$0.domain] ?? 0) }, numeric: true))
+                    TableColumn("上传") { row in Text(bytes(row.upload)).monospacedDigit() }.width(tableColumnWidth("上传", model.traffic.map { bytes($0.upload) }, numeric: true))
+                    TableColumn("下载") { row in Text(bytes(row.download)).monospacedDigit() }.width(tableColumnWidth("下载", model.traffic.map { bytes($0.download) }, numeric: true))
+                    TableColumn("总流量") { row in Text(bytes(row.upload + row.download)).monospacedDigit() }.width(tableColumnWidth("总流量", model.traffic.map { bytes($0.upload + $0.download) }, numeric: true))
                 }
                 .overlay {
                     if model.traffic.isEmpty {
@@ -184,22 +214,22 @@ struct ConnectionsView: View {
             Table(model.connections) {
                 TableColumn("域名 / IP") { connection in
                     Text(connection.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: connection.domain) }
-                }
+                }.width(tableColumnWidth("域名 / IP", model.connections.map(\.domain)))
                 TableColumn("程序") { connection in
                     Text(connection.process).help(connection.process).contextMenu {
                         if connection.process != "未知程序" {
                             RouteMenu(kind: connection.process.hasPrefix("/") ? .processPath : .processName, value: connection.process)
                         }
                     }
-                }
-                TableColumn("协议") { connection in Text(connection.metadata.network ?? "—") }.width(65)
-                TableColumn("出口") { connection in Text(connection.outbound) }
-                TableColumn("上传") { connection in Text(bytes(connection.upload)) }.width(90)
-                TableColumn("下载") { connection in Text(bytes(connection.download)) }.width(100)
+                }.width(tableColumnWidth("程序", model.connections.map(\.process)))
+                TableColumn("协议") { connection in Text(connection.metadata.network ?? "—") }.width(tableColumnWidth("协议", model.connections.map { $0.metadata.network ?? "—" }))
+                TableColumn("出口") { connection in Text(connection.outbound) }.width(tableColumnWidth("出口", model.connections.map(\.outbound)))
+                TableColumn("上传") { connection in Text(bytes(connection.upload)) }.width(tableColumnWidth("上传", model.connections.map { bytes($0.upload) }, numeric: true))
+                TableColumn("下载") { connection in Text(bytes(connection.download)) }.width(tableColumnWidth("下载", model.connections.map { bytes($0.download) }, numeric: true))
                 TableColumn("操作") { connection in
                     Button("断开") { model.perform { try await model.api.closeConnection(connection.id) } }
                         .disabled(model.busy)
-                }.width(70)
+                }.width(tableColumnWidth("操作", model.connections.isEmpty ? [] : ["断开"], padding: 42))
             }
         }
     }

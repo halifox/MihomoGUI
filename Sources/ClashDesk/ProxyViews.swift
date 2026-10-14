@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 import ClashCore
 
 struct SubscriptionsView: View {
@@ -25,32 +26,30 @@ struct SubscriptionsView: View {
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }
             Table(model.settings.subscriptions, selection: $selection) {
-                TableColumn("名称") { subscription in Text(subscription.name).textSelection(.enabled) }.width(min: 80, ideal: 110, max: 150)
+                TableColumn("名称") { subscription in
+                    Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
+                }.width(contentWidth("名称"))
                 TableColumn("上传流量") { subscription in
-                    Text(subscription.usage?.upload.map(bytes) ?? "—").monospacedDigit()
-                }.width(min: 85, ideal: 110)
+                    Text(columnText(subscription, "上传流量")).monospacedDigit()
+                }.width(contentWidth("上传流量"))
                 TableColumn("下载流量") { subscription in
-                    Text(subscription.usage?.download.map(bytes) ?? "—").monospacedDigit()
-                }.width(min: 85, ideal: 110)
+                    Text(columnText(subscription, "下载流量")).monospacedDigit()
+                }.width(contentWidth("下载流量"))
                 TableColumn("剩余流量") { subscription in
-                    Text(subscription.usage?.remaining.map(bytes) ?? "—").monospacedDigit()
-                }.width(min: 85, ideal: 110)
+                    Text(columnText(subscription, "剩余流量")).monospacedDigit()
+                }.width(contentWidth("剩余流量"))
                 TableColumn("总流量") { subscription in
-                    Text(subscription.usage?.total.map(bytes) ?? "—").monospacedDigit()
-                }.width(min: 85, ideal: 110)
+                    Text(columnText(subscription, "总流量")).monospacedDigit()
+                }.width(contentWidth("总流量"))
                 TableColumn("到期时间") { subscription in
-                    Text(subscription.usage?.expiresAt.map {
-                        $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute())
-                    } ?? "—").monospacedDigit()
-                }.width(175)
+                    Text(columnText(subscription, "到期时间")).monospacedDigit()
+                }.width(contentWidth("到期时间"))
                 TableColumn("节点数") { subscription in
-                    Text(String(model.nodes.filter { $0.provider == subscription.provider }.count))
-                }.width(80)
+                    Text(columnText(subscription, "节点数")).monospacedDigit()
+                }.width(contentWidth("节点数"))
                 TableColumn("上次更新时间") { subscription in
-                    Text(subscription.lastUpdatedAt.map {
-                        $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute().second())
-                    } ?? "未记录").monospacedDigit()
-                }.width(190)
+                    Text(columnText(subscription, "上次更新时间")).monospacedDigit()
+                }.width(contentWidth("上次更新时间"))
             }
 
         }
@@ -58,6 +57,27 @@ struct SubscriptionsView: View {
         .sheet(item: $editing) { SubscriptionEditorView(subscription: $0) }
 
     }
+    func columnText(_ subscription: Subscription, _ column: String) -> String {
+        switch column {
+        case "名称": return subscription.name
+        case "上传流量": return subscription.usage?.upload.map(bytes) ?? "—"
+        case "下载流量": return subscription.usage?.download.map(bytes) ?? "—"
+        case "剩余流量": return subscription.usage?.remaining.map(bytes) ?? "—"
+        case "总流量": return subscription.usage?.total.map(bytes) ?? "—"
+        case "到期时间": return subscription.usage?.expiresAt.map {
+            $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute())
+        } ?? "—"
+        case "节点数": return String(model.nodes.filter { $0.provider == subscription.provider }.count)
+        default: return subscription.lastUpdatedAt.map {
+            $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute().second())
+        } ?? "未记录"
+        }
+    }
+    func contentWidth(_ column: String) -> CGFloat {
+        tableColumnWidth(column, model.settings.subscriptions.map { columnText($0, column) },
+                         numeric: column != "名称", maximum: column == "名称" ? 260 : 300)
+    }
+
 }
 
 struct SubscriptionEditorView: View {
@@ -137,18 +157,22 @@ struct OutboundProxiesView: View {
                     .disabled(model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty)
             }
             Table(model.allNodes, selection: $selection) {
-                TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }
-                TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(105)
+                TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", model.allNodes.map(\.name)))
+                TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(tableColumnWidth("类型", model.allNodes.map { $0.protocolName ?? "—" }))
                 TableColumn("UDP") { node in
                     let supported = node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP
                     Text(supported.map { $0 ? "支持" : "不支持" } ?? "未知")
-                }.width(85)
+                }.width(tableColumnWidth("UDP", model.allNodes.map { node in
+                    (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
+                }))
                 TableColumn("来源") { node in
                     Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
-                }.width(100)
+                }.width(tableColumnWidth("来源", model.allNodes.map { node in
+                    node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
+                }))
                 TableColumn("延迟") { node in
                     NodeDelayCell(model: model, nodeID: node.id)
-                }.width(110)
+                }.width(tableColumnWidth("延迟", model.allNodes.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "未测试" } + ["测试中…", "失败 / 超时"]))
             }
 
 
