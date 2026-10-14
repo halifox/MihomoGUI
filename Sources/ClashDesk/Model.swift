@@ -136,8 +136,10 @@ final class DeskModel: ObservableObject {
     }
     func save() throws { try saveSettings(settings, to: directory) }
     func importSubscriptions(_ candidate: ClashCore.Settings) async throws {
-        let imported = try await fetchSubscriptions(candidate.subscriptions, corePath: candidate.corePath, directory: directory)
+        let fetched = try await fetchSubscriptionData(candidate.subscriptions, corePath: candidate.corePath, directory: directory)
+        let imported = fetched.nodes
         var updated = candidate
+        updated.subscriptions = fetched.subscriptions
         try cacheSubscriptionProxies(&updated, directory: directory)
         let updatedAt = Date()
         for index in updated.subscriptions.indices { updated.subscriptions[index].lastUpdatedAt = updatedAt }
@@ -164,7 +166,9 @@ final class DeskModel: ObservableObject {
         let staging = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-subscription-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: staging) }
-        var imported = try await fetchSubscriptions([subscription], corePath: settings.corePath, directory: staging)
+        let fetched = try await fetchSubscriptionData([subscription], corePath: settings.corePath, directory: staging)
+        var imported = fetched.nodes
+        subscription.usage = fetched.subscriptions.first?.usage
         guard !imported.isEmpty else { throw DeskError("订阅没有可用节点，未保存") }
         let previous = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
         for index in imported.indices {

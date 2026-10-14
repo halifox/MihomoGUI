@@ -13,17 +13,30 @@ struct SubscriptionsView: View {
                 Text("订阅管理").font(.title2.bold())
                 Text("\(model.settings.subscriptions.count) 个订阅").foregroundStyle(.secondary)
                 Spacer()
-                Button { adding = true } label: { Label("添加订阅", systemImage: "plus") }
+                Button { adding = true } label: { Label("添加", systemImage: "plus") }
                     .disabled(model.busy)
-                Button("更新") { if let selected { model.refreshSubscription(selected) } }.disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
-                Button("编辑") { editing = selected }.disabled(model.busy || selected == nil)
-                Button("删除") { if let selected { model.deleteSubscription(selected) } }.disabled(model.busy || selected == nil)
-                Button("更新全部订阅") { model.refreshSubscriptions() }
+                Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }
+                    .disabled(model.busy || selected == nil)
+                Button { if let selected { model.refreshSubscription(selected) } } label: { Label("更新", systemImage: "arrow.clockwise") }
+                    .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
+                Button { if let selected { model.deleteSubscription(selected) } } label: { Label("删除", systemImage: "trash") }
+                    .disabled(model.busy || selected == nil)
+                Button { model.refreshSubscriptions() } label: { Label("全部更新", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }
             Table(model.settings.subscriptions, selection: $selection) {
                 TableColumn("名称") { subscription in Text(subscription.name).textSelection(.enabled) }.width(min: 80, ideal: 110, max: 150)
-                TableColumn("订阅链接") { subscription in Text(subscription.url).lineLimit(1).textSelection(.enabled) }.width(min: 300, ideal: 550)
+                TableColumn("已用流量") { subscription in
+                    Text(subscription.usage?.used.map(bytes) ?? "—").monospacedDigit()
+                }.width(min: 100, ideal: 130)
+                TableColumn("剩余 / 总流量") { subscription in
+                    Text((subscription.usage?.remaining.map(bytes) ?? "—") + " / " + (subscription.usage?.total.map(bytes) ?? "—")).monospacedDigit()
+                }.width(min: 170, ideal: 210)
+                TableColumn("到期时间") { subscription in
+                    Text(subscription.usage?.expiresAt.map {
+                        $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute())
+                    } ?? "—").monospacedDigit()
+                }.width(175)
                 TableColumn("节点数") { subscription in
                     Text(String(model.nodes.filter { $0.provider == subscription.provider }.count))
                 }.width(80)

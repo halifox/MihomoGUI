@@ -154,6 +154,18 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(configPath("realm-opts.enable", in: proxies[0]) as? Bool, false)
         let groups = object["proxy-groups"] as! [[String: Any]]
         XCTAssertEqual(groups[0]["proxies"] as? [String], [proxy.name])
+        let usage = SubscriptionUsage(header: "upload=100; download=200; total=1000; expire=1800000000")
+        XCTAssertEqual(usage.used, 300)
+        XCTAssertEqual(usage.remaining, 700)
+        XCTAssertEqual(usage.expiresAt, Date(timeIntervalSince1970: 1800000000))
+        let partial = SubscriptionUsage(header: "upload=bad; download=-1; total=100; expire=0")
+        XCTAssertEqual(partial.used, nil)
+        XCTAssertEqual(partial.expiresAt, nil)
+        XCTAssertEqual(SubscriptionUsage(header: "upload=100;download=200;total=10").remaining, 0)
+        settings.subscriptions = [Subscription(name: "Usage", url: "https://example.org/sub")]
+        settings.subscriptions[0].usage = usage
+        let persistedUsage = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(persistedUsage.subscriptions[0].usage, usage)
         XCTAssertEqual(try settings.delayTestParameters().timeout, 5000)
         settings.delayTestURL = "https://example.org/health"
         settings.delayTestTimeoutMilliseconds = 25000
