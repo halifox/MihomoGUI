@@ -165,6 +165,7 @@ struct ValueMap: View {
                 }
             }
             HStack {
+                Text("key").font(.system(.caption, design: .monospaced))
                 TextField("键 / 名称", text: $key).textFieldStyle(.roundedBorder)
                 Button {
                     let name = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -186,12 +187,15 @@ struct CustomFieldEditor: View {
     @State private var kind = "string"
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack {
-                TextField("字段路径，例如 realm-opts.handshake-timeout", text: $path)
+            formRow("key") { TextField("字段路径，例如 realm-opts.handshake-timeout", text: $path) }
+            formRow("type") {
                 Picker("类型", selection: $kind) {
                     Text("文本").tag("string"); Text("整数").tag("integer"); Text("开关").tag("boolean")
                     Text("列表").tag("list"); Text("键值表").tag("map")
-                }.frame(width: 130)
+                }.labelsHidden()
+            }
+            HStack {
+                Spacer()
                 Button("添加字段") {
                     fields[path] = emptyValue(EditorField(path, kind: kind, elementKind: "string")); path = ""
                 }.disabled(path.isEmpty || fields[path] != nil)
@@ -204,4 +208,11 @@ struct CustomFieldEditor: View {
 func formActionIcon(_ symbol: String) -> some View {
     Image(systemName: symbol).font(.system(size: 10, weight: .medium))
         .frame(width: 12, height: 12)
+}
+
+func formRow<Content: View>(_ title: String, @ViewBuilder content: () -> Content) -> some View {
+    HStack(alignment: .center, spacing: 12) {
+        Text(title).font(.system(.body, design: .monospaced)).frame(width: 200, alignment: .leading)
+        content().frame(maxWidth: .infinity, alignment: .leading)
+    }.padding(.vertical, 3)
 }

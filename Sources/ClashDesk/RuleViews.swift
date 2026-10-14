@@ -123,60 +123,64 @@ struct RuleEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加路由规则" : "编辑路由规则").font(.title2.bold())
-            Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
             ScrollView {
-                VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 6) {
+                    formRow("type *") {
+                        Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.labelsHidden()
+                    }
                     if kind.isCIDR {
-                        Text("IP 地址与掩码").font(.headline)
-                        HStack {
-                            TextField("192.168.1.0 或 2001:db8::", text: $address)
-                            Text("/")
-                            TextField("掩码位数", text: $prefix).frame(width: 90)
-                        }
+                        formRow("address *") { TextField("192.168.1.0 或 2001:db8::", text: $address) }
+                        formRow("prefix *") { TextField("掩码位数", text: $prefix).frame(width: 90) }
                     } else if kind == .network {
-                        Picker("网络协议", selection: $value) { Text("TCP").tag("tcp"); Text("UDP").tag("udp") }
+                        formRow("network *") {
+                            Picker("网络协议", selection: $value) { Text("TCP").tag("tcp"); Text("UDP").tag("udp") }.labelsHidden()
+                        }
                     } else if kind == .ruleSet {
-                        Text("规则集合").font(.headline)
-                        Picker("集合名称", selection: $value) {
-                            Text("请选择集合").tag("")
-                            ForEach((model.settings.options?["rule-providers"]?.object.keys.sorted() ?? []), id: \.self) { Text($0).tag($0) }
+                        formRow("rule-set *") {
+                            Picker("集合名称", selection: $value) {
+                                Text("请选择集合").tag("")
+                                ForEach((model.settings.options?["rule-providers"]?.object.keys.sorted() ?? []), id: \.self) { Text($0).tag($0) }
+                            }.labelsHidden()
                         }
                     } else if kind.isLogic {
-                        Toggle("直接编辑逻辑表达式", isOn: $advancedLogic)
-                        if advancedLogic { TextField(kind.hint, text: $value) }
+                        formRow("expression-mode") { Toggle("直接编辑逻辑表达式", isOn: $advancedLogic) }
+                        if advancedLogic { formRow("expression *") { TextField(kind.hint, text: $value) } }
                         else {
                             ForEach(conditions.indices, id: \.self) { index in
-                                HStack {
-                                    Picker("条件", selection: $conditions[index].kind) {
-                                        ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text($0.rawValue).tag($0) }
-                                    }.frame(width: 200)
-                                    TextField(conditions[index].kind.hint, text: $conditions[index].value)
-                                    if conditions.count > 1 && kind != .not && kind != .subRule {
-                                        Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除条件")
+                                formRow("condition[\(index + 1)].type") {
+                                    HStack {
+                                        Picker("条件", selection: $conditions[index].kind) {
+                                            ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text($0.rawValue).tag($0) }
+                                        }.labelsHidden()
+                                        if conditions.count > 1 && kind != .not && kind != .subRule {
+                                            Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除条件")
+                                        }
                                     }
                                 }
+                                formRow("condition[\(index + 1)].value") { TextField(conditions[index].kind.hint, text: $conditions[index].value) }
                             }
-                            if kind != .not && kind != .subRule { Button("添加条件") { conditions.append(RuleCondition()) } }
+                            if kind != .not && kind != .subRule {
+                                formRow("conditions") { Button("添加条件") { conditions.append(RuleCondition()) } }
+                            }
                         }
                     } else {
-                        Text(kind.isProcess ? "进程匹配条件" : kind.isPort ? "端口 / 范围" : "匹配内容").font(.headline)
-                        TextField(kind.hint, text: $value)
-                        if kind == .processPath { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
+                        formRow("value *") { TextField(kind.hint, text: $value).help(kind.hint) }
+                        if kind == .processPath {
+                            formRow("application") { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
+                        }
                     }
-                    Text(kind.hint).font(.caption).foregroundStyle(.secondary)
                     if kind.supportsIPOptions {
-                        Toggle("no-resolve · 不触发域名解析", isOn: $noResolve)
-                        Toggle("src · 改为匹配来源 IP", isOn: $sourceIP)
+                        formRow("no-resolve") { Toggle("不触发域名解析", isOn: $noResolve) }
+                        formRow("src") { Toggle("匹配来源 IP", isOn: $sourceIP) }
                     }
                     if kind == .subRule {
-                        Picker("子规则", selection: $subTarget) {
-                            Text("请选择子规则").tag("")
-                            ForEach(model.settings.options?["sub-rules"]?.object.keys.sorted() ?? [], id: \.self) { Text($0).tag($0) }
+                        formRow("sub-rule *") {
+                            Picker("子规则", selection: $subTarget) {
+                                Text("请选择子规则").tag("")
+                                ForEach(model.settings.options?["sub-rules"]?.object.keys.sorted() ?? [], id: \.self) { Text($0).tag($0) }
+                            }.labelsHidden()
                         }
-                    } else {
-                        Text("出口节点 / 内置策略").font(.headline)
-                        PolicyPicker(model: model, selection: $target)
-                    }
+                    } else { formRow("target *") { PolicyPicker(model: model, selection: $target) } }
                 }.textFieldStyle(.roundedBorder)
             }
             HStack {
