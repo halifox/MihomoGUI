@@ -157,14 +157,14 @@ struct RuleEditorView: View {
                                         }
                                     }
                                 }
-                                formRow("condition[\(index + 1)].value") { TextField(conditions[index].kind.hint, text: $conditions[index].value) }
+                                formRow("condition[\(index + 1)].value", help: "填写条件的匹配内容。\n\n示例：" + conditions[index].kind.hint) { TextField(conditions[index].kind.hint, text: $conditions[index].value) }
                             }
                             if kind != .not && kind != .subRule {
                                 formRow("conditions") { Button("添加条件") { conditions.append(RuleCondition()) } }
                             }
                         }
                     } else {
-                        formRow("value *") { TextField(kind.hint, text: $value).help(kind.hint) }
+                        formRow("value *", help: "填写当前规则类型的匹配内容。\n\n示例：" + kind.hint) { TextField(kind.hint, text: $value).help(kind.hint) }
                         if kind == .processPath {
                             formRow("application") { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
                         }
@@ -190,6 +190,7 @@ struct RuleEditorView: View {
                 Button("保存规则") { save() }.buttonStyle(.borderedProminent)
             }
         }.padding(16).controlSize(.small).frame(width: 720, height: 540)
+        .environment(\.formHelpDocument, "rules/index.md")
         .onChange(of: kind) { changed in
             if changed == .network { value = "tcp" }
             if changed == .ipCIDR6 { prefix = "64"; address = "" }
