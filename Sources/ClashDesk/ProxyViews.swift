@@ -18,7 +18,7 @@ struct SubscriptionsView: View {
                     .disabled(model.busy)
                 Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }
                     .disabled(model.busy || selected == nil)
-                Button { if let selected { model.deleteSubscription(selected) } } label: { Label("删除", systemImage: "trash") }
+                DeleteButton(message: "确定删除订阅“\(selected?.name ?? "")”及其节点吗？此操作无法撤销。") { if let selected { model.deleteSubscription(selected) } }
                     .disabled(model.busy || selected == nil)
                 Button { if let selected { model.refreshSubscription(selected) } } label: { Label("更新", systemImage: "arrow.clockwise") }
                     .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
@@ -149,7 +149,7 @@ struct OutboundProxiesView: View {
                 Spacer()
                 Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
                 Button { editing = selectedManual } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
-                Button { if let proxy = selectedManual { model.deleteManualProxy(proxy) } } label: { Label("删除", systemImage: "trash") }.disabled(model.busy || selectedManual == nil)
+                DeleteButton(message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
                 Button {
                     if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
                 } label: { Label("延迟", systemImage: "speedometer") }

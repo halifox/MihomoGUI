@@ -270,10 +270,10 @@ struct ValueList: View {
                     if item.kind == "object" {
                         DisclosureGroup("第 \(index + 1) 项") { element(index) }
                     } else { element(index) }
-                    Button {
+                    DeleteButton(message: "确定删除第 \(index + 1) 项吗？此操作无法撤销。") {
                         var array = value.array; guard array.indices.contains(index) else { return }
                         array.remove(at: index); value = .array(array)
-                    } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除此项")
+                    }
                 }
             }
             Button {
@@ -320,8 +320,9 @@ struct ValueMap: View {
                                 value = .object(object)
                             })) { Text("单值（string）").tag("string"); Text("列表（list）").tag("list") }.frame(width: 180)
                         }
-                        Button { var object = value.object; object.removeValue(forKey: name); value = .object(object) }
-                            label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除此项")
+                        DeleteButton(message: "确定删除“\(name)”吗？此操作无法撤销。") {
+                            var object = value.object; object.removeValue(forKey: name); value = .object(object)
+                        }
                     }
                     VisualValue(field: itemSpec(name), value: Binding(get: { value.object[name] ?? emptyValue(item) }, set: {
                         var object = value.object; object[name] = $0; value = .object(object)
@@ -505,5 +506,25 @@ extension View {
     func pageActions() -> some View {
         self.controlSize(.regular).font(.system(size: 13))
             .buttonStyle(.bordered).labelStyle(PageActionLabelStyle())
+    }
+}
+
+struct DeleteButton: View {
+    var title = "删除"
+    var message = "确定删除此项吗？此操作无法撤销。"
+    let action: () -> Void
+    @State private var confirming = false
+
+    var body: some View {
+        Button(role: .destructive) { confirming = true } label: {
+            Label(title, systemImage: "trash")
+        }
+        .buttonStyle(.borderedProminent)
+        .tint(.red)
+        .controlSize(.regular)
+        .alert("确认" + title, isPresented: $confirming) {
+            Button("取消", role: .cancel) {}
+            Button("确认删除", role: .destructive, action: action)
+        } message: { Text(message) }
     }
 }
