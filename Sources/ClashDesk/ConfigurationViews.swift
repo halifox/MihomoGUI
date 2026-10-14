@@ -3,14 +3,11 @@ import ClashCore
 
 struct GeneralConfigurationView: View {
     @EnvironmentObject var model: DeskModel
-    @State private var search = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("通用配置").font(.title2.bold())
                 Spacer()
-                TextField("搜索配置项", text: $search).frame(width: 250).textFieldStyle(.roundedBorder)
-                Button("保存配置") { model.saveGeneralConfiguration() }.disabled(model.busy)
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 20) {
@@ -38,18 +35,10 @@ struct GeneralConfigurationView: View {
                     }
                 }.padding(.trailing, 4)
             }.disabled(model.busy)
-            HStack {
-                Text("配置先保存在本地；启动与应用前仍需确认完整 YAML。").font(.caption).foregroundStyle(.secondary)
-                Spacer()
-                Link("配置文档", destination: URL(string: "https://wiki.metacubex.one/config/")!)
-            }
+
         }
     }
-    func visibleFields(_ schema: EditorSchema) -> [EditorField] {
-        schema.fields.filter {
-            search.isEmpty || ($0.path + $0.description + schema.name).localizedCaseInsensitiveContains(search)
-        }
-    }
+    func visibleFields(_ schema: EditorSchema) -> [EditorField] { schema.fields }
     func localPath(_ field: EditorField, schema: EditorSchema) -> String {
         let prefix = schema.key + "."
         return field.path.hasPrefix(prefix) ? String(field.path.dropFirst(prefix.count)) : field.path
@@ -124,22 +113,17 @@ struct ApplicationSettingsView: View {
                                 Text("测试地址")
                                 TextField("HTTP / HTTPS URL", text: Binding(get: {
                                     model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
-                                }, set: { model.settings.delayTestURL = $0 }))
+                                }, set: { model.settings.delayTestURL = $0; model.scheduleConfigurationSave() }))
                             }
                             GridRow {
                                 Text("超时（毫秒）")
                                 TextField("5000", value: Binding(get: {
                                     model.settings.delayTestTimeoutMilliseconds ?? 5000
-                                }, set: { model.settings.delayTestTimeoutMilliseconds = $0 }), format: .number.grouping(.never))
+                                }, set: { model.settings.delayTestTimeoutMilliseconds = $0; model.scheduleConfigurationSave() }), format: .number.grouping(.never))
                                     .frame(width: 150)
                             }
                         }.textFieldStyle(.roundedBorder)
-                        HStack {
-                            Text("unified-delay 与通用配置共用同一设置；测试地址和超时只用于客户端测速。")
-                                .font(.caption).foregroundStyle(.secondary)
-                            Spacer()
-                            Button("保存测速设置") { model.saveDelayConfiguration() }
-                        }
+
                     }.padding(12).disabled(model.busy)
                 }
                 GroupBox("运行信息") {
@@ -159,8 +143,7 @@ struct ApplicationSettingsView: View {
                     Button("刷新调试信息") { model.perform { await model.refreshDiagnostics() } }.disabled(model.busy)
                     Button("启动统计后台") { model.perform { try await startStatistics(directory: model.directory) } }.disabled(model.busy)
                 }
-                Text("内存为 mihomo 控制接口报告的内存值；PID 从对应 launchd 服务读取。退出 GUI 后，独立服务继续运行。")
-                    .font(.caption).foregroundStyle(.secondary)
+
             }
         }
     }

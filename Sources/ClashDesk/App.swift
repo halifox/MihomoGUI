@@ -69,12 +69,10 @@ struct DeskView: View {
                     }
                 }.padding(20)
             }
-            Divider()
-            HStack {
-                Text(model.message).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
-                Spacer()
-            }.padding(12)
+
         }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.flushConfigurationSave() }
+        .onDisappear { model.flushConfigurationSave() }
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("确定") { model.error = nil }
         } message: { Text(model.error ?? "") }
@@ -171,8 +169,7 @@ struct StatisticsView: View {
                         Text("暂无统计。启动服务后访问网站，数据会自动显示。").foregroundStyle(.secondary).allowsHitTesting(false)
                     }
                 }
-            Text("识别不到域名的连接按 IP 显示。短连接和采集暂停期间可能遗漏；统计后台重启会重新建立基线，避免重复累计。")
-                .font(.caption).foregroundStyle(.secondary)
+
         }
     }
 }
