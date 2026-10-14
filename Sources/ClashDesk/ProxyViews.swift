@@ -17,10 +17,10 @@ struct SubscriptionsView: View {
                     .disabled(model.busy)
                 Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }
                     .disabled(model.busy || selected == nil)
-                Button { if let selected { model.refreshSubscription(selected) } } label: { Label("更新", systemImage: "arrow.clockwise") }
-                    .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
                 Button { if let selected { model.deleteSubscription(selected) } } label: { Label("删除", systemImage: "trash") }
                     .disabled(model.busy || selected == nil)
+                Button { if let selected { model.refreshSubscription(selected) } } label: { Label("更新", systemImage: "arrow.clockwise") }
+                    .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
                 Button { model.refreshSubscriptions() } label: { Label("全部更新", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }

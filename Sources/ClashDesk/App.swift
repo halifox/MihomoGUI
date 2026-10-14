@@ -155,7 +155,7 @@ struct StatisticsView: View {
         let counts = activeCounts
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("域名流量").font(.title3.bold())
+                Text("域名流量").font(.title2.bold())
                 Spacer()
                 Picker("时间范围", selection: $model.hours) {
                     Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
@@ -186,7 +186,7 @@ struct ConnectionsView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("当前连接").font(.title3.bold())
+            Text("当前连接").font(.title2.bold())
             Table(model.connections) {
                 TableColumn("域名 / IP") { connection in
                     Text(connection.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: connection.domain) }

@@ -94,11 +94,10 @@ struct ApplicationSettingsView: View {
                 HStack {
                     Text("设置").font(.title2.bold())
                     Spacer()
-                    Text("ClashDesk · 0.5").font(.caption).foregroundStyle(.secondary)
                     Button { model.toggleAllServices() } label: {
                         Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
-                    }.disabled(model.busy)
-                    Button("应用更改") { model.applyLive() }.disabled(model.busy || !model.coreRunning)
+                    }.controlSize(.regular).disabled(model.busy)
+                    Button("应用更改") { model.applyLive() }.controlSize(.regular).disabled(model.busy || !model.coreRunning)
                 }
                 GroupBox {
                     VStack(alignment: .leading, spacing: 4) {
