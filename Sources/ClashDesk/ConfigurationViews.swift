@@ -24,6 +24,7 @@ struct GeneralConfigurationView: View {
                                     }
                                 }
                             }.padding(6).frame(maxWidth: .infinity, alignment: .leading)
+                                .environment(\.formHelpDocument, schema.document)
                         } label: {
                             HStack {
                                 Text(schema.name).font(.headline)
@@ -61,8 +62,7 @@ struct GeneralConfigurationView: View {
                 VisualField(field: displayField(field, schema: schema), value: Binding(get: {
                     model.option(field.path)
                 }, set: { model.setOption(field.path, value: $0) }),
-                            allowUnset: model.baseOption(field.path) == nil, compact: true)
-                    .disabled(!fieldEnabled(field.path))
+                            allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: fieldEnabled(field.path))
                 Divider()
             }
         }
@@ -129,19 +129,19 @@ struct ApplicationSettingsView: View {
                     VStack(alignment: .leading, spacing: 6) {
                         Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 14) {
                             GridRow {
-                                Text("unified-delay")
+                                FieldKeyLabel(title: "unified-delay", key: "unified-delay")
                                 Toggle("统一延迟", isOn: Binding(get: {
                                     model.option("unified-delay") != .boolean(false)
                                 }, set: { model.setOption("unified-delay", value: .boolean($0)) }))
                             }
                             GridRow {
-                                Text("测试地址")
+                                FieldKeyLabel(title: "测试地址", key: "测试地址")
                                 TextField("HTTP / HTTPS URL", text: Binding(get: {
                                     model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
                                 }, set: { model.settings.delayTestURL = $0; model.scheduleConfigurationSave() }))
                             }
                             GridRow {
-                                Text("超时（毫秒）")
+                                FieldKeyLabel(title: "超时（毫秒）", key: "超时（毫秒）")
                                 TextField("5000", value: Binding(get: {
                                     model.settings.delayTestTimeoutMilliseconds ?? 5000
                                 }, set: { model.settings.delayTestTimeoutMilliseconds = $0; model.scheduleConfigurationSave() }), format: .number.grouping(.never))

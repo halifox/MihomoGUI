@@ -135,6 +135,10 @@ final class CoreTests: XCTestCase {
         let vless = try XCTUnwrap(documentSchemas.proxies.first { $0.key == "vless" })
         XCTAssertTrue(!vless.fields.contains { $0.path == "alterId" || $0.path == "cipher" })
         XCTAssertTrue(vless.fields.contains { $0.path == "ech-opts.enable" })
+        XCTAssertTrue((documentedFieldHelp["general.md|unified-delay"] ?? "").contains("RTT"))
+        XCTAssertTrue((documentedFieldHelp["general.md|bind-address"] ?? "").contains("绑定地址"))
+        XCTAssertTrue((documentedFieldHelp["general.md|store-selected"] ?? "").contains("策略组"))
+        XCTAssertTrue((documentedFieldHelp["rule-providers/index.md|behavior"] ?? "").contains("domain"))
         XCTAssertEqual(ConfigValue(native: 1), .integer(1))
         XCTAssertEqual(ConfigValue(native: true), .boolean(true))
         let proxy = ManualProxy(type: "hysteria2", fields: [
