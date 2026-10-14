@@ -44,7 +44,13 @@ try:
         settings = {"corePath": "", "secret": "test-secret", "subscriptions": [],
                     "rules": [], "tun": False, "defaultNode": None}
         (directory / "settings.json").write_text(json.dumps(settings))
-        command = [str(binary), "--directory", temp, "--port", str(server.server_port)]
+        runtime = dict(settings)
+        runtime["options"] = {"external-controller": f"127.0.0.1:{server.server_port}", "secret": "test-secret"}
+        (directory / "runtime.json").write_text(json.dumps(runtime))
+        settings["secret"] = "unapplied-draft-secret"
+        settings["options"] = {"external-controller": "127.0.0.1:1", "secret": "unapplied-draft-secret"}
+        (directory / "settings.json").write_text(json.dumps(settings))
+        command = [str(binary), "--directory", temp]
         process = subprocess.Popen(command, stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
         try:
             deadline = time.monotonic() + 20
@@ -63,6 +69,7 @@ try:
                 assert down == up * 2
                 assert db.execute("SELECT COUNT(*) FROM traffic").fetchone()[0] == 20
             print("PASS: collector samples, persists deltas, aggregates and rejects duplicate instances")
+            print("PASS: collector uses confirmed endpoint and secret despite unapplied draft changes")
             print(f"Observed collector RSS with {connection_count} active fixture connections: {int(rss) / 1024:.1f} MiB")
         finally:
             process.terminate()

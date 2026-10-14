@@ -19,22 +19,27 @@ public func saveNodeCache(_ nodes: [Node], directory: URL) throws {
 
 public let geoAssetNames = ["Country.mmdb", "geosite.dat"]
 
-public func prepareGeoAssets(corePath: String, directory: URL) async throws {
+public func prepareGeoAssets(corePath: String, directory: URL, names: [String] = geoAssetNames, urls: [String: String] = [:]) async throws {
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let coreFolder = URL(fileURLWithPath: corePath).deletingLastPathComponent()
     var sourceFolders = [coreFolder]
     if coreFolder.lastPathComponent == "MacOS", coreFolder.deletingLastPathComponent().lastPathComponent == "Contents" {
         sourceFolders.append(coreFolder.deletingLastPathComponent().appendingPathComponent("Resources/resources"))
     }
-    for name in geoAssetNames {
+    for name in names {
         let target = directory.appendingPathComponent(name)
-        if (try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0 > 0 { continue }
-        let candidates = sourceFolders.flatMap { [$0.appendingPathComponent(name), $0.appendingPathComponent(name.lowercased())] }
+        let sourceMarker = directory.appendingPathComponent(name + ".source")
+        let sourceURL = urls[name] ?? ""
+        if ((try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0) > 0,
+           ((try? String(contentsOf: sourceMarker, encoding: .utf8)) ?? "") == sourceURL { continue }
+        let candidates = sourceURL.isEmpty ? sourceFolders.flatMap { [$0.appendingPathComponent(name), $0.appendingPathComponent(name.lowercased())] } : []
         if let source = candidates.first(where: { FileManager.default.isReadableFile(atPath: $0.path) }) {
             if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
             try FileManager.default.copyItem(at: source, to: target)
         } else {
-            let url = URL(string: "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/" + name.lowercased())!
+            let defaultURL = name == "ASN.mmdb" ? "https://github.com/xishang0128/geoip/releases/download/latest/GeoLite2-ASN.mmdb"
+                : "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/" + name.lowercased()
+            guard let url = URL(string: urls[name] ?? defaultURL), url.scheme == "https" else { throw DeskError("GEO 下载地址必须为 HTTPS") }
             var request = URLRequest(url: url); request.timeoutInterval = 45
             let (download, response) = try await URLSession.shared.download(for: request)
             defer { try? FileManager.default.removeItem(at: download) }
@@ -46,6 +51,8 @@ public func prepareGeoAssets(corePath: String, directory: URL) async throws {
             try Data(contentsOf: download).write(to: target, options: .atomic)
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        try sourceURL.write(to: sourceMarker, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sourceMarker.path)
     }
 }
 
@@ -72,11 +79,13 @@ private func availablePort() throws -> Int {
 // Temporary unprivileged core: file providers only, no TUN, DNS, inbound proxy or system route changes.
 // It exists only while parsing subscription nodes or testing latency; not an additional resident service.
 public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
+                                proxies: [[String: Any]] = [],
+                                unifiedDelay: Bool = true,
                                 operation: (CoreAPI) async throws -> T) async throws -> T {
     guard FileManager.default.isExecutableFile(atPath: corePath) else {
         throw DeskError("请先配置可执行的 macOS mihomo 二进制文件")
     }
-    guard !providers.isEmpty else { throw DeskError("请先拉取订阅节点") }
+    guard !providers.isEmpty || !proxies.isEmpty else { throw DeskError("请先添加代理或拉取订阅节点") }
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-preview-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -89,8 +98,9 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
         "mode": "rule", "log-level": "silent", "mixed-port": 0,
         "external-controller": "127.0.0.1:\(port)", "secret": secret,
         "tun": ["enable": false], "dns": ["enable": false], "find-process-mode": "off",
+        "unified-delay": unifiedDelay,
         "proxy-providers": providerConfig,
-        "proxy-groups": [["name": "Preview", "type": "select", "use": providers.map { $0.0 }, "empty-fallback": "REJECT"]],
+        "proxies": proxies,
         "rules": ["MATCH,REJECT"]
     ]
     let configURL = directory.appendingPathComponent("config.yaml")
@@ -110,7 +120,7 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
     while Date() < deadline {
         try Task.checkCancellation()
         guard process.isRunning else { throw DeskError("mihomo 无法解析订阅，请确认订阅返回 Clash YAML 节点配置") }
-        if let nodes = try? await api.nodes(providerOrder: providers.map { $0.0 }),
+        if (try? await api.version()) != nil, let nodes = try? await api.nodes(providerOrder: providers.map { $0.0 }),
            providers.allSatisfy({ provider in nodes.contains { $0.provider == provider.0 } }) {
             return try await operation(api)
         }

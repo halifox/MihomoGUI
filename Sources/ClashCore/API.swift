@@ -30,9 +30,15 @@ public struct Connections: Decodable {
 public struct CoreAPI {
     public let secret: String
     public let port: Int
-    public init(secret: String, port: Int = 19090) { self.secret = secret; self.port = port }
+    public let host: String
+    public init(secret: String, port: Int = 19090, host: String = "127.0.0.1") { self.secret = secret; self.port = port; self.host = host }
+    public init(settings: Settings) throws {
+        let endpoint = try controllerEndpoint(settings)
+        self.init(secret: endpoint.secret, port: endpoint.port, host: endpoint.host)
+    }
     public func request(_ path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
-        guard (1...65535).contains(port), let url = URL(string: "http://127.0.0.1:\(port)" + path) else { throw DeskError("无效 API 路径") }
+        let destination = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        guard (1...65535).contains(port), let url = URL(string: "http://\(destination):\(port)" + path) else { throw DeskError("无效 API 路径") }
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
         request.httpMethod = method; request.httpBody = body; request.timeoutInterval = 15
@@ -69,10 +75,31 @@ public struct CoreAPI {
         let name = node.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         let url = testURL.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         struct Response: Decodable { let delay: Int }
-        let data = try await request("/providers/proxies/\(provider)/\(name)/healthcheck?url=\(url)&timeout=5000")
+        let route = node.provider == "manual" ? "/proxies/\(name)/delay" : "/providers/proxies/\(provider)/\(name)/healthcheck"
+        let data = try await request(route + "?url=\(url)&timeout=5000")
         let result = try JSONDecoder().decode(Response.self, from: data)
         guard result.delay > 0 else { throw DeskError("节点延迟测试失败") }
         return result.delay
+    }
+    public func memory() async throws -> Int64 {
+        struct Response: Decodable { let inuse: Int64 }
+        let destination = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        guard let url = URL(string: "ws://\(destination):\(port)/memory") else { throw DeskError("内存接口地址无效") }
+        var request = URLRequest(url: url); request.timeoutInterval = 5
+        request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
+        let socket = URLSession.shared.webSocketTask(with: request)
+        socket.resume(); defer { socket.cancel(with: .goingAway, reason: nil) }
+        let data: Data
+        switch try await socket.receive() {
+        case .data(let value): data = value
+        case .string(let value): data = Data(value.utf8)
+        @unknown default: throw DeskError("无法解析内存数据")
+        }
+        return try JSONDecoder().decode(Response.self, from: data).inuse
+    }
+    public func version() async throws -> String {
+        struct Response: Decodable { let version: String }
+        return try JSONDecoder().decode(Response.self, from: await request("/version")).version
     }
     public func reload(_ config: Data) async throws {
         guard let payload = String(data: config, encoding: .utf8) else { throw DeskError("配置编码错误") }
