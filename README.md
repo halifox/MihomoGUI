@@ -1,73 +1,76 @@
-# ClashDesk
+# ClashDesk 0.5
 
-macOS 原生代理管理客户端的可运行开发版。SwiftUI GUI、原版 mihomo 内核、独立 Swift 统计后台。退出 GUI 后，launchd 管理的服务继续运行。
+仅支持 macOS 的原生 mihomo 客户端。SwiftUI GUI、独立 mihomo 内核、Swift 流量采集服务和 SQLite。退出 GUI 后，launchd 管理的服务继续运行。
 
-## 构建和打开
+## 构建
 
-需要 macOS 13+ 与 Swift 编译器。无需第三方 Swift 依赖；构建当前机器架构。
+macOS 13+，需要 Swift 编译器。没有第三方 Swift 依赖；构建当前机器架构。
 
 ```sh
 bash scripts/build.sh
 open dist/ClashDesk.app
 ```
 
-也提供 `Package.swift`，可以在完整 Xcode 中打开。构建脚本直接调用 swiftc，适用于只有 Command Line Tools 的环境。
+提供 `Package.swift`，可在完整 Xcode 中打开。构建脚本直接调用 swiftc，适用于只有 Command Line Tools 的环境。重新构建后必须 Cmd-Q 退出旧进程，再打开应用。
 
-重新构建后，如果 GUI 已经运行，必须先 Cmd-Q 完全退出，再重新打开 `dist/ClashDesk.app`。关闭窗口或再次打开同一路径不会替换旧进程。
+## 六个页面
 
-## 使用
+1. **通用配置**：全局配置、DNS、域名嗅探和 TUN，按配置文档生成可视化控件。包含开关、枚举、数字、文本、列表和键值表；支持搜索、恢复默认与保存。DNS 的 hosts / nameserver-policy 支持单值和列表。macOS 不支持的 Linux / Android TUN 项没有列入表单。
+2. **出站代理**：统一代理表格，支持手动代理和 HTTPS Clash YAML 订阅。选择协议后生成必填字段、公共字段和适用的 TLS / 传输字段。覆盖 26 种文档中的代理类型，包括 Hysteria2、TUIC、Shadowsocks、VMess、VLESS、Trojan、AnyTLS、HTTP、SOCKS5 等。手动代理支持编辑和删除；订阅节点由订阅更新。表格最后两列为延迟与测试按钮。
+3. **路由规则**：表格按从上到下顺序执行，支持添加、编辑、删除、上移、下移及直接修改出口。IP-CIDR 表单提供地址、掩码与 no-resolve / src；其他类型包括域名、ASN、端口、网络、进程、通配符、正则和逻辑条件。内置 DIRECT、REJECT、REJECT-DROP。支持 inline / http / file 规则集合与子规则配置。MATCH 始终保留在末尾。
+4. **当前连接**：域名 / IP、进程、协议、出口、上传和下载，可断开单个连接，右键添加域名 / IP / 程序规则。
+5. **流量统计**：按域名汇总上传、下载、总流量、程序数、出口数和当前连接数；选择最近 24 小时、7 天或 30 天。
+6. **设置**：选择 mihomo 二进制，显示内核版本、内存占用、Clash PID、采集服务 PID、最后采集时间、控制接口及数据目录。内存来自内核 WebSocket API，PID 来自对应 launchd 服务；离线显示“—”。
 
-1. 从 [mihomo 官方 Releases](https://github.com/MetaCubeX/mihomo/releases) 获取匹配 macOS 架构的二进制，解压并赋予可执行权限。内核不随本项目分发。
-2. 在“配置与节点”依次选择可信的 mihomo 文件、设置 TUN、填写 HTTPS Clash YAML 订阅，点击“添加并拉取”。程序立即下载订阅、解析节点并存到本地；不需要先启动代理。
-3. 节点表显示名称、协议、订阅；最后两列显示延迟和“测试延迟”按钮。点击测试会临时运行无 TUN 的内核，通过该节点访问测试站点。完成后临时进程退出，结果保存在本地。
-4. “规则”表初始只有一条 MATCH，首次导入时固定指向订阅顺序的第一个节点。直接用表格中的下拉框修改出口，可以选择其他节点或直连。通过 + / − 增删域名和程序规则；MATCH 永远位于最后，不能删除。规则类型可直接修改，匹配内容修改后按回车保存。
-5. 点击“安装 / 启动全部”，先查看完整的只读 `config.yaml` 预览，点击“确认并启动”后才安装并启动服务，随后在 macOS 系统授权窗口中批准管理员操作。取消预览不会启动代理。API 地址是 `127.0.0.1:19090`，本机代理端口是 `7890`。
-6. 修改规则后点击“应用运行配置”，同样先显示完整配置，点击“确认并应用”后才更新内核。预览和实际应用使用同一份配置快照，不会确认后重新生成另一份配置。
-7. 开发版要将当前配置持久化到系统服务，请再次点击“安装 / 启动全部”并确认配置。这会请求管理员授权并重启内核，现有连接会断开。
-8. 关闭窗口或 Cmd-Q 退出 GUI，不会停止服务。通过 GUI 的“停止”菜单停止代理、统计或全部服务。
+表单中的“设置此项”表示显式配置可选字段；未设置时由默认配置或内核默认值决定。新文档里的协议或选项是否可用，还取决于所选 mihomo 版本；内核启动前会做配置校验。
 
-只有需要启动或停止系统级代理服务时才请求管理员授权。普通界面、统计和 API 配置更新不需要 root。
+## 首次使用
 
-## YAML 配置和默认参数
+1. 在“设置”选择可信的 [mihomo 二进制](https://github.com/MetaCubeX/mihomo/releases)。如果使用压缩包，请先解压并赋予可执行权限。
+2. 在“通用配置”设置所需参数。
+3. 在“出站代理”填写手动代理，或添加订阅并立即拉取。订阅只提供节点，不采用订阅内的 DNS、策略组或路由规则。
+4. 初次添加代理后 MATCH 指向第一个代理；在“路由规则”调整出口和分流条件。
+5. 点击“安装 / 启动全部”，查看完整只读 YAML 预览，再点击“确认并启动”。确认后才校验并安装服务，随后出现 macOS 管理员授权。
+6. 运行中修改配置，点击“应用运行配置”，同样先预览并确认。改变控制地址或密钥时会改为确认后重启服务，确保 GUI 和采集后台连接到新的接口。
+7. 开发版热更新不会改写 root 启动配置；需要重启后持久化时使用“安装 / 启动全部”。
 
-预览、`config.yaml` 启动文件及热更新 payload 都使用标准 YAML。API 请求外层仍遵循 mihomo 的 JSON 协议，里面的配置内容是 YAML。节点名称、URL、正则和单引号通过 YAML 标量转义，不把 JSON 内容保存为 YAML 文件。
+取消预览不会安装、启动或更新系统代理。预览和实际运行使用同一份配置快照。关闭窗口 / Cmd-Q 不停止服务；通过“停止”菜单停止代理、统计或全部服务。
 
-默认参数采用用户提供的模板：`log-level: info`、`unified-delay: true`、`tcp-concurrent: true`、指定 CORS 来源、`bind-address: '*'`、`store-selected: true`；TUN 使用 `utun1024`、`mips`、MTU 1500 和指定的路由参数，`enable` 跟随界面开关；DNS 使用 223.5.5.5 / 119.29.29.29 / 114.114.114.114，以及指定的 fake-IP、respect-rules、fallback 和过滤设置。
+## 配置与兼容
 
-运行时保留必要的两项设置：`external-controller: '127.0.0.1:19090'` 和用户已有的随机 `secret`，以便 GUI 和统计后台能连接内核；不使用空控制地址或 `set-your-secret` 占位文本。进程规则所需的 `find-process-mode: always` 也保留。
+预览、启动文件与热更新配置内容使用标准 YAML；REST API 请求外层仍为 mihomo 规定的 JSON。动态字段会生成正确的嵌套 YAML，单引号、Emoji、正则、URL 和进程路径保留原值。
 
-DNS fallback 的 GeoIP / GeoSite 数据在用户确认启动后准备：优先复用所选 mihomo 所在应用的配套数据文件，否则从 MetaCubeX 官方数据仓库下载，缓存在用户数据目录的 `geodata/`，校验后安装到系统内核目录。首次升级到这个默认配置建议使用“安装 / 启动全部”，让数据文件一并安装。
+默认参数沿用已有设置：规则模式、本机 7890、info 日志、统一延迟、TCP 并发、mips / utun1024 / MTU 1500、指定 DNS 和 fallback 等。都可在通用配置页调整。默认控制接口为 `127.0.0.1:19090`，使用已有随机密钥；GUI 和采集后台需要有效的 host:port。未确认的草稿保存在 `settings.json`，已确认运行的接口配置保存在 `runtime.json`，防止编辑地址或密钥时中断采集。
 
-## 已实现
+旧版本设置、订阅、缓存和统计数据库保留。旧版“程序优先”的规则排列会在首次迁移时转成相同的显式表格顺序，后续严格按表格顺序匹配。指定订阅节点消失时保留原引用并使用 REJECT，不自动直连；被规则引用的手动代理不允许直接删除。
 
-- GUI 直接下载订阅并保存原始 YAML，通过临时非特权 mihomo 的 file-provider 解析节点，只提取节点列表；不使用订阅中的分流规则、策略组或 DNS。启动系统内核时复制这些节点缓存，运行中 HTTP proxy-provider 每小时更新一次。
-- 节点缓存和延迟结果在退出 GUI 后保留。重新拉取订阅保留默认出口；指定节点消失时标记失效，不自动切换。
-- 规则模式：程序规则 → 域名规则 → `MATCH` 默认出口。
-- 指定节点通过所属订阅和节点名称精确过滤；节点消失后使用 REJECT，不自动直连。
-- 精确域名、域名及子域名、进程名、进程路径分流；规则表支持直接编辑类型、内容和出口。
-- 当前连接列表；右键域名或程序添加规则；单独断开旧连接。
-- 独立统计进程每 2 秒采集一次，内核不可用时每 5 秒重试。
-- SQLite 按小时、域名、进程、出口累计上传/下载，保留 90 天。
-- 域名流量表按域名汇总，展示上传、下载、总流量、程序数、出口数和当前连接数；连接表包含协议、出口和上传/下载。
-- 活跃连接计数保存在内存，SQLite 缓存目标 1 MiB、关闭 mmap；没有内存历史列表或 HTTP 服务。
-- 文件锁阻止多个统计进程重复累计；重启统计后台时先建立基线。
-- launchd 独立管理服务，可在登录 / 系统启动时自动运行。停止操作同时 disable，防止下次启动自动恢复；再次启动会 enable。
+首次确认启动后准备 DNS / 路由所需 GEO 数据：优先使用所选内核应用的配套数据；否则从官方数据地址下载。支持自定义 GEO URL 和 geodata-mode，ASN 规则会准备 ASN 数据。
 
-## 服务与数据位置
+## 数据和服务
 
 | 内容 | 位置 |
 |---|---|
-| 用户设置、API secret、统计数据库 | `~/Library/Application Support/ClashDesk/` |
-| 本地节点列表与延迟结果 | `~/Library/Application Support/ClashDesk/nodes.json` |
-| GUI 下载的原始订阅缓存 | `~/Library/Application Support/ClashDesk/providers/` |
-| 用户统计服务 | `~/Library/LaunchAgents/local.clashdesk.stats.plist` |
+| 草稿设置 / 已确认配置 | `~/Library/Application Support/ClashDesk/settings.json` / `runtime.json` |
+| 订阅节点和延迟缓存 | 同目录 `nodes.json` / `providers/` |
+| SQLite 统计和 GEO 缓存 | 同目录 `traffic.sqlite` / `geodata/` |
+| 用户采集服务 | `~/Library/LaunchAgents/local.clashdesk.stats.plist` |
 | 系统代理服务 | `/Library/LaunchDaemons/local.clashdesk.mihomo.plist` |
-| root 内核 | `/Library/PrivilegedHelperTools/ClashDesk/mihomo` |
-| root 配置与节点缓存 | `/Library/Application Support/ClashDesk/` |
+| 系统 mihomo | `/Library/PrivilegedHelperTools/ClashDesk/mihomo` |
+| 系统 YAML、节点和 GEO 文件 | `/Library/Application Support/ClashDesk/` |
 
-用户设置文件权限 600，数据目录 700；系统二进制和配置安装为 root 所有。统计后台是当前用户的 LaunchAgent，退出 GUI 后继续运行，退出用户登录后停止。代理内核是 LaunchDaemon，在用户登录前也可能运行。开发版以单用户使用为范围。
+数据目录权限 700，设置 / 密钥文件权限 600，系统文件为 root 所有。统计后台是用户 LaunchAgent，退出 GUI 后继续采集、退出用户登录后停止。mihomo 是 LaunchDaemon，可在登录前运行。停止操作会 disable 对应任务；再次启动会 enable。
 
-## 测试
+统计后台每 2 秒采样一次，内核不可用时每 5 秒重试。内存只保留活跃连接计数，数据库按小时聚合，保留 90 天；SQLite 缓存目标 1 MiB、关闭 mmap，没有 HTTP 服务或内存历史列表。文件锁阻止重复采集，重启后建立新基线以避免重复累计。
+
+## 文档字段与测试
+
+字段定义来源于用户提供的 Meta-Docs 配置文档，当前生成 104 个通用字段和 26 个代理类型。生成结果在 `Sources/ClashCore/DocSchemas.swift`，正常构建和运行不需要文档目录或 Ruby。更新字段定义时：
+
+```sh
+ruby scripts/build-schema.rb /path/to/Meta-Docs-main/docs/config
+```
+
+生成器解析文档的 YAML 示例，并过滤协议专属或平台不适用的字段；少数文档的示例片段语法不完整，会报告并跳过该片段。可使用代理表单“额外字段”添加新版本字段。
 
 ```sh
 bash scripts/test.sh
@@ -75,24 +78,16 @@ bash scripts/integration-test.sh /path/to/mihomo
 python3 scripts/stats-integration-test.py
 ```
 
-核心测试涵盖规则顺序、配置转义、规则注入拒绝、失效订阅引用、流量计数重置、数据库累计和保留策略。没有 XCTest 的 Command Line Tools 环境使用简易断言运行器。
+核心测试覆盖 YAML、规则顺序、旧设置迁移、嵌套配置、协议字段归属、手动 Hysteria2、CIDR / 逻辑验证、域名汇总和已确认配置隔离。集成测试使用临时目录、本地 HTTP CONNECT 假代理和无 TUN 内核，校验真实内核解析、API 鉴权、内存 WebSocket、热更新、规则集合和延迟。不启动系统代理。
 
-mihomo 集成测试启动隔离内核与本地 HTTP CONNECT 假代理，不启用 TUN、DNS 或系统代理；验证非特权节点解析、订阅顺序、本地缓存、延迟测试，以及生成配置、API 鉴权、精确节点过滤、热更新和节点失效行为。测试需要 Python 3，不访问外部测试站点。
-
-统计集成测试使用本地假控制器和临时数据库，测试 1000 个活跃连接下的采集、进程互斥、重启基线，并输出一次 RSS 观测值。该值不是长期运行或真实工作负载的内存保证。
-
-本机历史内存观测：1000 个活跃模拟连接时，统计进程 RSS 为 17.6 MiB。当前版本的核心测试增加了旧设置迁移、MATCH 直连和跨程序域名合计校验。实际订阅下载、解析和临时缓存验证得到 54 个节点，没有修改用户配置或启用 TUN。
+统计测试验证 1000 个活跃模拟连接、进程互斥、重启基线及草稿修改不影响采集；此前观测 RSS 约 17.9 MiB，仅为单次测试结果，不是长期或真实负载保证。
 
 ## 当前边界
 
-- 可运行开发版，使用 AppleScript 系统管理员授权安装 launchd 服务。还没有正式签名、notarization、SMAppService/XPC 特权 helper 或完整安装回滚；不作为正式发行的权限实现。
-- 支持 mihomo 可读取的 Clash YAML 订阅；Base64 / URI 列表转换尚未实现。
-- 目前 IPv6 未接管；不能保证 IPv6 流量都走代理。尚未验证其他 VPN 并存、休眠恢复、网络切换或真实 TUN 权限安装。
-- 流量来自连接快照，是近似值。短连接、断线、统计重启期间会遗漏，连接关闭前的最后一段流量可能未采到。重启建立基线避免重复计量，但不补采历史。
-- 历史数据按小时分桶，因此时间范围包含边界所在小时；列表显示最大的 500 个域名，尚无分页、速率图表或精确总量页面。
-- GUI 本地缓存由“添加并拉取 / 重新拉取”更新；运行中的系统内核自动更新订阅不会同时改写 GUI 的本地缓存，需要重新拉取同步。节点表的协议由内核解析提供，尚未显示节点服务器地址。
-- 选择 `.app` 只添加主可执行文件规则；辅助进程需要从连接列表添加。无法识别的域名按 IP 展示；IP 分流规则尚未提供。
-- 运行配置热更新不会改写 root 启动配置；需要通过“安装 / 启动全部”持久化。节点名称改变会使对应规则失效。
-- 开发版关闭服务 stdout/stderr 文件输出，避免日志无限增长或泄漏订阅凭证；配置检验、服务操作错误会显示在 GUI。内核启动后错误诊断能力仍需完善。
-
-后续优先完善签名与特权 helper、配置持久化和安装回滚，再验证真实 TUN 行为与长时间内存使用。
+- 使用 AppleScript 管理员授权安装 launchd 服务，尚未完成正式签名、notarization、SMAppService / XPC helper 和完整安装回滚。
+- 支持 Clash YAML 订阅；Base64 / URI 转换尚未实现。订阅表格提供内核返回的节点摘要，暂不显示订阅节点服务器地址或单独编辑其凭据。
+- GUI 订阅缓存需点击“更新订阅”同步；系统内核每小时更新的缓存不会自动回写 GUI。
+- 流量为连接快照近似统计，会遗漏短连接、断线 / 重启期间和结束前最后一段流量；时间范围按小时分桶，最多显示 500 个域名，未提供历史分页或速率图表。
+- IPv6 配置已开放，但默认关闭；尚未完成真实 TUN 的 IPv6、其他 VPN 并存、休眠恢复和网络切换验证。
+- Linux UID / DSCP 等依赖其他平台入站的规则未列入 macOS 表单。复杂逻辑规则可以直接输入表达式；最终语法以 mihomo 校验为准。
+- 不记录无限增长的服务 stdout / stderr 日志。配置校验和操作错误显示在 GUI；启动后的完整日志诊断仍待完善。

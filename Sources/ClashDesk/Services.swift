@@ -33,10 +33,14 @@ func writePlist(_ dictionary: [String: Any], to url: URL) throws {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
 
-func startStatistics(directory: URL) async throws {
+func statisticsExecutable() -> URL {
     let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/clash-stats")
     let adjacent = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().appendingPathComponent("clash-stats")
-    let source = FileManager.default.isExecutableFile(atPath: bundled.path) ? bundled : adjacent
+    return FileManager.default.isExecutableFile(atPath: bundled.path) ? bundled : adjacent
+}
+
+func startStatistics(directory: URL) async throws {
+    let source = statisticsExecutable()
     guard FileManager.default.isExecutableFile(atPath: source.path) else { throw DeskError("找不到 clash-stats，请使用打包脚本构建应用") }
     let target = directory.appendingPathComponent("clash-stats")
     let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
@@ -77,8 +81,9 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configFile.path)
     // The requested DNS fallback filters require both GeoIP and GeoSite data.
     let geodata = directory.appendingPathComponent("geodata")
-    try await prepareGeoAssets(corePath: settings.corePath, directory: geodata)
-    for name in geoAssetNames {
+    let geoNames = geoAssetsNeeded(settings)
+    try await prepareGeoAssets(corePath: settings.corePath, directory: geodata, names: geoNames, urls: geoDownloadURLs(settings))
+    for name in geoNames {
         try FileManager.default.copyItem(at: geodata.appendingPathComponent(name), to: staging.appendingPathComponent(name))
     }
     // Seed the system core with nodes already downloaded by the GUI, before any network fetch.
@@ -101,7 +106,7 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     ], to: plist)
     let destinationPlist = "/Library/LaunchDaemons/" + coreLabel + ".plist"
     var seedCommands: [String] = ["/bin/test ! -L \(shellQuote(rootDirectory + "/providers"))", "/bin/mkdir -p \(shellQuote(rootDirectory + "/providers"))", "/bin/chmod 700 \(shellQuote(rootDirectory + "/providers"))"]
-    for name in geoAssetNames {
+    for name in geoNames {
         let target = rootDirectory + "/" + name
         seedCommands.append("/bin/test ! -L \(shellQuote(target))")
         seedCommands.append("/usr/bin/install -o root -g wheel -m 600 \(shellQuote(staging.appendingPathComponent(name).path)) \(shellQuote(target))")
@@ -137,4 +142,20 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
 
 func stopCore() async throws {
     try await administratorCommand("set -eu; /bin/launchctl disable system/\(coreLabel); /bin/launchctl bootout system/\(coreLabel) >/dev/null 2>&1 || true")
+}
+
+func servicePID(domain: String, label: String) async -> Int? {
+    guard let output = try? await runCommand("/bin/launchctl", ["print", domain + "/" + label]),
+          let expression = try? NSRegularExpression(pattern: "(?m)^\\s*pid = (\\d+)\\s*$"),
+          let match = expression.firstMatch(in: output, range: NSRange(output.startIndex..., in: output)),
+          let range = Range(match.range(at: 1), in: output) else { return nil }
+    return Int(output[range])
+}
+
+func upgradeRunningStatistics(directory: URL) async throws {
+    guard await servicePID(domain: "gui/\(getuid())", label: statsLabel) != nil else { return }
+    let installed = directory.appendingPathComponent("clash-stats")
+    if !FileManager.default.contentsEqual(atPath: statisticsExecutable().path, andPath: installed.path) {
+        try await startStatistics(directory: directory)
+    }
 }

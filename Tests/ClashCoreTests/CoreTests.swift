@@ -5,7 +5,7 @@ import Foundation
 @testable import ClashCore
 
 final class CoreTests: XCTestCase {
-    func testConfigIgnoresSubscriptionRulesAndOrdersProcessesFirst() throws {
+    func testConfigIgnoresSubscriptionRulesAndKeepsTableOrder() throws {
         var settings = Settings()
         let subscription = Subscription(name: "Test", url: "https://example.com/sub?token=secret")
         settings.subscriptions = [subscription]
@@ -28,8 +28,8 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(dns["respect-rules"] as? Bool, true)
         XCTAssertEqual(dns["nameserver"] as? [String], ["223.5.5.5", "119.29.29.29", "114.114.114.114"])
         let rules = try XCTUnwrap(json["rules"] as? [String])
-        XCTAssertTrue(rules[0].hasPrefix("PROCESS-PATH,"))
-        XCTAssertTrue(rules[1].hasPrefix("DOMAIN-SUFFIX,"))
+        XCTAssertTrue(rules[0].hasPrefix("DOMAIN-SUFFIX,"))
+        XCTAssertTrue(rules[1].hasPrefix("PROCESS-PATH,"))
         XCTAssertEqual(rules.last, "MATCH,CD.Default")
         let groups = try XCTUnwrap(json["proxy-groups"] as? [[String: Any]])
         XCTAssertEqual(groups.first?["empty-fallback"] as? String, "REJECT")
@@ -111,13 +111,84 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(node, original)
         let restored = try JSONDecoder().decode(Node.self, from: JSONEncoder().encode(node))
         XCTAssertEqual(restored.delayMilliseconds, 42)
+        XCTAssertEqual(settings.ruleOrderMigrated, nil)
+        settings.rules = [RouteRule(kind: .domain, value: "example.com", node: nil), RouteRule(kind: .processName, value: "curl", node: nil)]
+        let migratedRules = try configurationObject(settings)["rules"] as! [String]
+        XCTAssertTrue(migratedRules[0].hasPrefix("PROCESS-NAME,"))
+    }
+
+    func testManualHysteria2AndNestedGeneralOptions() throws {
+        let schema = try XCTUnwrap(documentSchemas.proxies.first { $0.key == "hysteria2" })
+        XCTAssertTrue(schema.fields.contains { $0.path == "realm-opts.server-url" })
+        XCTAssertTrue(schema.fields.contains { $0.path == "obfs-password" })
+        XCTAssertTrue(!schema.fields.contains { $0.path == "client-fingerprint" || $0.path.hasPrefix("smux.") })
+        let vless = try XCTUnwrap(documentSchemas.proxies.first { $0.key == "vless" })
+        XCTAssertTrue(!vless.fields.contains { $0.path == "alterId" || $0.path == "cipher" })
+        XCTAssertTrue(vless.fields.contains { $0.path == "ech-opts.enable" })
+        XCTAssertEqual(ConfigValue(native: 1), .integer(1))
+        XCTAssertEqual(ConfigValue(native: true), .boolean(true))
+        let proxy = ManualProxy(type: "hysteria2", fields: [
+            "name": .string("日本,手动"), "server": .string("127.0.0.1"), "port": .integer(443),
+            "password": .string("fixture-only"), "sni": .string("example.com"),
+            "realm-opts.enable": .boolean(false)
+        ])
+        var settings = Settings(); settings.manualProxies = [proxy]; settings.defaultNode = proxy.node
+        settings.options = ["mixed-port": .integer(8000), "tun.mtu": .integer(1400), "dns.enable": .boolean(false),
+                            "dns.nameserver-policy": .object(["+.example.com": .array([.string("1.1.1.1")])]),
+                            "sniffer.enable": .boolean(true), "sniffer.sniff.HTTP.ports": .array([.integer(80), .string("8080-8880")])]
+        let object = try configurationObject(settings)
+        XCTAssertEqual(object["mixed-port"] as? Int, 8000)
+        XCTAssertEqual(configPath("tun.mtu", in: object) as? Int, 1400)
+        let proxies = try XCTUnwrap(object["proxies"] as? [[String: Any]])
+        XCTAssertEqual(proxies.first?["type"] as? String, "hysteria2")
+        XCTAssertEqual(configPath("realm-opts.enable", in: proxies[0]) as? Bool, false)
+        let groups = object["proxy-groups"] as! [[String: Any]]
+        XCTAssertEqual(groups[0]["proxies"] as? [String], [proxy.name])
+        settings.manualProxies = [proxy, proxy]
+        XCTAssertThrowsError(try generateConfig(settings))
+        settings.manualProxies = [proxy]; settings.options?["mixed-port"] = .string("not a port")
+        XCTAssertThrowsError(try generateConfig(settings))
+    }
+
+    func testCIDRRuleOptionsAndLogicalValidation() throws {
+        var settings = Settings(); settings.defaultDirect = true
+        var cidr = RouteRule(kind: .ipCIDR, value: "192.168.1.0/24", node: nil)
+        cidr.noResolve = true; cidr.sourceIP = true; cidr.builtin = "REJECT"
+        settings.rules = [cidr, RouteRule(kind: .network, value: "udp", node: nil)]
+        let rules = try configurationObject(settings)["rules"] as! [String]
+        XCTAssertEqual(rules[0], "IP-CIDR,192.168.1.0/24,REJECT,no-resolve,src")
+        XCTAssertTrue(validCIDR("2001:db8::/64"))
+        XCTAssertTrue(!validCIDR("192.168.1.0/40"))
+        XCTAssertThrowsError(try validateRule(RouteRule(kind: .ipCIDR, value: "bad/24", node: nil), settings: settings))
+        XCTAssertThrowsError(try validateRule(RouteRule(kind: .destinationPort, value: "9000-80", node: nil), settings: settings))
+        XCTAssertThrowsError(try validateRule(RouteRule(kind: .and, value: "((DOMAIN,example.com)", node: nil), settings: settings))
+        settings.options = ["rule-providers": .object(["fixture": .object(["type": .string("inline"), "behavior": .string("domain"), "payload": .array([.string("+.example.com")])])])]
+        settings.rules = [RouteRule(kind: .ruleSet, value: "fixture", node: nil)]
+        _ = try generateConfig(settings)
+    }
+
+    func testRuntimeSettingsStayIndependentOfDraftEdits() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var active = Settings(); active.options = ["external-controller": .string("127.0.0.1:19191"), "secret": .string("active-fixture")]
+        try saveRuntimeSettings(active, to: directory)
+        var draft = active; draft.options?["external-controller"] = .string("127.0.0.1:19292"); draft.options?["secret"] = .string("draft-fixture")
+        try saveSettings(draft, to: directory)
+        let endpoint = try controllerEndpoint(loadRuntimeSettings(from: directory))
+        XCTAssertEqual(endpoint.port, 19191); XCTAssertEqual(endpoint.secret, "active-fixture")
+        draft.options?["external-controller"] = .string("")
+        XCTAssertThrowsError(try generateConfig(draft))
     }
 
     static var allTests = [
-        ("testConfigIgnoresSubscriptionRulesAndOrdersProcessesFirst", testConfigIgnoresSubscriptionRulesAndOrdersProcessesFirst),
+        ("testConfigIgnoresSubscriptionRulesAndKeepsTableOrder", testConfigIgnoresSubscriptionRulesAndKeepsTableOrder),
         ("testRejectsRuleInjectionAndDeletedSubscription", testRejectsRuleInjectionAndDeletedSubscription),
         ("testTrafficDeltasResetAndPruneInactiveConnections", testTrafficDeltasResetAndPruneInactiveConnections),
         ("testSQLiteAggregatesAcrossProcessesAndRetention", testSQLiteAggregatesAcrossProcessesAndRetention),
-        ("testExistingSettingsMigrationAndDirectMatch", testExistingSettingsMigrationAndDirectMatch)
+        ("testExistingSettingsMigrationAndDirectMatch", testExistingSettingsMigrationAndDirectMatch),
+        ("testManualHysteria2AndNestedGeneralOptions", testManualHysteria2AndNestedGeneralOptions),
+        ("testCIDRRuleOptionsAndLogicalValidation", testCIDRRuleOptionsAndLogicalValidation),
+        ("testRuntimeSettingsStayIndependentOfDraftEdits", testRuntimeSettingsStayIndependentOfDraftEdits)
     ]
 }

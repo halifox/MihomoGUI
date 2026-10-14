@@ -29,8 +29,14 @@ struct StatsMain {
             defer { close(lockFD) }
             while !Task.isCancelled {
                 do {
-                    let settings = try loadSettings(from: directory)
-                    let connections = try await CoreAPI(secret: settings.secret, port: port).connections()
+                    let settings = try loadRuntimeSettings(from: directory)
+                    let api: CoreAPI
+                    if args.contains("--port") {
+                        let endpoint = try controllerEndpoint(settings)
+                        api = CoreAPI(secret: endpoint.secret, port: port, host: endpoint.host)
+                    }
+                    else { api = try CoreAPI(settings: settings) }
+                    let connections = try await api.connections()
                     // Commit the baseline only after SQLite succeeds, so a busy database can be retried.
                     var next = tracker
                     let changes = next.consume(connections)
