@@ -4,18 +4,16 @@ import ClashCore
 struct SubscriptionsView: View {
     @EnvironmentObject var model: DeskModel
     @State private var selection: String?
-    @State private var name = ""
-    @State private var url = ""
-    var selected: Subscription? { model.settings.subscriptions.first { $0.id == selection } }
+    @State private var adding = false
+    @State private var editing: Subscription?
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("订阅管理").font(.title2.bold())
                 Text("\(model.settings.subscriptions.count) 个订阅").foregroundStyle(.secondary)
                 Spacer()
-                Button { if let selected { model.deleteSubscription(selected) } } label: {
-                    Label("删除订阅", systemImage: "minus")
-                }.disabled(model.busy || selected == nil)
+                Button { adding = true } label: { Label("添加订阅", systemImage: "plus") }
+                    .disabled(model.busy)
                 Button("更新全部订阅") { model.refreshSubscriptions() }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }
@@ -26,21 +24,61 @@ struct SubscriptionsView: View {
                     Text(String(model.nodes.filter { $0.provider == subscription.provider }.count))
                 }.width(80)
                 TableColumn("操作") { subscription in
-                    Button("删除") { model.deleteSubscription(subscription) }.disabled(model.busy)
-                }.width(80)
-            }
-            GroupBox("添加订阅") {
-                HStack {
-                    TextField("订阅名称", text: $name).frame(width: 180)
-                    TextField("HTTPS Clash YAML 订阅地址", text: $url)
-                    Button { model.addSubscription(name: name, url: url) } label: {
-                        Label("添加并拉取", systemImage: "plus")
-                    }.disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                }.textFieldStyle(.roundedBorder).padding(8)
+                    HStack {
+                        Button("更新") { model.refreshSubscription(subscription) }
+                        Button("编辑") { editing = subscription }
+                        Button("删除") { model.deleteSubscription(subscription) }
+                    }.disabled(model.busy)
+                }.width(180)
             }
             Text(model.settings.corePath.isEmpty ? "请先在设置中选择 mihomo 二进制文件，再拉取订阅。" : "订阅节点保存在本地，并在出站代理页面显示。被规则引用的订阅需先调整出口才能删除。")
                 .font(.caption).foregroundStyle(.secondary)
         }
+        .sheet(isPresented: $adding) { SubscriptionEditorView() }
+        .sheet(item: $editing) { SubscriptionEditorView(subscription: $0) }
+
+    }
+}
+
+struct SubscriptionEditorView: View {
+    @EnvironmentObject var model: DeskModel
+    @Environment(\.dismiss) private var dismiss
+    let original: Subscription?
+    @State private var name: String
+    @State private var url: String
+    @State private var error: String?
+    init(subscription: Subscription? = nil) {
+        original = subscription
+        _name = State(initialValue: subscription?.name ?? "")
+        _url = State(initialValue: subscription?.url ?? "")
+    }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 20) {
+            Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
+            TextField("订阅名称", text: $name)
+            TextField("HTTPS Clash YAML 订阅地址", text: $url)
+            Text("成功拉取并解析节点后才保存订阅；失败时保留当前内容供修改重试。")
+                .font(.caption).foregroundStyle(.secondary)
+            if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
+            HStack {
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.busy)
+                Spacer()
+                if model.busy { ProgressView().controlSize(.small) }
+                Button(model.busy ? "正在拉取…" : "拉取并保存") {
+                    var subscription = Subscription(name: name, url: url)
+                    if let original { subscription.id = original.id }
+                    model.busy = true; error = nil
+                    Task {
+                        defer { model.busy = false }
+                        do { try await model.saveSubscription(subscription); dismiss() }
+                        catch { self.error = error.localizedDescription }
+                    }
+                }.buttonStyle(.borderedProminent)
+                    .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+            if model.settings.corePath.isEmpty { Text("请先在设置中选择 mihomo 二进制文件。").foregroundStyle(.orange) }
+        }.textFieldStyle(.roundedBorder).padding(24).frame(width: 620)
+            .interactiveDismissDisabled(model.busy)
     }
 }
 
