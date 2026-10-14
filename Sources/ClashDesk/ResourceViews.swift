@@ -36,12 +36,36 @@ struct ResourcesView: View {
                     if let selected { model.deleteResource(selected, groups: groups) }
                 } label: { Label("删除", systemImage: "trash") }.disabled(model.busy || selected == nil)
             }.pageActions()
-            Table(rows, selection: $selection) {
-                TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
-                TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
-                TableColumn(groups ? "成员" : "行为") { row in Text(detail(row)) }.width(tableColumnWidth(groups ? "成员" : "行为", rows.map(detail)))
-                TableColumn(groups ? "测速地址" : "来源 / 内容") { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
-                    .width(tableColumnWidth(groups ? "测速地址" : "来源 / 内容", rows.map(source)))
+            if groups {
+                Table(rows, selection: $selection) {
+                    TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
+                    TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
+                    TableColumn("选择节点") { row in
+                        if let group = row.group, group.type == "select" {
+                            Picker("选择节点", selection: Binding(get: {
+                                group.fields["default-selected"]?.text ?? ""
+                            }, set: { target in
+                                var updated = group
+                                updated.fields["default-selected"] = .string(target)
+                                do { try model.saveProxyGroup(updated) }
+                                catch { model.error = error.localizedDescription }
+                            })) {
+                                Text("第一个成员").tag("")
+                                ForEach(group.targets, id: \.self) { target in
+                                    Text(memberLabel(target)).tag(target)
+                                }
+                            }.labelsHidden().disabled(model.busy)
+                        } else { Text("—") }
+                    }.width(min: 200, ideal: 320)
+                }
+            } else {
+                Table(rows, selection: $selection) {
+                    TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
+                    TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
+                    TableColumn("行为") { row in Text(detail(row)) }.width(tableColumnWidth("行为", rows.map(detail)))
+                    TableColumn("来源 / 内容") { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
+                        .width(tableColumnWidth("来源 / 内容", rows.map(source)))
+                }
             }
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: groups) }
@@ -50,6 +74,12 @@ struct ResourcesView: View {
     func detail(_ row: ResourceRow) -> String {
         if let group = row.group { return "\(group.targets.count)" + (group.fields["include-all-proxies"] == .boolean(true) ? " + 全部节点" : "") }
         return (row.fields["behavior"]?.text ?? "—") + " / " + (row.fields["format"]?.text ?? "yaml")
+    }
+    func memberLabel(_ target: String) -> String {
+        if let node = model.allNodes.first(where: { "node:" + $0.id == target }) { return model.nodeLabel(node) }
+        if target.hasPrefix("group:") { return "代理组 / " + target.dropFirst(6) }
+        if target.hasPrefix("builtin:") { return String(target.dropFirst(8)) }
+        return "已失效：" + target
     }
     func source(_ row: ResourceRow) -> String {
         if groups { return row.fields["url"]?.text ?? "—" }
