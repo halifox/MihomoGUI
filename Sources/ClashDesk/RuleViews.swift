@@ -23,6 +23,7 @@ struct PolicyPicker: View {
 
 struct RulesView: View {
     @EnvironmentObject var model: DeskModel
+    @Environment(\.tableDataReady) private var tableDataReady
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: RouteRule?
@@ -30,7 +31,8 @@ struct RulesView: View {
         model.settings.rules.firstIndex { $0.id == selection }
     }
     var rows: [RuleTableItem] {
-        model.settings.rules.map { RuleTableItem(id: $0.id, rule: $0) } + [RuleTableItem(id: matchID, rule: nil)]
+        guard tableDataReady else { return [] }
+        return model.settings.rules.map { RuleTableItem(id: $0.id, rule: $0) } + [RuleTableItem(id: matchID, rule: nil)]
     }
     func targetText(_ row: RuleTableItem) -> String {
         if let rule = row.rule, rule.kind == .subRule { return "子规则：" + (rule.subRuleTarget ?? "未选择") }
@@ -43,6 +45,7 @@ struct RulesView: View {
         return builtin == "DIRECT" ? "DIRECT · 直连" : builtin == "REJECT-DROP" ? "REJECT-DROP · 丢弃" : "REJECT · 拒绝"
     }
     var body: some View {
+        let rows = rows
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("路由规则").font(.title2.bold())

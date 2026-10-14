@@ -12,12 +12,14 @@ struct ResourceRow: Identifiable {
 
 struct ResourcesView: View {
     @EnvironmentObject var model: DeskModel
+    @Environment(\.tableDataReady) private var tableDataReady
     let groups: Bool
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: ResourceRow?
     var title: String { groups ? "代理分组" : "规则集合" }
     var rows: [ResourceRow] {
+        guard tableDataReady else { return [] }
         if groups { return (model.settings.proxyGroups ?? []).map { ResourceRow(id: $0.id, name: $0.name, type: $0.type, fields: $0.fields, group: $0) } }
         return (model.settings.options?["rule-providers"]?.object ?? [:]).keys.sorted().map { name in
             let fields = model.settings.options?["rule-providers"]?.object[name]?.object ?? [:]
@@ -26,6 +28,7 @@ struct ResourcesView: View {
     }
     var selected: ResourceRow? { rows.first { $0.id == selection } }
     var body: some View {
+        let rows = rows
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(title).font(.title2.bold())
