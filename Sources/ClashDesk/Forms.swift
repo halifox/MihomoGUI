@@ -329,7 +329,7 @@ struct ValueMap: View {
                 }
             }
             HStack {
-                FieldKeyLabel(title: "key", key: "key", description: "新建键值条目的名称，不能与现有名称重复。").frame(width: 70, alignment: .leading)
+                FieldKeyLabel(title: "键名", key: "key", description: "新建键值条目的名称，不能与现有名称重复。", translate: false).frame(width: 70, alignment: .leading)
                 TextField("", text: $key).textFieldStyle(.roundedBorder)
                 Button {
                     let name = key.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -351,7 +351,7 @@ struct CustomFieldEditor: View {
     @State private var kind = "string"
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            formRow("key") { TextField("", text: $path) }
+            formRow("字段路径", help: "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.handshake-timeout。") { TextField("", text: $path) }
             formRow("type", help: "额外字段的数据类型，可选择文本、整数、开关、列表或键值表。") {
                 Picker("类型", selection: $kind) {
                     Text("文本（string）").tag("string"); Text("整数（integer）").tag("integer"); Text("开关（boolean）").tag("boolean")
