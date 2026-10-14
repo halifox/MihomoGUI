@@ -226,7 +226,7 @@ struct VisualValue: View {
                 if !value.text.isEmpty, !(field.choices ?? []).contains(value.text) { Text(optionLabel(value.text)).tag(value.text) }
                 ForEach(field.choices ?? [], id: \.self) { Text(optionLabel($0)).tag($0) }
             }.labelsHidden())
-        case "secret": return AnyView(SecureField("", text: text).textFieldStyle(.roundedBorder))
+        case "secret": return AnyView(TextField("", text: text).textFieldStyle(.roundedBorder))
         case "list": return AnyView(ValueList(field: field, value: $value, compact: compact))
         case "map": return AnyView(ValueMap(field: field, value: $value, compact: compact))
         case "object":
