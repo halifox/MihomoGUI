@@ -300,7 +300,7 @@ struct FieldHelpButton: View {
         Button { presented.toggle() } label: {
             Image(systemName: "questionmark.circle").font(.system(size: 12)).foregroundStyle(.secondary)
         }.buttonStyle(.borderless).help("查看说明").accessibilityLabel(key + " 帮助")
-            .popover(isPresented: $presented, arrowEdge: .trailing) {
+            .popover(isPresented: $presented, arrowEdge: .top) {
                 VStack(alignment: .leading, spacing: 8) {
                     if explanation.count > 260 {
                         ScrollView { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 200)
