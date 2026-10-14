@@ -6,7 +6,7 @@ struct GeneralConfigurationView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("通用配置").font(.title2.bold())
+                Text("全局配置").font(.title2.bold())
                 Spacer()
             }
             ScrollView {
@@ -60,7 +60,7 @@ struct ApplicationSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
-                Text("设置").font(.title2.bold())
+                Text("应用设置").font(.title2.bold())
                 Spacer()
                 Button { model.toggleAllServices() } label: {
                     Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")

@@ -11,7 +11,7 @@ struct SubscriptionsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("订阅管理").font(.title2.bold())
+                Text("代理订阅").font(.title2.bold())
                 Spacer()
                 Button { adding = true } label: { Label("添加", systemImage: "plus") }
                     .disabled(model.busy)
@@ -142,7 +142,7 @@ struct OutboundProxiesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("代理").font(.title2.bold())
+                Text("出站代理").font(.title2.bold())
                 Spacer()
                 Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
                 Button { editing = selectedManual } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)

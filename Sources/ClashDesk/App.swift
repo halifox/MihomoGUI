@@ -52,10 +52,10 @@ func tableColumnWidth(_ title: String, _ values: [String], numeric: Bool = false
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, subscriptions, outbound, groups, rules, ruleSets, connections, traffic, settings
+    case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic, settings
     var id: Int { rawValue }
-    var title: String { ["通用配置", "订阅管理", "代理", "代理组", "路由规则", "规则集合", "当前连接", "流量统计", "设置"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "list.bullet.rectangle", "folder", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
+    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "流量统计", "应用设置"][rawValue] }
+    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
 }
 
 struct DeskView: View {
@@ -155,7 +155,7 @@ struct StatisticsView: View {
         let counts = activeCounts
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                Text("域名流量").font(.title2.bold())
+                Text("流量统计").font(.title2.bold())
                 Spacer()
                 Picker("时间范围", selection: $model.hours) {
                     Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
@@ -186,7 +186,7 @@ struct ConnectionsView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("当前连接").font(.title2.bold())
+            Text("活动连接").font(.title2.bold())
             Table(model.connections) {
                 TableColumn("域名 / IP") { connection in
                     Text(connection.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: connection.domain) }

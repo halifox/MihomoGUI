@@ -368,7 +368,7 @@ final class DeskModel: ObservableObject {
             error = "该订阅仍被规则引用，请先调整相关出口。"; return
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { referencedNode($0.object["proxy"]?.text ?? "")?.provider == subscription.provider }) == true {
-            error = "该订阅节点仍用于规则集合下载，请先修改下载出口。"; return
+            error = "该订阅节点仍用于规则集下载，请先修改下载出口。"; return
         }
         settings.subscriptions.removeAll { $0.id == subscription.id }
         settings.subscriptionProxies?.removeValue(forKey: subscription.id)
@@ -419,14 +419,14 @@ final class DeskModel: ObservableObject {
         candidate.manualProxies = proxies
         if candidate.defaultNode == nil, candidate.defaultDirect != true, candidate.defaultPolicy == nil, candidate.defaultProxyGroup == nil { candidate.defaultNode = proxies.first?.node ?? nodes.first }
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
-        message = "出站代理已保存，请预览并应用配置。"
+        message = "代理已保存，请预览并应用配置。"
     }
     func deleteManualProxy(_ proxy: ManualProxy) {
         if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
             error = "该代理仍被路由规则或 MATCH 使用，请先调整出口。"; return
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("node:" + proxy.node.id) || $0.object["proxy"] == .string(proxy.name) }) == true {
-            error = "该代理仍用于规则集合下载，请先修改下载出口。"; return
+            error = "该代理仍用于规则集下载，请先修改下载出口。"; return
         }
         settings.manualProxies?.removeAll { $0.id == proxy.id }
         do { try save(); message = "代理已删除，请应用配置。" } catch { self.error = error.localizedDescription }
@@ -500,10 +500,10 @@ extension DeskModel {
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
     }
     func saveRuleProvider(name: String, type: String, fields: [String: ConfigValue], oldName: String?) throws {
-        guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集合名称无效") }
+        guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集名称无效") }
         var candidate = settings
         var providers = candidate.options?["rule-providers"]?.object ?? [:]
-        guard name == oldName || providers[name] == nil else { throw DeskError("规则集合名称已存在") }
+        guard name == oldName || providers[name] == nil else { throw DeskError("规则集名称已存在") }
         var fields = fields; fields["type"] = .string(type)
         try validateFieldValues(fields, schema: ruleProviderEditorFields(type))
         if type == "file" {
@@ -535,7 +535,7 @@ extension DeskModel {
                 candidate.proxyGroups?.removeAll { $0.id == row.id }
             } else {
                 guard !candidate.rules.contains(where: { ($0.kind == .ruleSet && $0.value == row.name) || replacingProvider($0.value, old: row.name, new: "__check__") != $0.value }),
-                      !subRules.contains(where: { replacingProvider($0, old: row.name, new: "__check__") != $0 }) else { throw DeskError("规则集合仍被规则引用，请先调整规则") }
+                      !subRules.contains(where: { replacingProvider($0, old: row.name, new: "__check__") != $0 }) else { throw DeskError("规则集仍被规则引用，请先调整规则") }
                 var providers = candidate.options?["rule-providers"]?.object ?? [:]; providers.removeValue(forKey: row.name)
                 candidate.options?["rule-providers"] = .object(providers)
             }

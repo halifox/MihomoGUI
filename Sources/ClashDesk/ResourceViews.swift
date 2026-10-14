@@ -16,7 +16,7 @@ struct ResourcesView: View {
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: ResourceRow?
-    var title: String { groups ? "代理组" : "规则集合" }
+    var title: String { groups ? "代理分组" : "规则集合" }
     var rows: [ResourceRow] {
         if groups { return (model.settings.proxyGroups ?? []).map { ResourceRow(id: $0.id, name: $0.name, type: $0.type, fields: $0.fields, group: $0) } }
         return (model.settings.options?["rule-providers"]?.object ?? [:]).keys.sorted().map { name in
@@ -78,9 +78,9 @@ struct ResourceEditorView: View {
     var schema: [EditorField] { groups ? groupEditorFields(type) : ruleProviderEditorFields(type) }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集合")).font(.title2.bold())
+            Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集")).font(.title2.bold())
             if !groups {
-                formRow("name *") { TextField("规则集合名称", text: $name).textFieldStyle(.roundedBorder) }
+                formRow("name *") { TextField("规则集名称", text: $name).textFieldStyle(.roundedBorder) }
                 formRow("type *") {
                     Picker("类型", selection: $type) {
                         ForEach(["http", "file", "inline"], id: \.self) { Text($0).tag($0) }
