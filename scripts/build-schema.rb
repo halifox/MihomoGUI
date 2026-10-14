@@ -88,9 +88,7 @@ sections=[]
  samples(text).each { |s| merge(values,s) }
  if prefix==''
   samples(File.read(File.join(root,'inbound/port.md'))).each { |s| merge(values,s) }
-  %w[redir-port tproxy-port routing-mark external-controller-pipe external-controller-routing-mark].each { |k| values.delete(k) }
  elsif prefix=='tun'
-  values['tun'].delete_if { |k,v| k =~ /uid|package|android|mac-address|iproute2|auto-redirect|route.*-set|^inet[46]-route/ }
   values['tun']['congestion-controller']='cubic'
  end
  if prefix=='dns'
@@ -101,6 +99,20 @@ sections=[]
   desc=desc.transform_keys { |k| k.start_with?(prefix+'.') ? k : prefix+'.'+k }
  end
  fs=fields(values,'',desc)
+ # Keep all platform-specific options visible; only documented restrictions disable editing on macOS.
+ linux_fields = %w[tproxy-port routing-mark external-controller-routing-mark tun.auto-redirect
+  tun.gso tun.gso-max-size tun.iproute2-table-index tun.iproute2-rule-index
+  tun.route-address-set tun.route-exclude-address-set tun.include-uid tun.include-uid-range
+  tun.exclude-uid tun.exclude-uid-range tun.include-mac-address tun.exclude-mac-address]
+ android_fields = %w[tun.include-android-user tun.include-package tun.exclude-package]
+ fs.each do |field|
+  platform = if field['path'] == 'tproxy-port' then 'Linux / Android'
+   elsif linux_fields.include?(field['path']) then 'Linux'
+   elsif android_fields.include?(field['path']) then 'Android'
+   elsif field['path'] == 'external-controller-pipe' then 'Windows'
+   end
+  field['unavailableReason'] = "仅支持 #{platform}，macOS 不可编辑" if platform
+ end
  sections << {'name'=>title,'key'=>prefix.empty? ? 'general' : prefix,'fields'=>fs,'document'=>file}
 end
 common_text=File.read(File.join(root,'proxies/index.md'))
@@ -173,6 +185,8 @@ end
 configuration_order = %w[
  port
  socks-port
+ redir-port
+ tproxy-port
  mixed-port
  allow-lan
  bind-address

@@ -127,6 +127,28 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(migratedRules[0].hasPrefix("PROCESS-NAME,"))
     }
 
+    func testPlatformSpecificGeneralOptions() throws {
+        let fields = documentSchemas.sections.flatMap(\.fields)
+        XCTAssertTrue(try XCTUnwrap(fields.first { $0.path == "redir-port" }).unavailableReason == nil)
+        for path in ["tproxy-port", "routing-mark", "external-controller-pipe", "external-controller-routing-mark",
+                     "tun.auto-redirect", "tun.include-uid", "tun.include-package", "tun.include-mac-address",
+                     "tun.iproute2-table-index", "tun.route-address-set"] {
+            XCTAssertNotNil(try XCTUnwrap(fields.first { $0.path == path }).unavailableReason)
+        }
+        XCTAssertTrue(try XCTUnwrap(fields.first { $0.path == "tun.inet4-route-address" }).unavailableReason == nil)
+        var settings = Settings()
+        settings.options = ["redir-port": .integer(7892), "tproxy-port": .integer(7893),
+                            "tun.include-uid": .array([.integer(1000)])]
+        let config = try configurationObject(settings)
+        XCTAssertEqual(config["redir-port"] as? Int, 7892)
+        XCTAssertEqual(config["tproxy-port"] as? Int, 7893)
+        XCTAssertEqual(configPath("tun.include-uid", in: config) as? [Int], [1000])
+        for port in ["redir-port", "tproxy-port"] {
+            XCTAssertThrowsError(try validateGeneralOptions([port: -1]))
+            XCTAssertThrowsError(try validateGeneralOptions([port: 65536]))
+        }
+    }
+
     func testManualHysteria2AndNestedGeneralOptions() throws {
         let schema = try XCTUnwrap(documentSchemas.proxies.first { $0.key == "hysteria2" })
         XCTAssertTrue(schema.fields.contains { $0.path == "realm-opts.server-url" })
@@ -250,6 +272,7 @@ final class CoreTests: XCTestCase {
         ("testTrafficDeltasResetAndPruneInactiveConnections", testTrafficDeltasResetAndPruneInactiveConnections),
         ("testSQLiteAggregatesAcrossProcessesAndRetention", testSQLiteAggregatesAcrossProcessesAndRetention),
         ("testExistingSettingsMigrationAndDirectMatch", testExistingSettingsMigrationAndDirectMatch),
+        ("testPlatformSpecificGeneralOptions", testPlatformSpecificGeneralOptions),
         ("testManualHysteria2AndNestedGeneralOptions", testManualHysteria2AndNestedGeneralOptions),
         ("testCIDRRuleOptionsAndLogicalValidation", testCIDRRuleOptionsAndLogicalValidation),
         ("testRuntimeSettingsStayIndependentOfDraftEdits", testRuntimeSettingsStayIndependentOfDraftEdits)

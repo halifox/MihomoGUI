@@ -167,12 +167,30 @@ let docSchemaJSON = #"""
           "required": false
         },
         {
+          "path": "external-controller-pipe",
+          "title": "external-controller-pipe",
+          "kind": "string",
+          "hint": "\\\\.\\pipe\\mihomo",
+          "description": "",
+          "required": false,
+          "unavailableReason": "仅支持 Windows，macOS 不可编辑"
+        },
+        {
           "path": "external-controller-tls",
           "title": "external-controller-tls",
           "kind": "string",
           "hint": "127.0.0.1:9443",
           "description": "",
           "required": false
+        },
+        {
+          "path": "external-controller-routing-mark",
+          "title": "external-controller-routing-mark",
+          "kind": "integer",
+          "hint": "0",
+          "description": "",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
         },
         {
           "path": "external-doh-server",
@@ -253,6 +271,15 @@ let docSchemaJSON = #"""
           "hint": "en0",
           "description": "",
           "required": false
+        },
+        {
+          "path": "routing-mark",
+          "title": "routing-mark",
+          "kind": "integer",
+          "hint": "6666",
+          "description": "",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
         },
         {
           "path": "tls.certificate",
@@ -385,6 +412,23 @@ let docSchemaJSON = #"""
           "hint": "7892",
           "description": "",
           "required": false
+        },
+        {
+          "path": "redir-port",
+          "title": "redir-port",
+          "kind": "integer",
+          "hint": "7893",
+          "description": "",
+          "required": false
+        },
+        {
+          "path": "tproxy-port",
+          "title": "tproxy-port",
+          "kind": "integer",
+          "hint": "7894",
+          "description": "",
+          "required": false,
+          "unavailableReason": "仅支持 Linux / Android，macOS 不可编辑"
         }
       ],
       "document": "general.md"
@@ -825,6 +869,15 @@ let docSchemaJSON = #"""
           "required": false
         },
         {
+          "path": "tun.auto-redirect",
+          "title": "tun.auto-redirect",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "仅支持 Linux，自动配置 iptables/nftables 以重定向 TCP 连接，需要auto-route已启用 在 Android 中： 仅转发本地 IPv4 连接。要通过热点或中继共享您的 VPN 连接，请使用 VPNHotspot。 在 Linux 中： 带有 auto-route 的 auto-redirect 现在可以在路由器上按预期工作，无需干预。",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
           "path": "tun.auto-detect-interface",
           "title": "tun.auto-detect-interface",
           "kind": "boolean",
@@ -871,7 +924,8 @@ let docSchemaJSON = #"""
           "kind": "boolean",
           "hint": "true",
           "description": "启用通用分段卸载，仅支持 Linux",
-          "required": false
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
         },
         {
           "path": "tun.gso-max-size",
@@ -879,7 +933,8 @@ let docSchemaJSON = #"""
           "kind": "integer",
           "hint": "65536",
           "description": "数据块的最大长度",
-          "required": false
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
         },
         {
           "path": "tun.inet6-address",
@@ -899,12 +954,50 @@ let docSchemaJSON = #"""
           "required": false
         },
         {
+          "path": "tun.iproute2-table-index",
+          "title": "tun.iproute2-table-index",
+          "kind": "integer",
+          "hint": "2022",
+          "description": "auto-route 生成的 iproute2 路由表索引，默认使用 2022",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.iproute2-rule-index",
+          "title": "tun.iproute2-rule-index",
+          "kind": "integer",
+          "hint": "9000",
+          "description": "auto-route 生成的 iproute2 规则起始索引，默认使用 9000",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
           "path": "tun.endpoint-independent-nat",
           "title": "tun.endpoint-independent-nat",
           "kind": "boolean",
           "hint": "false",
           "description": "启用独立于端点的 NAT，性能可能会略有下降，所以不建议在不需要的时候开启。",
           "required": false
+        },
+        {
+          "path": "tun.route-address-set",
+          "title": "tun.route-address-set",
+          "kind": "list",
+          "hint": "[\"ruleset-1\"]",
+          "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，不匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.route-exclude-address-set",
+          "title": "tun.route-exclude-address-set",
+          "kind": "list",
+          "hint": "[\"ruleset-2\"]",
+          "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
         },
         {
           "path": "tun.route-address",
@@ -939,6 +1032,132 @@ let docSchemaJSON = #"""
           "kind": "list",
           "hint": "[\"eth1\"]",
           "description": "排除路由的接口，与 include-interface 冲突，不可一起配置",
+          "required": false,
+          "elementKind": "string"
+        },
+        {
+          "path": "tun.include-uid",
+          "title": "tun.include-uid",
+          "kind": "list",
+          "hint": "[0]",
+          "description": "包含的用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量，默认不限制 UID 规则仅在 Linux 下被支持,并且需要 auto-route",
+          "required": false,
+          "elementKind": "integer",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.include-uid-range",
+          "title": "tun.include-uid-range",
+          "kind": "list",
+          "hint": "[\"1000:9999\"]",
+          "description": "包含的用户范围，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.exclude-uid",
+          "title": "tun.exclude-uid",
+          "kind": "list",
+          "hint": "[1000]",
+          "description": "排除用户，使其避免被 Tun 路由流量",
+          "required": false,
+          "elementKind": "integer",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.exclude-uid-range",
+          "title": "tun.exclude-uid-range",
+          "kind": "list",
+          "hint": "[\"1000:9999\"]",
+          "description": "排除用户范围，使其避免被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.include-mac-address",
+          "title": "tun.include-mac-address",
+          "kind": "list",
+          "hint": "[\"00:11:22:33:44:55\"]",
+          "description": "按来源 MAC 地址限制被路由的局域网设备。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.exclude-mac-address",
+          "title": "tun.exclude-mac-address",
+          "kind": "list",
+          "hint": "[\"00:11:22:33:44:66\"]",
+          "description": "按来源 MAC 地址排除局域网设备的流量。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+        },
+        {
+          "path": "tun.include-android-user",
+          "title": "tun.include-android-user",
+          "kind": "list",
+          "hint": "[0,10]",
+          "description": "包含的 Android 用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量 Android 用户和应用规则仅在 Android 下被支持,并且需要 auto-route | 常用用户 | ID | | -------- | --- | | 机主 | 0 | | 手机分身 | 10 | | 应用多开 | 999 |",
+          "required": false,
+          "elementKind": "integer",
+          "unavailableReason": "仅支持 Android，macOS 不可编辑"
+        },
+        {
+          "path": "tun.include-package",
+          "title": "tun.include-package",
+          "kind": "list",
+          "hint": "[\"com.android.chrome\"]",
+          "description": "包含的 Android 应用包名，使其被 Tun 路由流量，未配置的应用包不会被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Android，macOS 不可编辑"
+        },
+        {
+          "path": "tun.exclude-package",
+          "title": "tun.exclude-package",
+          "kind": "list",
+          "hint": "[\"com.android.captiveportallogin\"]",
+          "description": "排除 Android 应用包名，使其避免被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Android，macOS 不可编辑"
+        },
+        {
+          "path": "tun.inet4-route-address",
+          "title": "tun.inet4-route-address",
+          "kind": "list",
+          "hint": "[\"0.0.0.0/1\",\"128.0.0.0/1\"]",
+          "description": "启用 auto-route时路由自定义网段而不是默认路由，一般无需配置。",
+          "required": false,
+          "elementKind": "string"
+        },
+        {
+          "path": "tun.inet6-route-address",
+          "title": "tun.inet6-route-address",
+          "kind": "list",
+          "hint": "[\"::/1\",\"8000::/1\"]",
+          "description": "启用 auto-route时路由自定义网段而不是默认路由，一般无需配置。",
+          "required": false,
+          "elementKind": "string"
+        },
+        {
+          "path": "tun.inet4-route-exclude-address",
+          "title": "tun.inet4-route-exclude-address",
+          "kind": "list",
+          "hint": "[\"192.168.0.0/16\"]",
+          "description": "启用 auto-route 时排除自定义网段",
+          "required": false,
+          "elementKind": "string"
+        },
+        {
+          "path": "tun.inet6-route-exclude-address",
+          "title": "tun.inet6-route-exclude-address",
+          "kind": "list",
+          "hint": "[\"fc00::/7\"]",
+          "description": "启用 auto-route 时排除自定义网段",
           "required": false,
           "elementKind": "string"
         },
@@ -9238,6 +9457,25 @@ let docSchemaJSON = #"""
       "document": "general.md"
     },
     {
+      "path": "redir-port",
+      "title": "redir-port",
+      "kind": "integer",
+      "hint": "7893",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "tproxy-port",
+      "title": "tproxy-port",
+      "kind": "integer",
+      "hint": "7894",
+      "description": "",
+      "required": false,
+      "unavailableReason": "仅支持 Linux / Android，macOS 不可编辑",
+      "document": "general.md"
+    },
+    {
       "path": "mixed-port",
       "title": "mixed-port",
       "kind": "integer",
@@ -9718,6 +9956,7 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "启用通用分段卸载，仅支持 Linux",
           "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
           "document": "inbound/tun.md"
         },
         {
@@ -9727,6 +9966,7 @@ let docSchemaJSON = #"""
           "hint": "65536",
           "description": "数据块的最大长度",
           "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
           "document": "inbound/tun.md"
         },
         {
@@ -9793,6 +10033,16 @@ let docSchemaJSON = #"""
           "document": "inbound/tun.md"
         },
         {
+          "path": "tun.auto-redirect",
+          "title": "auto-redirect",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "仅支持 Linux，自动配置 iptables/nftables 以重定向 TCP 连接，需要auto-route已启用 在 Android 中： 仅转发本地 IPv4 连接。要通过热点或中继共享您的 VPN 连接，请使用 VPNHotspot。 在 Linux 中： 带有 auto-route 的 auto-redirect 现在可以在路由器上按预期工作，无需干预。",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
           "path": "tun.device",
           "title": "device",
           "kind": "string",
@@ -9821,10 +10071,191 @@ let docSchemaJSON = #"""
           "document": "inbound/tun.md"
         },
         {
+          "path": "tun.iproute2-table-index",
+          "title": "iproute2-table-index",
+          "kind": "integer",
+          "hint": "2022",
+          "description": "auto-route 生成的 iproute2 路由表索引，默认使用 2022",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.iproute2-rule-index",
+          "title": "iproute2-rule-index",
+          "kind": "integer",
+          "hint": "9000",
+          "description": "auto-route 生成的 iproute2 规则起始索引，默认使用 9000",
+          "required": false,
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.route-address-set",
+          "title": "route-address-set",
+          "kind": "list",
+          "hint": "[\"ruleset-1\"]",
+          "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，不匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.route-exclude-address-set",
+          "title": "route-exclude-address-set",
+          "kind": "list",
+          "hint": "[\"ruleset-2\"]",
+          "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
           "path": "tun.route-exclude-address",
           "title": "route-exclude-address",
           "kind": "list",
           "hint": "[\"192.168.0.0/16\",\"fc00::/7\"]",
+          "description": "启用 auto-route 时排除自定义网段",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.include-uid",
+          "title": "include-uid",
+          "kind": "list",
+          "hint": "[0]",
+          "description": "包含的用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量，默认不限制 UID 规则仅在 Linux 下被支持,并且需要 auto-route",
+          "required": false,
+          "elementKind": "integer",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.include-uid-range",
+          "title": "include-uid-range",
+          "kind": "list",
+          "hint": "[\"1000:9999\"]",
+          "description": "包含的用户范围，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.exclude-uid",
+          "title": "exclude-uid",
+          "kind": "list",
+          "hint": "[1000]",
+          "description": "排除用户，使其避免被 Tun 路由流量",
+          "required": false,
+          "elementKind": "integer",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.exclude-uid-range",
+          "title": "exclude-uid-range",
+          "kind": "list",
+          "hint": "[\"1000:9999\"]",
+          "description": "排除用户范围，使其避免被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.include-mac-address",
+          "title": "include-mac-address",
+          "kind": "list",
+          "hint": "[\"00:11:22:33:44:55\"]",
+          "description": "按来源 MAC 地址限制被路由的局域网设备。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.exclude-mac-address",
+          "title": "exclude-mac-address",
+          "kind": "list",
+          "hint": "[\"00:11:22:33:44:66\"]",
+          "description": "按来源 MAC 地址排除局域网设备的流量。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.include-android-user",
+          "title": "include-android-user",
+          "kind": "list",
+          "hint": "[0,10]",
+          "description": "包含的 Android 用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量 Android 用户和应用规则仅在 Android 下被支持,并且需要 auto-route | 常用用户 | ID | | -------- | --- | | 机主 | 0 | | 手机分身 | 10 | | 应用多开 | 999 |",
+          "required": false,
+          "elementKind": "integer",
+          "unavailableReason": "仅支持 Android，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.include-package",
+          "title": "include-package",
+          "kind": "list",
+          "hint": "[\"com.android.chrome\"]",
+          "description": "包含的 Android 应用包名，使其被 Tun 路由流量，未配置的应用包不会被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Android，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.exclude-package",
+          "title": "exclude-package",
+          "kind": "list",
+          "hint": "[\"com.android.captiveportallogin\"]",
+          "description": "排除 Android 应用包名，使其避免被 Tun 路由流量",
+          "required": false,
+          "elementKind": "string",
+          "unavailableReason": "仅支持 Android，macOS 不可编辑",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.inet4-route-address",
+          "title": "inet4-route-address",
+          "kind": "list",
+          "hint": "[\"0.0.0.0/1\",\"128.0.0.0/1\"]",
+          "description": "启用 auto-route时路由自定义网段而不是默认路由，一般无需配置。",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.inet6-route-address",
+          "title": "inet6-route-address",
+          "kind": "list",
+          "hint": "[\"::/1\",\"8000::/1\"]",
+          "description": "启用 auto-route时路由自定义网段而不是默认路由，一般无需配置。",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.inet4-route-exclude-address",
+          "title": "inet4-route-exclude-address",
+          "kind": "list",
+          "hint": "[\"192.168.0.0/16\"]",
+          "description": "启用 auto-route 时排除自定义网段",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.inet6-route-exclude-address",
+          "title": "inet6-route-exclude-address",
+          "kind": "list",
+          "hint": "[\"fc00::/7\"]",
           "description": "启用 auto-route 时排除自定义网段",
           "required": false,
           "elementKind": "string",
@@ -10322,12 +10753,42 @@ let docSchemaJSON = #"""
       "document": "dns/index.md"
     },
     {
+      "path": "external-controller-pipe",
+      "title": "external-controller-pipe",
+      "kind": "string",
+      "hint": "\\\\.\\pipe\\mihomo",
+      "description": "",
+      "required": false,
+      "unavailableReason": "仅支持 Windows，macOS 不可编辑",
+      "document": "general.md"
+    },
+    {
+      "path": "external-controller-routing-mark",
+      "title": "external-controller-routing-mark",
+      "kind": "integer",
+      "hint": "0",
+      "description": "",
+      "required": false,
+      "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+      "document": "general.md"
+    },
+    {
       "path": "unified-delay",
       "title": "unified-delay",
       "kind": "boolean",
       "hint": "true",
       "description": "",
       "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "routing-mark",
+      "title": "routing-mark",
+      "kind": "integer",
+      "hint": "6666",
+      "description": "",
+      "required": false,
+      "unavailableReason": "仅支持 Linux，macOS 不可编辑",
       "document": "general.md"
     },
     {

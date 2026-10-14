@@ -69,6 +69,7 @@ public struct EditorField: Codable, Identifiable {
     public var choices: [String]?
     public var elementKind: String?
     public var document: String?
+    public var unavailableReason: String?
     public var children: [EditorField]?
     public var id: String { path }
     public init(_ path: String, kind: String = "string", title: String? = nil, hint: String = "", required: Bool = false,
@@ -281,7 +282,7 @@ public func geoDownloadURLs(_ settings: Settings) -> [String: String] {
 }
 
 public func validateGeneralOptions(_ config: [String: Any]) throws {
-    for key in ["mixed-port", "port", "socks-port"] {
+    for key in ["mixed-port", "port", "socks-port", "redir-port", "tproxy-port"] {
         if let value = config[key] as? Int, !(0...65535).contains(value) { throw DeskError("\(key) 必须为 0–65535") }
     }
     if let tun = config["tun"] as? [String: Any] {
@@ -332,6 +333,8 @@ private let configFieldTitles: [String: String] = [
     "external-controller": "API 监听地址",
     "external-controller-cors.allow-origins": "API 允许的来源",
     "external-controller-cors.allow-private-network": "API 允许私有网络访问",
+    "external-controller-pipe": "命名管道 API 监听地址",
+    "external-controller-routing-mark": "API 监听路由标记",
     "external-controller-unix": "Unix Socket API 监听地址",
     "external-controller-tls": "HTTPS API 监听地址",
     "external-doh-server": "DOH 服务器路径",
@@ -361,6 +364,8 @@ private let configFieldTitles: [String: String] = [
     "port": "服务器端口",
     "socks-port": "SOCKS 代理端口",
     "mixed-port": "混合代理端口",
+    "redir-port": "重定向透明代理端口",
+    "tproxy-port": "TPROXY 透明代理端口",
     "dns.enable": "启用 DNS",
     "dns.cache-algorithm": "DNS 缓存算法",
     "dns.prefer-h3": "DOH 优先使用 HTTP/3",
@@ -394,6 +399,7 @@ private let configFieldTitles: [String: String] = [
     "tun.stack": "TUN 协议栈",
     "tun.device": "TUN 网卡名称",
     "tun.auto-route": "自动配置路由",
+    "tun.auto-redirect": "自动重定向 TCP 连接",
     "tun.auto-detect-interface": "自动识别出站接口",
     "tun.dns-hijack": "DNS 劫持",
     "tun.strict-route": "严格路由",
@@ -404,6 +410,23 @@ private let configFieldTitles: [String: String] = [
     "tun.udp-timeout": "UDP 超时时间（秒）",
     "tun.endpoint-independent-nat": "独立于端点的 NAT",
     "tun.congestion-controller": "拥塞控制算法",
+    "tun.iproute2-table-index": "iproute2 路由表索引",
+    "tun.iproute2-rule-index": "iproute2 规则起始索引",
+    "tun.route-address-set": "路由地址规则集",
+    "tun.route-exclude-address-set": "排除的路由地址规则集",
+    "tun.include-uid": "包含的用户 ID",
+    "tun.include-uid-range": "包含的用户 ID 范围",
+    "tun.exclude-uid": "排除的用户 ID",
+    "tun.exclude-uid-range": "排除的用户 ID 范围",
+    "tun.include-mac-address": "包含的来源 MAC 地址",
+    "tun.exclude-mac-address": "排除的来源 MAC 地址",
+    "tun.include-android-user": "包含的 Android 用户",
+    "tun.include-package": "包含的 Android 应用包名",
+    "tun.exclude-package": "排除的 Android 应用包名",
+    "tun.inet4-route-address": "IPv4 路由地址段（旧写法）",
+    "tun.inet6-route-address": "IPv6 路由地址段（旧写法）",
+    "tun.inet4-route-exclude-address": "排除的 IPv4 路由地址段（旧写法）",
+    "tun.inet6-route-exclude-address": "排除的 IPv6 路由地址段（旧写法）",
     "tun.route-address": "路由地址段",
     "tun.route-exclude-address": "排除的路由地址段",
     "tun.include-interface": "包含的网络接口",
