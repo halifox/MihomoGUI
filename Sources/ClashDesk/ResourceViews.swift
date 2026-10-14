@@ -60,7 +60,7 @@ struct ResourcesView: View {
                                 }
                             }.labelsHidden().disabled(model.busy)
                         } else { Text("—") }
-                    }.width(min: 200, ideal: 320)
+                    }.width(tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48))
                 }
             } else {
                 Table(rows, selection: $selection) {
@@ -78,6 +78,12 @@ struct ResourcesView: View {
     func detail(_ row: ResourceRow) -> String {
         if let group = row.group { return "\(group.targets.count)" + (group.fields["include-all-proxies"] == .boolean(true) ? " + 全部节点" : "") }
         return (row.fields["behavior"]?.text ?? "—") + " / " + (row.fields["format"]?.text ?? "yaml")
+    }
+    func selectedMemberText(_ row: ResourceRow) -> String {
+        guard let group = row.group, group.type == "select" else { return "—" }
+        let selected = group.fields["default-selected"]?.text ?? ""
+        guard let target = selected.isEmpty ? group.targets.first : selected else { return "空（Empty）" }
+        return memberLabel(target)
     }
     func memberLabel(_ target: String) -> String {
         if let node = model.allNodes.first(where: { "node:" + $0.id == target }) { return model.nodeLabel(node) }

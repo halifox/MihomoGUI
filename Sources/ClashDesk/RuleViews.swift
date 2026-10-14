@@ -39,10 +39,10 @@ struct RulesView: View {
         if let group = row.rule == nil ? model.settings.defaultProxyGroup : row.rule?.proxyGroup { return "代理组 / " + group }
         let node = row.rule == nil ? model.settings.defaultNode : row.rule?.node
         if let node {
-            return model.allNodes.contains(node) ? model.nodeLabel(node) : "已失效：" + node.id
+            return model.allNodes.first(where: { $0.id == node.id }).map { model.nodeLabel($0) } ?? "已失效：" + node.id
         }
         let builtin = row.rule == nil ? model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT") : row.rule?.builtin ?? "DIRECT"
-        return builtin == "DIRECT" ? "DIRECT · 直连" : builtin == "REJECT-DROP" ? "REJECT-DROP · 丢弃" : "REJECT · 拒绝"
+        return optionLabel(builtin)
     }
     var body: some View {
         let rows = rows
