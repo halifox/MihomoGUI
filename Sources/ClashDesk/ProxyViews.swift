@@ -175,7 +175,7 @@ struct OutboundProxiesView: View {
                 }))
                 TableColumn("延迟") { node in
                     NodeDelayCell(model: model, nodeID: node.id)
-                }.width(tableColumnWidth("延迟", model.allNodes.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "未测试" } + ["测试中…", "失败 / 超时"]))
+                }.width(tableColumnWidth("延迟", model.allNodes.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"]))
             }
 
 
@@ -196,7 +196,7 @@ struct NodeDelayCell: View {
         } label: {
             if model.testingNodes.contains(nodeID) { Text("测试中…") }
             else if node?.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
-            else { Text(node?.delayMilliseconds.map { "\($0) ms" } ?? "未测试") }
+            else { Text(node?.delayMilliseconds.map { "\($0) ms" } ?? "") }
         }.buttonStyle(.borderless).disabled(model.busy || node == nil).help("点击测试延迟")
     }
 }

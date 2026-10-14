@@ -241,7 +241,18 @@ final class DeskModel: ObservableObject {
         } catch { /* Unsupported or invalid core configuration remains unknown. */ }
     }
     func testDelay(_ node: Node) { testDelays([node]) }
-    func testAllDelays() { testDelays(allNodes) }
+    func testAllDelays() {
+        guard !busy, !allNodes.isEmpty else { return }
+        for index in nodes.indices {
+            nodes[index].delayMilliseconds = nil
+            nodes[index].delayFailed = false
+        }
+        for index in (settings.manualProxies ?? []).indices {
+            settings.manualProxies?[index].delayMilliseconds = nil
+            settings.manualProxies?[index].delayFailed = false
+        }
+        testDelays(allNodes)
+    }
     private func testDelays(_ targets: [Node]) {
         guard !busy, !targets.isEmpty else { return }
         busy = true; isTestingDelays = true
