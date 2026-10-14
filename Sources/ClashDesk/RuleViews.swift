@@ -46,7 +46,6 @@ struct RulesView: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Text("路由规则").font(.title2.bold())
-                Text("按表格从上到下匹配").foregroundStyle(.secondary)
                 Spacer()
                 Button { adding = true } label: { Label("添加规则", systemImage: "plus") }.disabled(model.busy)
                 Button {

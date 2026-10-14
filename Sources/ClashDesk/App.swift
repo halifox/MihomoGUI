@@ -63,25 +63,6 @@ struct DeskView: View {
     @State private var page: DeskPage? = .general
     var body: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 12) {
-                Image(systemName: "network").font(.title2).foregroundStyle(.blue)
-                VStack(alignment: .leading) {
-                    Text("ClashDesk · 0.5").font(.title2.bold())
-                    Text("内核 \(model.coreRunning ? "在线" : "离线") · 统计 \(statsStatus)").font(.caption).foregroundStyle(.secondary)
-                }
-                Spacer()
-                if model.busy { ProgressView().controlSize(.small) }
-                Button("安装 / 启动全部") { model.startAll() }.disabled(model.busy)
-                Button("应用运行配置") { model.applyLive() }.disabled(model.busy || !model.coreRunning)
-                Menu("停止") {
-                    Button("停止代理") { model.perform { try await stopCore() } }
-                    Button("停止统计") { model.perform { try await stopStatistics() } }
-                    Button("停止全部服务") {
-                        model.perform { try await stopCore(); try await stopStatistics() }
-                    }
-                }.disabled(model.busy)
-            }.padding(20)
-            Divider()
             NavigationSplitView {
                 List(DeskPage.allCases, selection: $page) { page in
                     Label(page.title, systemImage: page.icon).tag(page)
@@ -112,10 +93,7 @@ struct DeskView: View {
             ConfigPreviewView(preview: preview)
         }
     }
-    var statsStatus: String {
-        guard let sample = model.lastSample else { return "未采集" }
-        return Date().timeIntervalSince(sample) < 20 ? "采集中" : "采集已暂停"
-    }
+
 }
 
 struct ConfigPreviewView: View {
@@ -183,8 +161,6 @@ struct StatisticsView: View {
                     Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
                 }.frame(width: 220)
             }
-            Text("按域名汇总上传与下载 · 显示流量最大的 500 个域名 · 时间精度为小时")
-                .font(.caption).foregroundStyle(.secondary)
                 Table(model.traffic) {
                     TableColumn("域名 / IP") { row in
                         Text(row.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: row.domain) }
@@ -210,9 +186,7 @@ struct ConnectionsView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("当前连接（\(model.connections.count)）").font(.title3.bold())
-            Text("右键域名或程序可添加规则；新规则应用后可断开旧连接，让应用重新建立连接。")
-                .font(.caption).foregroundStyle(.secondary)
+            Text("当前连接").font(.title3.bold())
             Table(model.connections) {
                 TableColumn("域名 / IP") { connection in
                     Text(connection.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: connection.domain) }
