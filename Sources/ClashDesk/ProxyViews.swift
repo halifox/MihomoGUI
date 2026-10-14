@@ -94,8 +94,8 @@ struct SubscriptionEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
-            TextField("订阅名称", text: $name)
-            TextField("HTTPS Clash YAML 订阅地址", text: $url)
+            formRow("name *") { TextField("订阅名称", text: $name) }
+            formRow("url *") { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
             Text("成功拉取并解析节点后才保存订阅；失败时保留当前内容供修改重试。")
                 .font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
@@ -225,13 +225,12 @@ struct ProxyEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加代理" : "编辑代理").font(.title2.bold())
-            HStack {
+            formRow("type *") {
                 Picker("代理类型", selection: $type) {
                     ForEach(documentSchemas.proxies) { Text($0.name).tag($0.key) }
-                }.frame(width: 270)
-                Spacer()
-                TextField("搜索协议字段", text: $search).frame(width: 250)
+                }.labelsHidden()
             }
+            formRow("搜索字段") { TextField("搜索协议字段", text: $search).textFieldStyle(.roundedBorder) }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(schema.fields.filter { search.isEmpty || ($0.path + $0.description).localizedCaseInsensitiveContains(search) }) { field in

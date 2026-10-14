@@ -80,11 +80,11 @@ struct ResourceEditorView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集合")).font(.title2.bold())
             if !groups {
-                HStack {
-                    TextField("名称", text: $name).textFieldStyle(.roundedBorder)
+                formRow("name *") { TextField("规则集合名称", text: $name).textFieldStyle(.roundedBorder) }
+                formRow("type *") {
                     Picker("类型", selection: $type) {
                         ForEach(["http", "file", "inline"], id: \.self) { Text($0).tag($0) }
-                    }.frame(width: 220)
+                    }.labelsHidden()
                 }
             }
             ScrollView {
@@ -139,7 +139,7 @@ struct ResourceEditorView: View {
                     }
                     if !groups && type == "http" {
                         HStack {
-                            Text("下载出口").frame(width: 200, alignment: .leading)
+                            Text("proxy").font(.system(.body, design: .monospaced)).frame(width: 200, alignment: .leading)
                             PolicyPicker(model: model, selection: Binding(get: { fields["proxy"]?.text ?? "builtin:DIRECT" }, set: { fields["proxy"] = .string($0) }))
                         }
                     }
