@@ -118,6 +118,8 @@ final class DeskModel: ObservableObject {
     func importSubscriptions(_ candidate: ClashCore.Settings) async throws {
         let imported = try await fetchSubscriptions(candidate.subscriptions, corePath: candidate.corePath, directory: directory)
         var updated = candidate
+        let updatedAt = Date()
+        for index in updated.subscriptions.indices { updated.subscriptions[index].lastUpdatedAt = updatedAt }
         if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil { updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first }
         var merged = imported
         let previous = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
@@ -148,6 +150,7 @@ final class DeskModel: ObservableObject {
             imported[index].delayMilliseconds = previous[imported[index].id]?.delayMilliseconds
             imported[index].delayFailed = previous[imported[index].id]?.delayFailed
         }
+        subscription.lastUpdatedAt = Date()
         var updated = settings
         if let index = updated.subscriptions.firstIndex(where: { $0.id == subscription.id }) {
             updated.subscriptions[index] = subscription
@@ -173,6 +176,29 @@ final class DeskModel: ObservableObject {
     func refreshSubscriptions() {
         let candidate = settings
         perform { try await self.importSubscriptions(candidate) }
+    }
+    @Published var manualUDP: [String: Bool] = [:]
+    func refreshManualUDP() async {
+        let snapshot = settings.manualProxies ?? []
+        manualUDP = [:]
+        let providers = settings.subscriptions.compactMap { source -> (String, URL)? in
+            let file = providerFile(source, directory: directory)
+            return FileManager.default.fileExists(atPath: file.path) ? (source.provider, file) : nil
+        }
+        guard !snapshot.isEmpty || !providers.isEmpty, !settings.corePath.isEmpty else { return }
+        do {
+            let proxies = try snapshot.map { try $0.configuration() }
+            let (support, imported) = try await withProviderCore(corePath: settings.corePath, providers: providers, proxies: proxies) { api in
+                (try await api.udpSupport(), try await api.nodes(providerOrder: providers.map { $0.0 }))
+            }
+            let capabilities = Dictionary(imported.map { ($0.id, $0.supportsUDP) }, uniquingKeysWith: { first, _ in first })
+            for index in nodes.indices {
+                if let capability = capabilities[nodes[index].id] { nodes[index].supportsUDP = capability }
+            }
+            try saveNodeCache(nodes, directory: directory)
+            let current = settings.manualProxies ?? []
+            if snapshot.count == current.count, zip(snapshot, current).allSatisfy({ $0.id == $1.id && $0.type == $1.type && $0.fields == $1.fields }) { manualUDP = support }
+        } catch { /* Unsupported or invalid core configuration remains unknown. */ }
     }
     func testDelay(_ node: Node) {
         perform {

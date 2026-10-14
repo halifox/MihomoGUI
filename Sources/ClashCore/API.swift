@@ -58,17 +58,22 @@ public struct CoreAPI {
     }
     public func nodes(providerOrder: [String] = []) async throws -> [Node] {
         struct Provider: Decodable { var proxies: [Proxy]? }
-        struct Proxy: Decodable { var name: String; var type: String? }
+        struct Proxy: Decodable { var name: String; var type: String?; var udp: Bool? }
         struct Response: Decodable { var providers: [String: Provider] }
         let response = try JSONDecoder().decode(Response.self, from: await request("/providers/proxies"))
         let order = providerOrder.isEmpty ? response.providers.keys.filter { $0.hasPrefix("subscription-") }.sorted() : providerOrder
         return order.flatMap { provider in
             (response.providers[provider]?.proxies ?? []).map { proxy in
                 var node = Node(provider: provider, name: proxy.name)
-                node.protocolName = proxy.type
+                node.protocolName = proxy.type; node.supportsUDP = proxy.udp
                 return node
             }
         }
+    }
+    public func udpSupport() async throws -> [String: Bool] {
+        struct Proxy: Decodable { var udp: Bool? }
+        struct Response: Decodable { var proxies: [String: Proxy] }
+        return try JSONDecoder().decode(Response.self, from: await request("/proxies")).proxies.compactMapValues(\.udp)
     }
     public func delay(_ node: Node, testURL: String = "https://www.gstatic.com/generate_204") async throws -> Int {
         let provider = node.provider.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""

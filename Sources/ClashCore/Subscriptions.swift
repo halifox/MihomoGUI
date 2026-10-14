@@ -8,7 +8,39 @@ public func providerFile(_ subscription: Subscription, directory: URL) -> URL {
 public func loadNodeCache(directory: URL) throws -> [Node] {
     let url = directory.appendingPathComponent("nodes.json")
     guard FileManager.default.fileExists(atPath: url.path) else { return [] }
-    return try JSONDecoder().decode([Node].self, from: Data(contentsOf: url))
+    var nodes = try JSONDecoder().decode([Node].self, from: Data(contentsOf: url))
+    for provider in Set(nodes.filter { $0.server == nil }.map(\.provider)) where provider.hasPrefix("subscription-") {
+        let id = String(provider.dropFirst("subscription-".count))
+        guard UUID(uuidString: id) != nil else { continue }
+        let source = directory.appendingPathComponent("providers/" + id + ".yaml")
+        if FileManager.default.fileExists(atPath: source.path) {
+            try populateNodeEndpoints(&nodes, provider: provider, file: source)
+        }
+    }
+    return nodes
+}
+
+// Only extract display metadata; never export subscription passwords into the summary cache.
+public func populateNodeEndpoints(_ nodes: inout [Node], provider: String, file: URL) throws {
+    struct Endpoint: Decodable { let name: String; let server: String?; let port: String? }
+    let output = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-endpoints-" + UUID().uuidString)
+    FileManager.default.createFile(atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600])
+    defer { try? FileManager.default.removeItem(at: output) }
+    let handle = try FileHandle(forWritingTo: output)
+    defer { try? handle.close() }
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
+    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], true); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); puts JSON.generate(rows.select { |p| p.is_a?(Hash) && p['name'].is_a?(String) }.map { |p| {name: p['name'], server: p['server']&.to_s, port: (p['port'] || p['ports'])&.to_s} })"#, file.path]
+    process.standardOutput = handle; process.standardError = FileHandle.nullDevice
+    try process.run(); process.waitUntilExit()
+    guard process.terminationStatus == 0 else { throw DeskError("无法读取订阅节点的服务器与端口") }
+    let endpoints = try JSONDecoder().decode([Endpoint].self, from: Data(contentsOf: output))
+    let indexed = Dictionary(endpoints.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
+    for index in nodes.indices where nodes[index].provider == provider {
+        if let endpoint = indexed[nodes[index].name] {
+            nodes[index].server = endpoint.server; nodes[index].port = endpoint.port
+        }
+    }
 }
 
 public func saveNodeCache(_ nodes: [Node], directory: URL) throws {
@@ -152,9 +184,10 @@ public func fetchSubscriptions(_ subscriptions: [Subscription], corePath: String
         try FileManager.default.moveItem(at: download, to: target)
         providers.append((subscription.provider, target))
     }
-    let nodes = try await withProviderCore(corePath: corePath, providers: providers) { api in
+    var nodes = try await withProviderCore(corePath: corePath, providers: providers) { api in
         try await api.nodes(providerOrder: subscriptions.map(\.provider))
     }
+    for provider in providers { try populateNodeEndpoints(&nodes, provider: provider.0, file: provider.1) }
     let cache = directory.appendingPathComponent("providers")
     try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     for (index, subscription) in subscriptions.enumerated() {
