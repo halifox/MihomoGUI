@@ -152,7 +152,7 @@ struct RuleEditorView: View {
                                     }.frame(width: 200)
                                     TextField(conditions[index].kind.hint, text: $conditions[index].value)
                                     if conditions.count > 1 && kind != .not && kind != .subRule {
-                                        Button { conditions.remove(at: index) } label: { Image(systemName: "minus") }
+                                        Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除条件")
                                     }
                                 }
                             }
