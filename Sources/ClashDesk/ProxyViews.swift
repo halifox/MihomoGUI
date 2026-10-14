@@ -234,7 +234,7 @@ struct ProxyEditorView: View {
             formRow("搜索字段") { TextField("搜索协议字段", text: $search).textFieldStyle(.roundedBorder) }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(schema.fields.filter { search.isEmpty || ($0.path + $0.description).localizedCaseInsensitiveContains(search) }) { field in
+                    ForEach(schema.fields.filter { search.isEmpty || ($0.path + configFieldTitle($0.path, document: schema.document) + $0.description).localizedCaseInsensitiveContains(search) }) { field in
                         VStack(spacing: 0) {
                             VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
                             Divider()

@@ -139,7 +139,7 @@ struct ValueMap: View {
             ForEach(value.object.keys.sorted(), id: \.self) { name in
                 GroupBox {
                     HStack {
-                        FieldKeyLabel(title: name, key: field.path + "." + name, description: "该键对应的配置值。可以按此项支持的格式填写单值或列表。")
+                        FieldKeyLabel(title: name, key: field.path + "." + name, description: "该键对应的配置值。可以按此项支持的格式填写单值或列表。", translate: false)
                         Spacer()
                         if field.elementKind == "list" {
                             Picker("值类型", selection: Binding(get: {
@@ -232,9 +232,16 @@ struct FieldKeyLabel: View {
     var description = ""
     var hint = ""
     var kind = ""
+    var translate = true
+    @Environment(\.formHelpDocument) private var context
+    var displayTitle: String {
+        guard translate else { return title }
+        let translated = configFieldTitle(key, document: context.isEmpty ? "general.md" : context)
+        return translated + (title.hasSuffix(" *") ? " *" : "")
+    }
     var body: some View {
         HStack(spacing: 6) {
-            Text(title).font(.system(.body, design: .monospaced)).textSelection(.enabled)
+            Text(displayTitle).textSelection(.enabled).help(key)
             FieldHelpButton(key: key, description: description, hint: hint, kind: kind)
             Spacer(minLength: 0)
         }
