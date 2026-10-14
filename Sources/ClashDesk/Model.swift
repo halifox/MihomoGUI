@@ -31,6 +31,7 @@ final class DeskModel: ObservableObject {
     @Published var error: String?
     @Published var message = "退出界面后，已启动的服务继续运行。"
     @Published var hours = 24
+    @Published var trafficGrouping: TrafficGrouping = .domain
     @Published var coreMemory: Int64?
     @Published var coreVersion: String?
     @Published var corePID: Int?
@@ -118,10 +119,10 @@ final class DeskModel: ObservableObject {
             connections = live; coreRunning = true
         } catch { coreRunning = false; connections = [] }
         do {
-            let folder = directory; let range = hours
+            let folder = directory; let range = hours; let grouping = trafficGrouping
             let result = try await Task.detached {
                 let database = try TrafficDatabase(url: folder.appendingPathComponent("traffic.sqlite"), readOnly: true)
-                return (try database.domainRows(since: Date().addingTimeInterval(-Double(range) * 3600)), try database.lastSample())
+                return (try database.groupedRows(since: Date().addingTimeInterval(-Double(range) * 3600), by: grouping), try database.lastSample())
             }.value
             traffic = result.0; lastSample = result.1; statisticsError = nil
         } catch { lastSample = nil; traffic = []; statisticsError = error.localizedDescription }
