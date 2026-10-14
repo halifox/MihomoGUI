@@ -129,6 +129,14 @@ final class CoreTests: XCTestCase {
 
     func testPlatformSpecificGeneralOptions() throws {
         let fields = documentSchemas.sections.flatMap(\.fields)
+        for section in documentSchemas.sections {
+            for field in section.fields {
+                let document = ["port", "socks-port", "mixed-port", "redir-port", "tproxy-port"].contains(field.path) ? "inbound/port.md" : section.document
+                let leaf = field.path.split(separator: ".").last!.lowercased()
+                let help = documentedFieldHelp[document + "|" + field.path] ?? documentedFieldHelp[document + "|" + leaf] ?? field.description
+                XCTAssertTrue(!help.isEmpty)
+            }
+        }
         XCTAssertTrue(try XCTUnwrap(fields.first { $0.path == "redir-port" }).unavailableReason == nil)
         for path in ["tproxy-port", "routing-mark", "external-controller-pipe", "external-controller-routing-mark",
                      "tun.auto-redirect", "tun.include-uid", "tun.include-package", "tun.include-mac-address",

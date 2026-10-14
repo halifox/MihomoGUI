@@ -268,6 +268,9 @@ struct FieldHelpButton: View {
     @Environment(\.formHelpDocument) private var context
     @State private var presented = false
     var document: String {
+        if ["port", "socks-port", "mixed-port", "redir-port", "tproxy-port"].contains(key), context.isEmpty || context == "general.md" {
+            return "inbound/port.md"
+        }
         if context == "settings", key == "unified-delay" { return "general.md" }
         if !context.isEmpty { return context }
         if key.hasPrefix("dns.") || key == "hosts" { return "dns/index.md" }
@@ -311,8 +314,8 @@ struct FieldHelpButton: View {
         }
         if document.hasPrefix("proxy-groups/"), let text = documentedFieldHelp["proxy-groups/index.md|" + leaf] { return text }
         if !description.isEmpty { return description }
-        let types = ["boolean": "开关选项，开启为 true，关闭为 false。", "integer": "填写整数值。", "number": "填写数值。", "list": "列表配置，使用加减按钮管理条目。", "map": "键值配置，每个名称对应一个值或列表。", "secret": "填写节点连接所需的认证信息。", "choice": "从支持的选项中选择一个值。", "object": "填写此项下的子配置。"]
-        return (types[kind] ?? "填写此配置项的值；具体格式请参阅对应配置文档。") + (hint.isEmpty || kind == "secret" ? "" : "\n\n示例：" + hint)
+        let url = "https://wiki.metacubex.one/config/" + document.replacingOccurrences(of: "index.md", with: "").replacingOccurrences(of: ".md", with: "/")
+        return "[查看对应配置文档](" + url + ")"
     }
     var body: some View {
         Button { presented.toggle() } label: {
@@ -320,6 +323,8 @@ struct FieldHelpButton: View {
         }.buttonStyle(.borderless).help("查看说明").accessibilityLabel(key + " 帮助")
             .popover(isPresented: $presented, arrowEdge: .top) {
                 VStack(alignment: .leading, spacing: 8) {
+                    Text(key).font(.system(.callout, design: .monospaced)).textSelection(.enabled)
+                    Divider()
                     if explanation.count > 260 {
                         ScrollView { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 200)
                     } else { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true) }

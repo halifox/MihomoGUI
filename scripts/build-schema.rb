@@ -111,7 +111,7 @@ sections=[]
    elsif android_fields.include?(field['path']) then 'Android'
    elsif field['path'] == 'external-controller-pipe' then 'Windows'
    end
-  field['unavailableReason'] = "仅支持 #{platform}，macOS 不可编辑" if platform
+  field['unavailableReason'] = "仅支持 #{platform}" if platform
  end
  sections << {'name'=>title,'key'=>prefix.empty? ? 'general' : prefix,'fields'=>fs,'document'=>file}
 end

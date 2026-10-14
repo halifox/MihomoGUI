@@ -173,7 +173,7 @@ let docSchemaJSON = #"""
           "hint": "\\\\.\\pipe\\mihomo",
           "description": "",
           "required": false,
-          "unavailableReason": "仅支持 Windows，macOS 不可编辑"
+          "unavailableReason": "仅支持 Windows"
         },
         {
           "path": "external-controller-tls",
@@ -190,7 +190,7 @@ let docSchemaJSON = #"""
           "hint": "0",
           "description": "",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "external-doh-server",
@@ -279,7 +279,7 @@ let docSchemaJSON = #"""
           "hint": "6666",
           "description": "",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tls.certificate",
@@ -428,7 +428,7 @@ let docSchemaJSON = #"""
           "hint": "7894",
           "description": "",
           "required": false,
-          "unavailableReason": "仅支持 Linux / Android，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux / Android"
         }
       ],
       "document": "general.md"
@@ -875,7 +875,7 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "仅支持 Linux，自动配置 iptables/nftables 以重定向 TCP 连接，需要auto-route已启用 在 Android 中： 仅转发本地 IPv4 连接。要通过热点或中继共享您的 VPN 连接，请使用 VPNHotspot。 在 Linux 中： 带有 auto-route 的 auto-redirect 现在可以在路由器上按预期工作，无需干预。",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.auto-detect-interface",
@@ -925,7 +925,7 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "启用通用分段卸载，仅支持 Linux",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.gso-max-size",
@@ -934,7 +934,7 @@ let docSchemaJSON = #"""
           "hint": "65536",
           "description": "数据块的最大长度",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.inet6-address",
@@ -960,7 +960,7 @@ let docSchemaJSON = #"""
           "hint": "2022",
           "description": "auto-route 生成的 iproute2 路由表索引，默认使用 2022",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.iproute2-rule-index",
@@ -969,7 +969,7 @@ let docSchemaJSON = #"""
           "hint": "9000",
           "description": "auto-route 生成的 iproute2 规则起始索引，默认使用 9000",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.endpoint-independent-nat",
@@ -987,7 +987,7 @@ let docSchemaJSON = #"""
           "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，不匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.route-exclude-address-set",
@@ -997,7 +997,7 @@ let docSchemaJSON = #"""
           "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.route-address",
@@ -1043,7 +1043,7 @@ let docSchemaJSON = #"""
           "description": "包含的用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量，默认不限制 UID 规则仅在 Linux 下被支持,并且需要 auto-route",
           "required": false,
           "elementKind": "integer",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.include-uid-range",
@@ -1053,7 +1053,7 @@ let docSchemaJSON = #"""
           "description": "包含的用户范围，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.exclude-uid",
@@ -1063,7 +1063,7 @@ let docSchemaJSON = #"""
           "description": "排除用户，使其避免被 Tun 路由流量",
           "required": false,
           "elementKind": "integer",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.exclude-uid-range",
@@ -1073,7 +1073,7 @@ let docSchemaJSON = #"""
           "description": "排除用户范围，使其避免被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.include-mac-address",
@@ -1083,7 +1083,7 @@ let docSchemaJSON = #"""
           "description": "按来源 MAC 地址限制被路由的局域网设备。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.exclude-mac-address",
@@ -1093,7 +1093,7 @@ let docSchemaJSON = #"""
           "description": "按来源 MAC 地址排除局域网设备的流量。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑"
+          "unavailableReason": "仅支持 Linux"
         },
         {
           "path": "tun.include-android-user",
@@ -1103,7 +1103,7 @@ let docSchemaJSON = #"""
           "description": "包含的 Android 用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量 Android 用户和应用规则仅在 Android 下被支持,并且需要 auto-route | 常用用户 | ID | | -------- | --- | | 机主 | 0 | | 手机分身 | 10 | | 应用多开 | 999 |",
           "required": false,
           "elementKind": "integer",
-          "unavailableReason": "仅支持 Android，macOS 不可编辑"
+          "unavailableReason": "仅支持 Android"
         },
         {
           "path": "tun.include-package",
@@ -1113,7 +1113,7 @@ let docSchemaJSON = #"""
           "description": "包含的 Android 应用包名，使其被 Tun 路由流量，未配置的应用包不会被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Android，macOS 不可编辑"
+          "unavailableReason": "仅支持 Android"
         },
         {
           "path": "tun.exclude-package",
@@ -1123,7 +1123,7 @@ let docSchemaJSON = #"""
           "description": "排除 Android 应用包名，使其避免被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Android，macOS 不可编辑"
+          "unavailableReason": "仅支持 Android"
         },
         {
           "path": "tun.inet4-route-address",
@@ -9472,7 +9472,7 @@ let docSchemaJSON = #"""
       "hint": "7894",
       "description": "",
       "required": false,
-      "unavailableReason": "仅支持 Linux / Android，macOS 不可编辑",
+      "unavailableReason": "仅支持 Linux / Android",
       "document": "general.md"
     },
     {
@@ -9956,7 +9956,7 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "启用通用分段卸载，仅支持 Linux",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -9966,7 +9966,7 @@ let docSchemaJSON = #"""
           "hint": "65536",
           "description": "数据块的最大长度",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10039,7 +10039,7 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "仅支持 Linux，自动配置 iptables/nftables 以重定向 TCP 连接，需要auto-route已启用 在 Android 中： 仅转发本地 IPv4 连接。要通过热点或中继共享您的 VPN 连接，请使用 VPNHotspot。 在 Linux 中： 带有 auto-route 的 auto-redirect 现在可以在路由器上按预期工作，无需干预。",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10077,7 +10077,7 @@ let docSchemaJSON = #"""
           "hint": "2022",
           "description": "auto-route 生成的 iproute2 路由表索引，默认使用 2022",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10087,7 +10087,7 @@ let docSchemaJSON = #"""
           "hint": "9000",
           "description": "auto-route 生成的 iproute2 规则起始索引，默认使用 9000",
           "required": false,
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10098,7 +10098,7 @@ let docSchemaJSON = #"""
           "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，不匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10109,7 +10109,7 @@ let docSchemaJSON = #"""
           "description": "将指定规则集中的目标 IP CIDR 规则添加到防火墙，匹配的流量将绕过路由 仅支持 Linux，且需要 nftables 以及auto-route 和 auto-redirect 已启用。 与任意配置中的 routing-mark 冲突",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10130,7 +10130,7 @@ let docSchemaJSON = #"""
           "description": "包含的用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量，默认不限制 UID 规则仅在 Linux 下被支持,并且需要 auto-route",
           "required": false,
           "elementKind": "integer",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10141,7 +10141,7 @@ let docSchemaJSON = #"""
           "description": "包含的用户范围，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10152,7 +10152,7 @@ let docSchemaJSON = #"""
           "description": "排除用户，使其避免被 Tun 路由流量",
           "required": false,
           "elementKind": "integer",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10163,7 +10163,7 @@ let docSchemaJSON = #"""
           "description": "排除用户范围，使其避免被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10174,7 +10174,7 @@ let docSchemaJSON = #"""
           "description": "按来源 MAC 地址限制被路由的局域网设备。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10185,7 +10185,7 @@ let docSchemaJSON = #"""
           "description": "按来源 MAC 地址排除局域网设备的流量。仅支持 Linux，且需要启用 auto-route 和 auto-redirect。",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+          "unavailableReason": "仅支持 Linux",
           "document": "inbound/tun.md"
         },
         {
@@ -10196,7 +10196,7 @@ let docSchemaJSON = #"""
           "description": "包含的 Android 用户，使其被 Tun 路由流量，未被配置的用户不会被 Tun 路由流量 Android 用户和应用规则仅在 Android 下被支持,并且需要 auto-route | 常用用户 | ID | | -------- | --- | | 机主 | 0 | | 手机分身 | 10 | | 应用多开 | 999 |",
           "required": false,
           "elementKind": "integer",
-          "unavailableReason": "仅支持 Android，macOS 不可编辑",
+          "unavailableReason": "仅支持 Android",
           "document": "inbound/tun.md"
         },
         {
@@ -10207,7 +10207,7 @@ let docSchemaJSON = #"""
           "description": "包含的 Android 应用包名，使其被 Tun 路由流量，未配置的应用包不会被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Android，macOS 不可编辑",
+          "unavailableReason": "仅支持 Android",
           "document": "inbound/tun.md"
         },
         {
@@ -10218,7 +10218,7 @@ let docSchemaJSON = #"""
           "description": "排除 Android 应用包名，使其避免被 Tun 路由流量",
           "required": false,
           "elementKind": "string",
-          "unavailableReason": "仅支持 Android，macOS 不可编辑",
+          "unavailableReason": "仅支持 Android",
           "document": "inbound/tun.md"
         },
         {
@@ -10759,7 +10759,7 @@ let docSchemaJSON = #"""
       "hint": "\\\\.\\pipe\\mihomo",
       "description": "",
       "required": false,
-      "unavailableReason": "仅支持 Windows，macOS 不可编辑",
+      "unavailableReason": "仅支持 Windows",
       "document": "general.md"
     },
     {
@@ -10769,7 +10769,7 @@ let docSchemaJSON = #"""
       "hint": "0",
       "description": "",
       "required": false,
-      "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+      "unavailableReason": "仅支持 Linux",
       "document": "general.md"
     },
     {
@@ -10788,7 +10788,7 @@ let docSchemaJSON = #"""
       "hint": "6666",
       "description": "",
       "required": false,
-      "unavailableReason": "仅支持 Linux，macOS 不可编辑",
+      "unavailableReason": "仅支持 Linux",
       "document": "general.md"
     },
     {
