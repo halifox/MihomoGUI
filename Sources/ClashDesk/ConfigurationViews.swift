@@ -37,7 +37,7 @@ struct GeneralConfigurationView: View {
                                 allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: fieldEnabled(field.path))
                         .environment(\.formHelpDocument, document(for: field))
                 } else {
-                    GroupBox(key) {
+                    GroupBox {
                         configurationRows(prefix: path).padding(4)
                     }
                 }
