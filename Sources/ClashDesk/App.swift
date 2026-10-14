@@ -111,12 +111,16 @@ struct ConfigPreviewView: View {
                 Spacer()
                 Text(preview.action == .preview ? "YAML · 当前设置生成的配置" : "YAML · 只读预览 · 实际使用此份配置").font(.caption).foregroundStyle(.secondary)
             }
-            ScrollView([.vertical, .horizontal]) {
-                Text(String(decoding: preview.config, as: UTF8.self))
-                    .font(.system(size: 12, design: .monospaced))
-                    .textSelection(.enabled)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(12)
+            GeometryReader { geometry in
+                ScrollView([.vertical, .horizontal]) {
+                    Text(String(decoding: preview.config, as: UTF8.self))
+                        .font(.system(size: 12, design: .monospaced))
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: true, vertical: true)
+                        .textSelection(.enabled)
+                        .padding(12)
+                        .frame(minWidth: geometry.size.width, alignment: .topLeading)
+                }
             }.background(Color(nsColor: .textBackgroundColor)).border(Color.secondary.opacity(0.3))
             HStack {
                 Button(preview.action == .preview ? "关闭" : "取消") { model.configPreview = nil }.keyboardShortcut(.cancelAction)
@@ -126,7 +130,7 @@ struct ConfigPreviewView: View {
                         .buttonStyle(.borderedProminent).disabled(model.busy)
                 }
             }
-        }.padding(24).frame(width: 900, height: 650)
+        }.padding(20).frame(width: 760, height: 520)
     }
 }
 
