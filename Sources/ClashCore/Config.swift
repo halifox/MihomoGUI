@@ -115,6 +115,7 @@ public struct RouteRule: Codable, Identifiable {
     // nil means DIRECT. Default routing is represented by the final MATCH rule only.
     public var node: Node?
     public var builtin: String?
+    public var proxyGroup: String?
     public var noResolve: Bool?
     public var sourceIP: Bool?
     public var subRuleTarget: String?
@@ -136,6 +137,8 @@ public struct Settings: Codable {
     public var tun = true
     public var options: [String: ConfigValue]?
     public var manualProxies: [ManualProxy]?
+    public var proxyGroups: [ProxyGroup]?
+    public var defaultProxyGroup: String?
     public var defaultPolicy: String?
     public var ruleOrderMigrated: Bool? = true
     public init() {}
@@ -178,6 +181,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             throw DeskError("订阅地址必须是有效 HTTPS URL")
         }
     }
+    try validateProxyGroups(settings)
     let manual = settings.manualProxies ?? []
     let manualNames = manual.map(\.name)
     guard Set(manualNames).count == manualNames.count else { throw DeskError("手动代理名称不能重复") }
@@ -218,7 +222,22 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         }
         groups.append(["name": name, "type": "select", "proxies": [aliases[node] ?? "REJECT"]])
     }
-    if let policy = settings.defaultPolicy {
+    func resolve(_ target: String) -> String {
+        if let node = referencedNode(target) { return node.provider == "manual" ? node.name : aliases[node] ?? "REJECT" }
+        if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
+        return String(target.dropFirst(8))
+    }
+    for group in settings.proxyGroups ?? [] {
+        var object = group.fields.filter { $0.value != .string("") }.mapValues(\.native)
+        object["name"] = group.name; object["type"] = group.type
+        object["proxies"] = group.targets.map(resolve)
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = resolve(selected) }
+        if object["empty-fallback"] == nil { object["empty-fallback"] = "REJECT" }
+        groups.append(object)
+    }
+    if let name = settings.defaultProxyGroup {
+        groups.append(["name": defaultGroup, "type": "select", "proxies": [name]])
+    } else if let policy = settings.defaultPolicy {
         guard ["DIRECT", "REJECT", "REJECT-DROP"].contains(policy) else { throw DeskError("默认出口策略无效") }
         groups.append(["name": defaultGroup, "type": "select", "proxies": [policy]])
     } else if settings.defaultDirect == true {
@@ -238,7 +257,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             rules.append("SUB-RULE,\(rule.value),\(rule.subRuleTarget!)")
             continue
         }
-        let target = rule.node.flatMap { nodeGroups[$0] } ?? rule.builtin ?? "DIRECT"
+        let target = rule.proxyGroup ?? rule.node.flatMap { nodeGroups[$0] } ?? rule.builtin ?? "DIRECT"
         var line = "\(rule.kind.rawValue),\(rule.value),\(target)"
         if rule.noResolve == true { line += ",no-resolve" }
         if rule.sourceIP == true { line += ",src" }
@@ -273,6 +292,18 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         // An empty visual input omits an optional field, even when our defaults contain it.
         let omitted = value == .string("") && path != "external-controller" && path != "secret"
         setConfigPath(path, value: omitted ? nil : value.native, in: &config)
+    }
+    if var resources = config["rule-providers"] as? [String: [String: Any]] {
+        for (index, name) in resources.keys.sorted().enumerated() {
+            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = resolve(target) }
+            if resources[name]?["type"] as? String == "file" {
+                let format = resources[name]?["format"] as? String ?? "yaml"
+                resources[name]?["path"] = "./rules/set-\(index)." + format
+            } else if resources[name]?["type"] as? String == "http" {
+                resources[name]?.removeValue(forKey: "path")
+            }
+        }
+        config["rule-providers"] = resources
     }
     config.removeValue(forKey: "proxy-providers")
     try validateFieldValues(settings.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))

@@ -143,6 +143,28 @@ struct Integration {
         var sub = RouteRule(kind: .subRule, value: "(NETWORK,udp)", node: nil); sub.subRuleTarget = "nested"
         manualSettings.rules = [cidr, RouteRule(kind: .and, value: "((DOMAIN,example.net),(NETWORK,tcp))", node: manualHTTP.node),
                                 RouteRule(kind: .ruleSet, value: "fixture", node: manualHTTP.node), sub]
+        let member = "node:" + manualHTTP.node.id
+        let check: [String: ConfigValue] = ["url": .string("http://127.0.0.1:\(proxyPort)/generate_204"), "interval": .integer(0), "lazy": .boolean(true)]
+        manualSettings.proxyGroups = [
+            ProxyGroup(name: "Choose", targets: [member, "builtin:REJECT"], fields: ["default-selected": .string(member)]),
+            ProxyGroup(name: "Auto", type: "url-test", targets: [member], fields: check),
+            ProxyGroup(name: "Backup", type: "fallback", targets: [member], fields: check),
+            ProxyGroup(name: "Balance", type: "load-balance", targets: ["group:Choose"], fields: check.merging(["strategy": .string("round-robin")]) { _, new in new })
+        ]
+        manualSettings.defaultProxyGroup = "Choose"
+        manualSettings.rules[2].proxyGroup = "Balance"
+        let ruleDirectory = directory.appendingPathComponent("rules")
+        try FileManager.default.createDirectory(at: ruleDirectory, withIntermediateDirectories: true)
+        let fileRules = directory.appendingPathComponent("original-file.yaml")
+        try "payload:\n  - '+.file.fixture.test'\n".write(to: fileRules, atomically: true, encoding: .utf8)
+        var resources = manualSettings.options?["rule-providers"]?.object ?? [:]
+        resources["fileFixture"] = .object(["type": .string("file"), "behavior": .string("domain"), "format": .string("yaml"), "path": .string(fileRules.path)])
+        resources["httpFixture"] = .object(["type": .string("http"), "behavior": .string("domain"), "format": .string("yaml"), "url": .string("http://127.0.0.1:\(proxyPort)/rules.yaml"), "interval": .integer(600), "proxy": .string("builtin:DIRECT")])
+        manualSettings.options?["rule-providers"] = .object(resources)
+        try FileManager.default.copyItem(at: fileRules, to: ruleDirectory.appendingPathComponent("set-0.yaml"))
+        var fileRule = RouteRule(kind: .ruleSet, value: "fileFixture", node: nil); fileRule.proxyGroup = "Backup"
+        var httpRule = RouteRule(kind: .ruleSet, value: "httpFixture", node: nil); httpRule.proxyGroup = "Auto"
+        manualSettings.rules += [fileRule, httpRule]
         let manualYAML = try generateConfig(manualSettings)
         try await api.reload(manualYAML)
         let manualAPI = try CoreAPI(settings: manualSettings)
@@ -151,7 +173,13 @@ struct Integration {
         guard manualInfo["type"] as? String == "Http" else { throw DeskError("手动 HTTP 代理没有被内核加载") }
         let importedManualRules = try JSONSerialization.jsonObject(with: await manualAPI.request("/rules")) as! [String: Any]
         let manualRules = importedManualRules["rules"] as! [[String: Any]]
-        guard manualRules.first?["payload"] as? String == "192.0.2.0/24", manualRules.count == 5 else { throw DeskError("CIDR、逻辑规则或规则集合没有正确加载") }
+        guard manualRules.first?["payload"] as? String == "192.0.2.0/24", manualRules.count == 7 else { throw DeskError("CIDR、逻辑规则或规则集合没有正确加载") }
+        let groupInfo = try JSONSerialization.jsonObject(with: await manualAPI.request("/proxies/Choose")) as! [String: Any]
+        guard groupInfo["now"] as? String == manualHTTP.name else { throw DeskError("代理组默认成员没有加载") }
+        for name in ["Auto", "Backup", "Balance"] { _ = try await manualAPI.request("/proxies/" + name) }
+        let ruleProviders = try JSONSerialization.jsonObject(with: await manualAPI.request("/providers/rules")) as! [String: Any]
+        guard (ruleProviders["providers"] as? [String: Any])?.count == 3 else { throw DeskError("三种规则集合没有加载") }
+        print("PASS: four proxy group types and HTTP/file/inline rule providers")
         let manualDelay = try await withProviderCore(corePath: core, providers: [], proxies: [try manualHTTP.configuration()]) { api in
             try await api.delay(manualHTTP.node, testURL: "http://127.0.0.1:\(proxyPort)/generate_204", timeoutMilliseconds: 25000)
         }

@@ -154,6 +154,22 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(configPath("realm-opts.enable", in: proxies[0]) as? Bool, false)
         let groups = object["proxy-groups"] as! [[String: Any]]
         XCTAssertEqual(groups[0]["proxies"] as? [String], [proxy.name])
+        let firstGroup = ProxyGroup(name: "Choose", targets: ["node:" + proxy.node.id], fields: ["default-selected": .string("node:" + proxy.node.id)])
+        let balance = ProxyGroup(name: "Balance", type: "load-balance", targets: ["group:Choose"], fields: ["strategy": .string("round-robin")])
+        settings.proxyGroups = [firstGroup, balance]; settings.defaultProxyGroup = "Balance"
+        let grouped = try configurationObject(settings)
+        let customGroups = try XCTUnwrap(grouped["proxy-groups"] as? [[String: Any]])
+        XCTAssertTrue(customGroups.contains { $0["name"] as? String == "Choose" && $0["default-selected"] as? String == proxy.name })
+        XCTAssertEqual(customGroups.last?["proxies"] as? [String], ["Balance"])
+        settings.proxyGroups?[0].targets = ["group:Balance"]
+        XCTAssertThrowsError(try generateConfig(settings))
+        settings.proxyGroups = [firstGroup, balance]
+        settings.options?["rule-providers"] = .object(["TestRules": .object(["type": .string("inline"), "behavior": .string("domain"), "payload": .array([.string("+.example.org")])])])
+        var groupRule = RouteRule(kind: .ruleSet, value: "TestRules", node: nil); groupRule.proxyGroup = "Choose"
+        settings.rules = [groupRule]
+        XCTAssertEqual((try configurationObject(settings)["rules"] as? [String])?.first, "RULE-SET,TestRules,Choose")
+        settings.proxyGroups = []; XCTAssertThrowsError(try generateConfig(settings))
+        settings.proxyGroups = nil; settings.defaultProxyGroup = nil; settings.rules = []; settings.options?.removeValue(forKey: "rule-providers")
         let usage = SubscriptionUsage(header: "upload=100; download=200; total=1000; expire=1800000000")
         XCTAssertEqual(usage.used, 300)
         XCTAssertEqual(usage.remaining, 700)

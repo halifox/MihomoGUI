@@ -86,6 +86,19 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     for name in geoNames {
         try FileManager.default.copyItem(at: geodata.appendingPathComponent(name), to: staging.appendingPathComponent(name))
     }
+    let stagedRules = staging.appendingPathComponent("rules")
+    try FileManager.default.createDirectory(at: stagedRules, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    var ruleFiles: [String] = []
+    let resources = settings.options?["rule-providers"]?.object ?? [:]
+    for (index, name) in resources.keys.sorted().enumerated() {
+        let fields = resources[name]?.object ?? [:]
+        guard fields["type"] == .string("file") else { continue }
+        let source = URL(fileURLWithPath: fields["path"]?.text ?? "")
+        let filename = "set-\(index)." + (fields["format"]?.text ?? "yaml")
+        try FileManager.default.copyItem(at: source, to: stagedRules.appendingPathComponent(filename))
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stagedRules.appendingPathComponent(filename).path)
+        ruleFiles.append(filename)
+    }
     _ = try await runCommand(binary.path, ["-v"])
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
@@ -96,7 +109,12 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
         "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null", "Umask": 0o077
     ], to: plist)
     let destinationPlist = "/Library/LaunchDaemons/" + coreLabel + ".plist"
-    var seedCommands: [String] = []
+    var seedCommands: [String] = ["/bin/test ! -L \(shellQuote(rootDirectory + "/rules"))", "/bin/mkdir -p \(shellQuote(rootDirectory + "/rules"))", "/bin/chmod 700 \(shellQuote(rootDirectory + "/rules"))"]
+    for name in ruleFiles {
+        let target = rootDirectory + "/rules/" + name
+        seedCommands.append("/bin/test ! -L \(shellQuote(target))")
+        seedCommands.append("/usr/bin/install -o root -g wheel -m 600 \(shellQuote(stagedRules.appendingPathComponent(name).path)) \(shellQuote(target))")
+    }
     for name in geoNames {
         let target = rootDirectory + "/" + name
         seedCommands.append("/bin/test ! -L \(shellQuote(target))")

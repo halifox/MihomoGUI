@@ -51,7 +51,7 @@ final class DeskModel: ObservableObject {
             }
             if settings.subscriptionProxies == nil { try cacheSubscriptionProxies(&settings, directory: directory) }
             nodes = try loadNodeCache(directory: directory)
-            if settings.defaultNode == nil, settings.defaultDirect != true, settings.defaultPolicy == nil { settings.defaultNode = allNodes.first }
+            if settings.defaultNode == nil, settings.defaultDirect != true, settings.defaultPolicy == nil, settings.defaultProxyGroup == nil { settings.defaultNode = allNodes.first }
             // Persist the API secret before starting any service.
             try saveSettings(settings, to: directory)
             if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime.json").path) { try saveRuntimeSettings(runtimeSettings, to: directory) }
@@ -145,7 +145,7 @@ final class DeskModel: ObservableObject {
         try cacheSubscriptionProxies(&updated, directory: directory)
         let updatedAt = Date()
         for index in updated.subscriptions.indices { updated.subscriptions[index].lastUpdatedAt = updatedAt }
-        if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil { updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first }
+        if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil, updated.defaultProxyGroup == nil { updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first }
         var merged = imported
         let previous = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
         for index in merged.indices {
@@ -182,7 +182,7 @@ final class DeskModel: ObservableObject {
         if let index = updated.subscriptions.firstIndex(where: { $0.id == subscription.id }) {
             updated.subscriptions[index] = subscription
         } else { updated.subscriptions.append(subscription) }
-        if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil {
+        if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil, updated.defaultProxyGroup == nil {
             updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first
         }
         let merged = updated.subscriptions.flatMap { source in
@@ -301,7 +301,8 @@ final class DeskModel: ObservableObject {
             let controllerChanged = self.activeController != newAddress || currentEndpoint.secret != newEndpoint.secret
             // Listening address and authentication belong to the controller service lifecycle.
             // A confirmed restart guarantees the UI and collector switch to a working new endpoint.
-            let resolvedAction: ConfigAction = action == .reload && controllerChanged ? .start : action
+            let hasLocalRules = snapshot.options?["rule-providers"]?.object.values.contains { $0.object["type"] == .string("file") } ?? false
+            let resolvedAction: ConfigAction = action == .reload && (controllerChanged || hasLocalRules) ? .start : action
             self.configPreview = ConfigPreview(settings: snapshot, config: try generateConfig(snapshot), action: resolvedAction)
         }
     }
@@ -351,8 +352,11 @@ final class DeskModel: ObservableObject {
         do { try save(); message = "规则已删除，请应用配置。" } catch { self.error = error.localizedDescription }
     }
     func deleteSubscription(_ subscription: Subscription) {
-        if settings.defaultNode?.provider == subscription.provider || settings.rules.contains(where: { $0.node?.provider == subscription.provider }) {
+        if settings.defaultNode?.provider == subscription.provider || settings.rules.contains(where: { $0.node?.provider == subscription.provider }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains(where: { referencedNode($0)?.provider == subscription.provider }) }) {
             error = "该订阅仍被规则引用，请先调整相关出口。"; return
+        }
+        if settings.options?["rule-providers"]?.object.values.contains(where: { referencedNode($0.object["proxy"]?.text ?? "")?.provider == subscription.provider }) == true {
+            error = "该订阅节点仍用于规则集合下载，请先修改下载出口。"; return
         }
         settings.subscriptions.removeAll { $0.id == subscription.id }
         settings.subscriptionProxies?.removeValue(forKey: subscription.id)
@@ -386,26 +390,43 @@ final class DeskModel: ObservableObject {
             proxies[index] = proxy
             for index in candidate.rules.indices where candidate.rules[index].node?.provider == "manual" && candidate.rules[index].node?.name == old { candidate.rules[index].node = proxy.node }
             if candidate.defaultNode?.provider == "manual", candidate.defaultNode?.name == old { candidate.defaultNode = proxy.node }
+            var providers = candidate.options?["rule-providers"]?.object ?? [:]
+            for name in providers.keys {
+                var fields = providers[name]?.object ?? [:]
+                if fields["proxy"] == .string("node:manual/" + old) || fields["proxy"] == .string(old) { fields["proxy"] = .string("node:" + proxy.node.id) }
+                providers[name] = .object(fields)
+            }
+            if !providers.isEmpty { candidate.options?["rule-providers"] = .object(providers) }
+
+            for index in candidate.proxyGroups?.indices ?? 0..<0 {
+                let targets = candidate.proxyGroups?[index].targets ?? []
+                candidate.proxyGroups?[index].targets = targets.map { $0 == "node:manual/" + old ? "node:" + proxy.node.id : $0 }
+                if candidate.proxyGroups?[index].fields["default-selected"] == .string("node:manual/" + old) { candidate.proxyGroups?[index].fields["default-selected"] = .string("node:" + proxy.node.id) }
+            }
         } else { proxies.append(proxy) }
         candidate.manualProxies = proxies
-        if candidate.defaultNode == nil, candidate.defaultDirect != true, candidate.defaultPolicy == nil { candidate.defaultNode = proxies.first?.node ?? nodes.first }
+        if candidate.defaultNode == nil, candidate.defaultDirect != true, candidate.defaultPolicy == nil, candidate.defaultProxyGroup == nil { candidate.defaultNode = proxies.first?.node ?? nodes.first }
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
         message = "出站代理已保存，请预览并应用配置。"
     }
     func deleteManualProxy(_ proxy: ManualProxy) {
-        if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) {
+        if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
             error = "该代理仍被路由规则或 MATCH 使用，请先调整出口。"; return
+        }
+        if settings.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("node:" + proxy.node.id) || $0.object["proxy"] == .string(proxy.name) }) == true {
+            error = "该代理仍用于规则集合下载，请先修改下载出口。"; return
         }
         settings.manualProxies?.removeAll { $0.id == proxy.id }
         do { try save(); message = "代理已删除，请应用配置。" } catch { self.error = error.localizedDescription }
     }
-    func targetID(node: Node?, builtin: String?) -> String { node.map { "node:" + $0.id } ?? "builtin:" + (builtin ?? "DIRECT") }
+    func targetID(node: Node?, builtin: String?, group: String? = nil) -> String { group.map { "group:" + $0 } ?? node.map { "node:" + $0.id } ?? "builtin:" + (builtin ?? "DIRECT") }
     func setDefaultTarget(_ target: String) {
         do {
             var candidate = settings
             let selected = allNodes.first { "node:" + $0.id == target }
                 ?? (candidate.defaultNode.map { "node:" + $0.id == target } == true ? candidate.defaultNode : nil)
             if target.hasPrefix("node:"), selected == nil { throw DeskError("所选代理已失效，请重新选择出口") }
+            candidate.defaultProxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
             candidate.defaultNode = selected
             candidate.defaultPolicy = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
             candidate.defaultDirect = candidate.defaultPolicy == "DIRECT"
@@ -425,6 +446,7 @@ final class DeskModel: ObservableObject {
             changed.node = allNodes.first { "node:" + $0.id == target }
                 ?? (rule.node.map { "node:" + $0.id == target } == true ? rule.node : nil)
             if target.hasPrefix("node:"), changed.node == nil { throw DeskError("所选代理已失效，请重新选择出口") }
+            changed.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
             changed.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
             try saveRule(changed)
         } catch { self.error = error.localizedDescription }
@@ -433,5 +455,93 @@ final class DeskModel: ObservableObject {
         guard let index = settings.rules.firstIndex(where: { $0.id == id }), settings.rules.indices.contains(index + offset) else { return }
         settings.rules.swapAt(index, index + offset)
         do { try save() } catch { self.error = error.localizedDescription }
+    }
+}
+
+extension DeskModel {
+    func saveProxyGroup(_ group: ProxyGroup) throws {
+        var candidate = settings
+        var groups = candidate.proxyGroups ?? []
+        if let index = groups.firstIndex(where: { $0.id == group.id }) {
+            let old = groups[index].name
+            guard !groups.contains(where: { $0.id != group.id && $0.name == group.name }) else { throw DeskError("代理组名称已存在") }
+            groups[index] = group
+            for index in groups.indices {
+                groups[index].targets = groups[index].targets.map { $0 == "group:" + old ? "group:" + group.name : $0 }
+                if groups[index].fields["default-selected"] == .string("group:" + old) { groups[index].fields["default-selected"] = .string("group:" + group.name) }
+            }
+            for index in candidate.rules.indices where candidate.rules[index].proxyGroup == old { candidate.rules[index].proxyGroup = group.name }
+            if candidate.defaultProxyGroup == old { candidate.defaultProxyGroup = group.name }
+            for index in candidate.manualProxies?.indices ?? 0..<0 {
+                if candidate.manualProxies?[index].fields["dialer-proxy"] == .string(old) { candidate.manualProxies?[index].fields["dialer-proxy"] = .string(group.name) }
+            }
+            var providers = candidate.options?["rule-providers"]?.object ?? [:]
+            for name in providers.keys {
+                var fields = providers[name]?.object ?? [:]
+                if fields["proxy"] == .string("group:" + old) || fields["proxy"] == .string(old) { fields["proxy"] = .string("group:" + group.name) }
+                providers[name] = .object(fields)
+            }
+            candidate.options?["rule-providers"] = .object(providers)
+            rewriteSubRules(&candidate, old: old, new: group.name, provider: false)
+        } else { groups.append(group) }
+        candidate.proxyGroups = groups
+        _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+    }
+    func saveRuleProvider(name: String, type: String, fields: [String: ConfigValue], oldName: String?) throws {
+        guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集合名称无效") }
+        var candidate = settings
+        var providers = candidate.options?["rule-providers"]?.object ?? [:]
+        guard name == oldName || providers[name] == nil else { throw DeskError("规则集合名称已存在") }
+        var fields = fields; fields["type"] = .string(type)
+        try validateFieldValues(fields, schema: ruleProviderEditorFields(type))
+        if type == "file" {
+            guard FileManager.default.isReadableFile(atPath: fields["path"]?.text ?? "") else { throw DeskError("请选择可读取的本地规则文件") }
+        }
+        if let oldName, oldName != name {
+            providers.removeValue(forKey: oldName)
+            for index in candidate.rules.indices {
+                if candidate.rules[index].kind == .ruleSet, candidate.rules[index].value == oldName { candidate.rules[index].value = name }
+                else { candidate.rules[index].value = replacingProvider(candidate.rules[index].value, old: oldName, new: name) }
+            }
+            rewriteSubRules(&candidate, old: oldName, new: name, provider: true)
+        }
+        providers[name] = .object(fields)
+        var options = candidate.options ?? [:]; options["rule-providers"] = .object(providers); candidate.options = options
+        _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+    }
+    func deleteResource(_ row: ResourceRow, groups: Bool) {
+        do {
+            var candidate = settings
+            let subRules = candidate.options?["sub-rules"]?.object.values.flatMap(\.array).map(\.text) ?? []
+            if groups {
+                guard !(candidate.manualProxies ?? []).contains(where: { $0.fields["dialer-proxy"] == .string(row.name) }),
+                      candidate.defaultProxyGroup != row.name,
+                      !candidate.rules.contains(where: { $0.proxyGroup == row.name }),
+                      !(candidate.proxyGroups ?? []).contains(where: { $0.id != row.id && $0.targets.contains("group:" + row.name) }),
+                      !(candidate.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("group:" + row.name) || $0.object["proxy"] == .string(row.name) }) ?? false),
+                      !subRules.contains(where: { $0.hasSuffix("," + row.name) }) else { throw DeskError("代理组仍被引用，请先调整引用") }
+                candidate.proxyGroups?.removeAll { $0.id == row.id }
+            } else {
+                guard !candidate.rules.contains(where: { ($0.kind == .ruleSet && $0.value == row.name) || replacingProvider($0.value, old: row.name, new: "__check__") != $0.value }),
+                      !subRules.contains(where: { replacingProvider($0, old: row.name, new: "__check__") != $0 }) else { throw DeskError("规则集合仍被规则引用，请先调整规则") }
+                var providers = candidate.options?["rule-providers"]?.object ?? [:]; providers.removeValue(forKey: row.name)
+                candidate.options?["rule-providers"] = .object(providers)
+            }
+            _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+        } catch { self.error = error.localizedDescription }
+    }
+    private func replacingProvider(_ value: String, old: String, new: String) -> String {
+        value.replacingOccurrences(of: "RULE-SET," + old + ",", with: "RULE-SET," + new + ",")
+            .replacingOccurrences(of: "RULE-SET," + old + ")", with: "RULE-SET," + new + ")")
+    }
+    private func rewriteSubRules(_ candidate: inout ClashCore.Settings, old: String, new: String, provider: Bool) {
+        var subRules = candidate.options?["sub-rules"]?.object ?? [:]
+        for name in subRules.keys {
+            subRules[name] = .array((subRules[name]?.array ?? []).map { entry in
+                let text = entry.text
+                return .string(provider ? replacingProvider(text, old: old, new: new) : text.hasSuffix("," + old) ? String(text.dropLast(old.count)) + new : text)
+            })
+        }
+        if !subRules.isEmpty { candidate.options?["sub-rules"] = .object(subRules) }
     }
 }

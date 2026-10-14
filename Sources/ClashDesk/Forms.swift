@@ -7,22 +7,22 @@ struct VisualField: View {
     var allowUnset = true
     var compact = false
     var body: some View {
-        if compact { compactRow }
+        if compact { compactRow.controlSize(.small) }
         else { legacyRow }
     }
     var compactRow: some View {
-        HStack(alignment: field.kind == "list" || field.kind == "map" || field.kind == "object" ? .top : .center, spacing: 20) {
-            Text(field.title).font(.system(.body, design: .monospaced))
-                .frame(width: 230, alignment: .leading).textSelection(.enabled)
-                .help(field.description)
+        HStack(alignment: field.kind == "list" || field.kind == "map" || field.kind == "object" ? .top : .center, spacing: 12) {
+            Text(field.title + (field.required ? " *" : "")).font(.system(.body, design: .monospaced))
+                .frame(width: 200, alignment: .leading).textSelection(.enabled)
+                .help(field.description.isEmpty ? field.path : field.path + "\n" + field.description)
             VisualValue(field: field, value: Binding(get: {
                 value ?? (field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
             }, set: { value = $0 }), compact: true)
             Spacer(minLength: 0)
-        }.padding(.vertical, 10)
+        }.padding(.vertical, 3)
     }
     var legacyRow: some View {
-        VStack(alignment: .leading, spacing: 7) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text(field.title).font(.system(.body, design: .monospaced)).textSelection(.enabled)
                 if field.required { Text("必填").font(.caption).foregroundStyle(.orange) }
@@ -37,7 +37,7 @@ struct VisualField: View {
             if !field.description.isEmpty {
                 Text(field.description).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-        }.padding(.vertical, 6)
+        }.padding(.vertical, 3)
     }
 }
 
@@ -100,7 +100,7 @@ struct ValueList: View {
         EditorField("item", kind: field.elementKind ?? "string", children: field.children)
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             ForEach(value.array.indices, id: \.self) { index in
                 HStack(alignment: .top) {
                     if item.kind == "object" {
@@ -134,7 +134,7 @@ struct ValueMap: View {
     @State private var key = ""
     var item: EditorField { EditorField("value", kind: field.elementKind ?? "string", children: field.children) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 4) {
             ForEach(value.object.keys.sorted(), id: \.self) { name in
                 GroupBox {
                     HStack {
@@ -185,7 +185,7 @@ struct CustomFieldEditor: View {
     @State private var path = ""
     @State private var kind = "string"
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 6) {
             HStack {
                 TextField("字段路径，例如 realm-opts.handshake-timeout", text: $path)
                 Picker("类型", selection: $kind) {

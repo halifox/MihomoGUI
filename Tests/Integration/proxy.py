@@ -16,6 +16,13 @@ class Proxy(http.server.BaseHTTPRequestHandler):
         self.close_connection = True
 
     def do_GET(self):
+        if "/rules.yaml" in self.path:
+            body = b"payload:\n  - '+.http.fixture.test'\n"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         time.sleep(2 if "/slow" in self.path else 0.03)
         try:
             self.send_response(204)
