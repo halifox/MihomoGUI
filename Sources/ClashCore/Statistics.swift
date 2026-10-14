@@ -1,12 +1,30 @@
 import Foundation
 import CSQLite
 
+public enum TrafficGrouping: String, CaseIterable, Identifiable {
+    case domain, process, ip, port
+    public var id: String { rawValue }
+    public var title: String {
+        switch self { case .domain: return "域名 / IP"; case .process: return "进程"; case .ip: return "目标 IP"; case .port: return "目标端口" }
+    }
+    public func key(for connection: Connection) -> String {
+        switch self {
+        case .domain: return connection.domain
+        case .process: return connection.process
+        case .ip: return connection.metadata.destinationIP.flatMap { $0.isEmpty ? nil : $0 } ?? "未知 IP"
+        case .port: return connection.metadata.destinationPort.flatMap { $0.isEmpty ? nil : $0 } ?? "未知端口"
+        }
+    }
+}
+
 public struct TrafficDelta {
     public var domain: String
     public var process: String
     public var outbound: String
     public var upload: Int64
     public var download: Int64
+    public var ip: String = "未知 IP"
+    public var port: String = "未知端口"
 }
 
 public struct TrafficTracker {
@@ -25,7 +43,8 @@ public struct TrafficTracker {
             next[connection.id] = (connection.upload, connection.download)
             if up > 0 || down > 0 {
                 deltas.append(TrafficDelta(domain: connection.domain, process: connection.process,
-                                          outbound: connection.outbound, upload: up, download: down))
+                                          outbound: connection.outbound, upload: up, download: down,
+                                          ip: TrafficGrouping.ip.key(for: connection), port: TrafficGrouping.port.key(for: connection)))
             }
         }
         previous = next
@@ -76,6 +95,27 @@ public final class TrafficDatabase {
                 ) WITHOUT ROWID;
                 CREATE TABLE IF NOT EXISTS collector (id INTEGER PRIMARY KEY CHECK(id=1), sampled_at INTEGER NOT NULL);
                 """)
+                let columns = try prepare("PRAGMA table_info(traffic)")
+                var hasIP = false
+                while sqlite3_step(columns) == SQLITE_ROW {
+                    if String(cString: sqlite3_column_text(columns, 1)) == "ip" { hasIP = true }
+                }
+                sqlite3_finalize(columns)
+                if !hasIP {
+                    try execute("""
+                    BEGIN IMMEDIATE;
+                    ALTER TABLE traffic RENAME TO traffic_old;
+                    CREATE TABLE traffic (
+                        bucket INTEGER NOT NULL, domain TEXT NOT NULL, process TEXT NOT NULL,
+                        outbound TEXT NOT NULL, upload INTEGER NOT NULL, download INTEGER NOT NULL,
+                        ip TEXT NOT NULL, port TEXT NOT NULL,
+                        PRIMARY KEY (bucket,domain,process,outbound,ip,port)
+                    ) WITHOUT ROWID;
+                    INSERT INTO traffic SELECT *, '未知 IP', '未知端口' FROM traffic_old;
+                    DROP TABLE traffic_old;
+                    COMMIT;
+                    """)
+                }
             }
         } catch { sqlite3_close(db); db = nil; throw error }
     }
@@ -93,7 +133,7 @@ public final class TrafficDatabase {
         let timestamp = Int64(date.timeIntervalSince1970)
         let bucket = timestamp / 3600 * 3600
         let statement = try prepare("""
-        INSERT INTO traffic VALUES(?,?,?,?,?,?) ON CONFLICT(bucket,domain,process,outbound)
+        INSERT INTO traffic VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(bucket,domain,process,outbound,ip,port)
         DO UPDATE SET upload=upload+excluded.upload, download=download+excluded.download
         """)
         defer { sqlite3_finalize(statement) }
@@ -106,6 +146,8 @@ public final class TrafficDatabase {
                 sqlite3_bind_text(statement, 4, delta.outbound, -1, transient)
                 sqlite3_bind_int64(statement, 5, delta.upload)
                 sqlite3_bind_int64(statement, 6, delta.download)
+                sqlite3_bind_text(statement, 7, delta.ip, -1, transient)
+                sqlite3_bind_text(statement, 8, delta.port, -1, transient)
                 guard sqlite3_step(statement) == SQLITE_DONE else { throw failure() }
                 sqlite3_reset(statement); sqlite3_clear_bindings(statement)
             }
@@ -141,9 +183,22 @@ public final class TrafficDatabase {
         return Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 0)))
     }
     public func domainRows(since date: Date, limit: Int = 500) throws -> [DomainTrafficRow] {
+        try groupedRows(since: date, by: .domain, limit: limit)
+    }
+    public func groupedRows(since date: Date, by grouping: TrafficGrouping, limit: Int = 500) throws -> [DomainTrafficRow] {
+        var column = grouping.rawValue
+        if grouping == .ip || grouping == .port {
+            let schema = try prepare("PRAGMA table_info(traffic)")
+            var exists = false
+            while sqlite3_step(schema) == SQLITE_ROW {
+                if String(cString: sqlite3_column_text(schema, 1)) == column { exists = true }
+            }
+            sqlite3_finalize(schema)
+            if !exists { column = grouping == .ip ? "'未知 IP'" : "'未知端口'" }
+        }
         let statement = try prepare("""
-        SELECT domain,SUM(upload),SUM(download),COUNT(DISTINCT process),COUNT(DISTINCT outbound)
-        FROM traffic WHERE bucket>=? GROUP BY domain ORDER BY SUM(upload)+SUM(download) DESC LIMIT ?
+        SELECT \(column),SUM(upload),SUM(download),COUNT(DISTINCT process),COUNT(DISTINCT outbound)
+        FROM traffic WHERE bucket>=? GROUP BY \(column) ORDER BY SUM(upload)+SUM(download) DESC LIMIT ?
         """)
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, Int64(date.timeIntervalSince1970) / 3600 * 3600)

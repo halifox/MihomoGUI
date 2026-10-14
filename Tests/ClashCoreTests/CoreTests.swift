@@ -2,6 +2,7 @@
 import XCTest
 #endif
 import Foundation
+import CSQLite
 @testable import ClashCore
 
 final class CoreTests: XCTestCase {
@@ -83,6 +84,26 @@ final class CoreTests: XCTestCase {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: dir) }
+        let legacyURL = dir.appendingPathComponent("legacy.sqlite")
+        var legacy: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(legacyURL.path, &legacy), SQLITE_OK)
+        XCTAssertEqual(sqlite3_exec(legacy, """
+            CREATE TABLE traffic (bucket INTEGER NOT NULL, domain TEXT NOT NULL, process TEXT NOT NULL,
+                outbound TEXT NOT NULL, upload INTEGER NOT NULL, download INTEGER NOT NULL,
+                PRIMARY KEY(bucket,domain,process,outbound)) WITHOUT ROWID;
+            CREATE TABLE collector (id INTEGER PRIMARY KEY, sampled_at INTEGER NOT NULL);
+            INSERT INTO traffic VALUES(1800000000,'old.example','curl','DIRECT',11,22);
+            """, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(legacy)
+        do {
+            let oldReader = try TrafficDatabase(url: legacyURL, readOnly: true)
+            XCTAssertEqual(try oldReader.groupedRows(since: .distantPast, by: .ip).first?.domain, "未知 IP")
+            let migrated = try TrafficDatabase(url: legacyURL)
+            XCTAssertEqual(try migrated.domainRows(since: .distantPast).first?.download, 22)
+            XCTAssertEqual(try migrated.groupedRows(since: .distantPast, by: .port).first?.domain, "未知端口")
+            try migrated.record([TrafficDelta(domain: "old.example", process: "curl", outbound: "DIRECT", upload: 1, download: 2, ip: "1.1.1.1", port: "443")], at: Date(timeIntervalSince1970: 1800000000))
+            XCTAssertEqual(try migrated.domainRows(since: .distantPast).first?.download, 24)
+        }
         let url = dir.appendingPathComponent("traffic.sqlite")
         let database = try TrafficDatabase(url: url)
         let now = Date(timeIntervalSince1970: 1_800_000_000)
@@ -101,6 +122,17 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(domains.first?.download, 47)
         XCTAssertEqual(domains.first?.processCount, 2)
         XCTAssertEqual(domains.first?.outboundCount, 2)
+        let detailed = TrafficDelta(domain: "example.com", process: "curl", outbound: "Node", upload: 3, download: 4, ip: "1.2.3.4", port: "443")
+        let secondIP = TrafficDelta(domain: "example.com", process: "curl", outbound: "Node", upload: 6, download: 8, ip: "1.2.3.5", port: "443")
+        try database.record([detailed, secondIP], at: now)
+        let ips = try reader.groupedRows(since: .distantPast, by: .ip)
+        XCTAssertEqual(Set(ips.map(\.domain)), ["未知 IP", "1.2.3.4", "1.2.3.5"])
+        XCTAssertEqual(ips.first { $0.domain == "1.2.3.4" }?.download, 4)
+        let ports = try reader.groupedRows(since: .distantPast, by: .port)
+        XCTAssertEqual(ports.first { $0.domain == "443" }?.download, 12)
+        let processes = try reader.groupedRows(since: .distantPast, by: .process)
+        XCTAssertEqual(processes.first { $0.domain == "curl" }?.upload, 29)
+        XCTAssertEqual(try reader.domainRows(since: .distantPast).first?.download, 59)
         try database.prune(before: now.addingTimeInterval(3600))
         XCTAssertTrue(try reader.rows(since: .distantPast).isEmpty)
     }

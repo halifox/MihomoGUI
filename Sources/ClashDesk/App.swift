@@ -165,13 +165,16 @@ struct RouteMenu: View {
 
 struct StatisticsView: View {
     @EnvironmentObject var model: DeskModel
-    var activeCounts: [String: Int] { Dictionary(model.connections.map { ($0.domain, 1) }, uniquingKeysWith: +) }
+    var activeCounts: [String: Int] { Dictionary(model.connections.map { (model.trafficGrouping.key(for: $0), 1) }, uniquingKeysWith: +) }
     var body: some View {
         let counts = activeCounts
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("流量统计").font(.title2.bold())
                 Spacer()
+                Picker("统计方式", selection: $model.trafficGrouping) {
+                    ForEach(TrafficGrouping.allCases) { grouping in Text(grouping.title).tag(grouping) }
+                }.frame(width: 180)
                 Picker("时间范围", selection: $model.hours) {
                     Text("最近 24 小时（Last 24 hours）").tag(24); Text("最近 7 天（Last 7 days）").tag(168); Text("最近 30 天（Last 30 days）").tag(720)
                 }.frame(width: 220)
@@ -181,9 +184,13 @@ struct StatisticsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
                 Table(model.traffic) {
-                    TableColumn("域名 / IP") { row in
-                        Text(row.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: row.domain) }
-                    }.width(tableColumnWidth("域名 / IP", model.traffic.map(\.domain)))
+                    TableColumn(model.trafficGrouping.title) { row in
+                        Text(row.domain).textSelection(.enabled).contextMenu {
+                            if model.trafficGrouping == .domain { RouteMenu(kind: .domain, value: row.domain) }
+                            if model.trafficGrouping == .process && row.domain != "未知程序" { RouteMenu(kind: row.domain.hasPrefix("/") ? .processPath : .processName, value: row.domain) }
+                            if model.trafficGrouping == .port && row.domain != "未知端口" { RouteMenu(kind: .destinationPort, value: row.domain) }
+                        }
+                    }.width(tableColumnWidth(model.trafficGrouping.title, model.traffic.map(\.domain)))
                     TableColumn("程序数") { row in Text(String(row.processCount)) }.width(tableColumnWidth("程序数", model.traffic.map { String($0.processCount) }, numeric: true))
                     TableColumn("出口数") { row in Text(String(row.outboundCount)) }.width(tableColumnWidth("出口数", model.traffic.map { String($0.outboundCount) }, numeric: true))
                     TableColumn("当前连接数") { row in Text(String(counts[row.domain] ?? 0)) }.width(tableColumnWidth("当前连接数", model.traffic.map { String(counts[$0.domain] ?? 0) }, numeric: true))
@@ -198,6 +205,7 @@ struct StatisticsView: View {
                 }
 
         }
+        .task(id: "\(model.trafficGrouping.rawValue)-\(model.hours)") { await model.refresh() }
     }
 }
 
