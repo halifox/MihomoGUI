@@ -153,7 +153,7 @@ struct Integration {
         let manualRules = importedManualRules["rules"] as! [[String: Any]]
         guard manualRules.first?["payload"] as? String == "192.0.2.0/24", manualRules.count == 5 else { throw DeskError("CIDR、逻辑规则或规则集合没有正确加载") }
         let manualDelay = try await withProviderCore(corePath: core, providers: [], proxies: [try manualHTTP.configuration()]) { api in
-            try await api.delay(manualHTTP.node, testURL: "http://127.0.0.1:\(proxyPort)/generate_204")
+            try await api.delay(manualHTTP.node, testURL: "http://127.0.0.1:\(proxyPort)/generate_204", timeoutMilliseconds: 25000)
         }
         guard manualDelay >= 20 else { throw DeskError("手动代理延迟接口异常") }
         print("PASS: manual Hysteria2, manual proxy latency, nested sniffer options, CIDR, logic, rule providers and sub-rules")

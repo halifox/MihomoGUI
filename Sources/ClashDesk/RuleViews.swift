@@ -25,6 +25,9 @@ struct RulesView: View {
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: RouteRule?
+    private var selectedIndex: Int? {
+        model.settings.rules.firstIndex { $0.id == selection }
+    }
     var rows: [RuleTableItem] {
         model.settings.rules.map { RuleTableItem(id: $0.id, rule: $0) } + [RuleTableItem(id: matchID, rule: nil)]
     }
@@ -36,8 +39,17 @@ struct RulesView: View {
                 Spacer()
                 Button { adding = true } label: { Label("添加规则", systemImage: "plus") }.disabled(model.busy)
                 Button {
+                    if let selectedIndex { editing = model.settings.rules[selectedIndex] }
+                } label: { Label("编辑", systemImage: "pencil") }.disabled(selectedIndex == nil || model.busy)
+                Button {
+                    if let selection { model.moveRule(selection, offset: -1) }
+                } label: { Label("上移", systemImage: "arrow.up") }.disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
+                Button {
+                    if let selection { model.moveRule(selection, offset: 1) }
+                } label: { Label("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
+                Button {
                     if let selection { model.deleteRule(selection); self.selection = nil }
-                } label: { Image(systemName: "minus") }.disabled(selection == nil || selection == matchID || model.busy)
+                } label: { Label("删除", systemImage: "minus") }.disabled(selectedIndex == nil || model.busy)
             }
             Table(rows, selection: $selection) {
                 TableColumn("类型") { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(185)
@@ -57,18 +69,6 @@ struct RulesView: View {
                             .disabled(model.busy)
                     }
                 }.width(260)
-                TableColumn("操作") { row in
-                    HStack(spacing: 5) {
-                        if let rule = row.rule {
-                            Button { editing = rule } label: { Image(systemName: "pencil") }.help("编辑规则")
-                            Button { model.moveRule(rule.id, offset: -1) } label: { Image(systemName: "arrow.up") }.help("上移")
-                            Button { model.moveRule(rule.id, offset: 1) } label: { Image(systemName: "arrow.down") }.help("下移")
-                            Button { model.deleteRule(rule.id) } label: { Image(systemName: "minus") }.help("删除")
-                        } else {
-                            Button { adding = true } label: { Image(systemName: "plus") }.help("添加规则")
-                        }
-                    }.disabled(model.busy)
-                }.width(140)
             }
             DisclosureGroup("规则集合与子规则（RULE-SET / SUB-RULE）") { RuleResourcesView() }.padding(.vertical, 4)
             Text("MATCH 始终位于最后。出口可直接修改；其余条件通过编辑表单修改，CIDR 支持 no-resolve / src。保存后预览并应用配置。")

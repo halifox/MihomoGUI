@@ -154,6 +154,17 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(configPath("realm-opts.enable", in: proxies[0]) as? Bool, false)
         let groups = object["proxy-groups"] as! [[String: Any]]
         XCTAssertEqual(groups[0]["proxies"] as? [String], [proxy.name])
+        XCTAssertEqual(try settings.delayTestParameters().timeout, 5000)
+        settings.delayTestURL = "https://example.org/health"
+        settings.delayTestTimeoutMilliseconds = 25000
+        let restored = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
+        XCTAssertEqual(try restored.delayTestParameters().url, "https://example.org/health")
+        XCTAssertEqual(try restored.delayTestParameters().timeout, 25000)
+        XCTAssertTrue(!String(decoding: try generateConfig(restored), as: UTF8.self).contains("https://example.org/health"))
+        settings.delayTestTimeoutMilliseconds = 0
+        XCTAssertThrowsError(try settings.delayTestParameters())
+        settings.delayTestTimeoutMilliseconds = 5000; settings.delayTestURL = "file:///tmp/test"
+        XCTAssertThrowsError(try settings.delayTestParameters())
         settings.manualProxies = [proxy, proxy]
         XCTAssertThrowsError(try generateConfig(settings))
         settings.manualProxies = [proxy]; settings.options?["mixed-port"] = .string("not a port")

@@ -106,6 +106,14 @@ final class DeskModel: ObservableObject {
             message = "通用配置已保存；启动 / 应用前将显示 YAML 预览。"
         } catch { self.error = error.localizedDescription }
     }
+    func saveDelayConfiguration() {
+        do {
+            let parameters = try settings.delayTestParameters()
+            settings.delayTestURL = parameters.url
+            try save()
+            message = "测速设置已保存；统一延迟与通用配置同步，运行中的内核需确认应用后更新。"
+        } catch { self.error = error.localizedDescription }
+    }
     func perform(_ operation: @escaping () async throws -> Void) {
         guard !busy else { return }
         busy = true
@@ -205,6 +213,7 @@ final class DeskModel: ObservableObject {
     }
     func testDelay(_ node: Node) {
         perform {
+            let parameters = try self.settings.delayTestParameters()
             self.testingNode = node.id
             defer { self.testingNode = nil }
             do {
@@ -212,7 +221,7 @@ final class DeskModel: ObservableObject {
                 let proxies = try (self.settings.manualProxies ?? []).map { try $0.configuration() }
                 let unified = self.option("unified-delay") != .boolean(false)
                 let delay = try await withProviderCore(corePath: self.settings.corePath, providers: providers, proxies: proxies, unifiedDelay: unified) { api in
-                    try await api.delay(node)
+                    try await api.delay(node, testURL: parameters.url, timeoutMilliseconds: parameters.timeout)
                 }
                 if let index = self.nodes.firstIndex(of: node) {
                     self.nodes[index].delayMilliseconds = delay; self.nodes[index].delayFailed = false
