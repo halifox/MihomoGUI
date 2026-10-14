@@ -36,12 +36,12 @@ public struct CoreAPI {
         let endpoint = try controllerEndpoint(settings)
         self.init(secret: endpoint.secret, port: endpoint.port, host: endpoint.host)
     }
-    public func request(_ path: String, method: String = "GET", body: Data? = nil) async throws -> Data {
+    public func request(_ path: String, method: String = "GET", body: Data? = nil, timeout: TimeInterval = 15) async throws -> Data {
         let destination = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
         guard (1...65535).contains(port), let url = URL(string: "http://\(destination):\(port)" + path) else { throw DeskError("无效 API 路径") }
         var request = URLRequest(url: url)
         request.cachePolicy = .reloadIgnoringLocalCacheData
-        request.httpMethod = method; request.httpBody = body; request.timeoutInterval = 15
+        request.httpMethod = method; request.httpBody = body; request.timeoutInterval = timeout
         request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.data(for: request)
@@ -75,13 +75,13 @@ public struct CoreAPI {
         struct Response: Decodable { var proxies: [String: Proxy] }
         return try JSONDecoder().decode(Response.self, from: await request("/proxies")).proxies.compactMapValues(\.udp)
     }
-    public func delay(_ node: Node, testURL: String = "https://www.gstatic.com/generate_204") async throws -> Int {
+    public func delay(_ node: Node, testURL: String = "https://www.gstatic.com/generate_204", timeoutMilliseconds: Int = 5000) async throws -> Int {
         let provider = node.provider.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         let name = node.name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         let url = testURL.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         struct Response: Decodable { let delay: Int }
         let route = node.provider == "manual" ? "/proxies/\(name)/delay" : "/providers/proxies/\(provider)/\(name)/healthcheck"
-        let data = try await request(route + "?url=\(url)&timeout=5000")
+        let data = try await request(route + "?url=\(url)&timeout=\(timeoutMilliseconds)", timeout: max(15, Double(timeoutMilliseconds) / 1000 + 5))
         let result = try JSONDecoder().decode(Response.self, from: data)
         guard result.delay > 0 else { throw DeskError("节点延迟测试失败") }
         return result.delay

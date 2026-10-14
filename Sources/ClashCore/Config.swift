@@ -98,6 +98,8 @@ public struct RouteRule: Codable, Identifiable {
 }
 
 public struct Settings: Codable {
+    public var delayTestURL: String?
+    public var delayTestTimeoutMilliseconds: Int?
     public var corePath = ""
     public var secret = UUID().uuidString + UUID().uuidString
     public var subscriptions: [Subscription] = []
@@ -111,6 +113,17 @@ public struct Settings: Codable {
     public var defaultPolicy: String?
     public var ruleOrderMigrated: Bool? = true
     public init() {}
+    public func delayTestParameters() throws -> (url: String, timeout: Int) {
+        let address = (delayTestURL ?? "https://www.gstatic.com/generate_204").trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parsed = URL(string: address), ["http", "https"].contains(parsed.scheme?.lowercased() ?? ""),
+              parsed.host != nil, parsed.user == nil, parsed.password == nil,
+              !address.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }) else {
+            throw DeskError("测试地址必须是有效的 HTTP / HTTPS URL")
+        }
+        let timeout = delayTestTimeoutMilliseconds ?? 5000
+        guard (1...120000).contains(timeout) else { throw DeskError("测速超时应为 1–120000 毫秒") }
+        return (address, timeout)
+    }
 }
 
 public func loadSettings(from directory: URL) throws -> Settings {

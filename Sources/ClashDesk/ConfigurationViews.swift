@@ -111,6 +111,37 @@ struct ApplicationSettingsView: View {
                         Button("选择文件") { model.chooseCore() }.disabled(model.busy)
                     }.padding(8)
                 }
+                GroupBox("延迟测试") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 14) {
+                            GridRow {
+                                Text("unified-delay")
+                                Toggle("统一延迟", isOn: Binding(get: {
+                                    model.option("unified-delay") != .boolean(false)
+                                }, set: { model.setOption("unified-delay", value: .boolean($0)) }))
+                            }
+                            GridRow {
+                                Text("测试地址")
+                                TextField("HTTP / HTTPS URL", text: Binding(get: {
+                                    model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
+                                }, set: { model.settings.delayTestURL = $0 }))
+                            }
+                            GridRow {
+                                Text("超时（毫秒）")
+                                TextField("5000", value: Binding(get: {
+                                    model.settings.delayTestTimeoutMilliseconds ?? 5000
+                                }, set: { model.settings.delayTestTimeoutMilliseconds = $0 }), format: .number.grouping(.never))
+                                    .frame(width: 150)
+                            }
+                        }.textFieldStyle(.roundedBorder)
+                        HStack {
+                            Text("unified-delay 与通用配置共用同一设置；测试地址和超时只用于客户端测速。")
+                                .font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button("保存测速设置") { model.saveDelayConfiguration() }
+                        }
+                    }.padding(12).disabled(model.busy)
+                }
                 GroupBox("运行信息") {
                     Grid(alignment: .leading, horizontalSpacing: 36, verticalSpacing: 16) {
                         info("内核状态", model.coreRunning ? "运行中" : "离线")
