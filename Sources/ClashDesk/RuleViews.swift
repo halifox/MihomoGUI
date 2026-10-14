@@ -144,7 +144,7 @@ struct RuleEditorView: View {
                         }
                     } else if kind.isLogic {
                         formRow("expression-mode") { Toggle("直接编辑逻辑表达式", isOn: $advancedLogic) }
-                        if advancedLogic { formRow("expression *") { TextField(kind.hint, text: $value) } }
+                        if advancedLogic { formRow("expression *") { TextField("", text: $value) } }
                         else {
                             ForEach(conditions.indices, id: \.self) { index in
                                 formRow("condition[\(index + 1)].type") {
@@ -157,14 +157,14 @@ struct RuleEditorView: View {
                                         }
                                     }
                                 }
-                                formRow("condition[\(index + 1)].value", help: "填写条件的匹配内容。\n\n示例：" + conditions[index].kind.hint) { TextField(conditions[index].kind.hint, text: $conditions[index].value) }
+                                formRow("condition[\(index + 1)].value", help: "填写条件的匹配内容。\n\n示例：" + conditions[index].kind.hint) { TextField("", text: $conditions[index].value) }
                             }
                             if kind != .not && kind != .subRule {
                                 formRow("conditions") { Button("添加条件") { conditions.append(RuleCondition()) } }
                             }
                         }
                     } else {
-                        formRow("value *", help: "填写当前规则类型的匹配内容。\n\n示例：" + kind.hint) { TextField(kind.hint, text: $value).help(kind.hint) }
+                        formRow("value *", help: "填写当前规则类型的匹配内容。\n\n示例：" + kind.hint) { TextField("", text: $value).help(kind.hint) }
                         if kind == .processPath {
                             formRow("application") { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
                         }

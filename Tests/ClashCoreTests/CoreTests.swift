@@ -129,6 +129,11 @@ final class CoreTests: XCTestCase {
 
     func testPlatformSpecificGeneralOptions() throws {
         let fields = documentSchemas.sections.flatMap(\.fields)
+        XCTAssertEqual(try XCTUnwrap(fields.first { $0.path == "tun.udp-timeout" }).defaultHint, "300")
+        XCTAssertEqual(try XCTUnwrap(fields.first { $0.path == "global-ua" }).defaultHint, "clash.meta")
+        for path in ["port", "redir-port", "tproxy-port", "dns.fake-ip-range", "interface-name"] {
+            XCTAssertTrue(try XCTUnwrap(fields.first { $0.path == path }).defaultHint == nil)
+        }
         for section in documentSchemas.sections {
             for field in section.fields {
                 let document = ["port", "socks-port", "mixed-port", "redir-port", "tproxy-port"].contains(field.path) ? "inbound/port.md" : section.document

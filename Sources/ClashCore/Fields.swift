@@ -64,6 +64,7 @@ public struct EditorField: Codable, Identifiable {
     public var title: String
     public var kind: String
     public var hint: String
+    public var defaultHint: String?
     public var description: String
     public var required: Bool
     public var choices: [String]?

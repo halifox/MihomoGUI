@@ -63,7 +63,7 @@ struct VisualValue: View {
                 if !(field.choices ?? []).contains(value.text) { Text(value.text.isEmpty ? "请选择" : value.text).tag(value.text) }
                 ForEach(field.choices ?? [], id: \.self) { Text($0).tag($0) }
             }.labelsHidden())
-        case "secret": return AnyView(SecureField(field.hint, text: text).textFieldStyle(.roundedBorder))
+        case "secret": return AnyView(SecureField("", text: text).textFieldStyle(.roundedBorder))
         case "list": return AnyView(ValueList(field: field, value: $value, compact: compact))
         case "map": return AnyView(ValueMap(field: field, value: $value, compact: compact))
         case "object":
@@ -74,7 +74,7 @@ struct VisualValue: View {
                     }), compact: compact)
                 }
             })
-        default: return AnyView(TextField(field.hint, text: text).textFieldStyle(.roundedBorder))
+        default: return AnyView(TextField(field.defaultHint ?? "", text: text).textFieldStyle(.roundedBorder))
         }
     }
 }
@@ -167,7 +167,7 @@ struct ValueMap: View {
             }
             HStack {
                 FieldKeyLabel(title: "key", key: "key", description: "新建键值条目的名称，不能与现有名称重复。").frame(width: 70, alignment: .leading)
-                TextField("键 / 名称", text: $key).textFieldStyle(.roundedBorder)
+                TextField("", text: $key).textFieldStyle(.roundedBorder)
                 Button {
                     let name = key.trimmingCharacters(in: .whitespacesAndNewlines)
                     var object = value.object; object[name] = emptyValue(item); value = .object(object); key = ""
@@ -188,7 +188,7 @@ struct CustomFieldEditor: View {
     @State private var kind = "string"
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            formRow("key") { TextField("字段路径，例如 realm-opts.handshake-timeout", text: $path) }
+            formRow("key") { TextField("", text: $path) }
             formRow("type", help: "额外字段的数据类型，可选择文本、整数、开关、列表或键值表。") {
                 Picker("类型", selection: $kind) {
                     Text("文本").tag("string"); Text("整数").tag("integer"); Text("开关").tag("boolean")

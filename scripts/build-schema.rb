@@ -71,6 +71,18 @@ def fields(hash,prefix='',desc={})
    kind='choice' if choices
    info=desc[path.downcase] || desc[key.to_s.downcase] || ''
    field={'path'=>path,'title'=>path,'kind'=>kind,'hint'=>value.nil? ? '' : (value.is_a?(String) ? value : JSON.generate(value)), 'description'=>info,'required'=>false}
+   # YAML samples are examples, not defaults. Only explicit documentation defaults become placeholders.
+   if !%w[boolean choice list map secret].include?(kind)
+    default = info.match(/默认(?:值)?(?:为|使用)\s*([A-Za-z0-9][A-Za-z0-9_.:\/-]*)(?=[，。；、\s(（]|$)/)
+    default ||= info.match(/默认\s+(\d+)(?=[，。；、\s(（]|$)/)
+    if default
+     candidate = default[1]
+     candidate = candidate.delete_prefix('v') if path == 'shadow-tls-opts.version'
+     valid = kind != 'integer' || candidate.match?(/\A-?\d+\z/)
+     field['defaultHint'] = candidate if valid
+    end
+    field['defaultHint'] = 'clash.meta' if path == 'global-ua'
+   end
    field['choices']=choices if choices
    if kind=='list'
     field['elementKind'] = value.first.is_a?(Hash) ? 'object' : value.all? { |v| v.is_a?(Integer) } && !value.empty? ? 'integer' : 'string'
@@ -172,6 +184,7 @@ Dir.glob(File.join(root,'proxies/*.md')).reject { |p| p =~ /\.(en|ru)\.md$/ || %
  end
  fs.each do |f|
   f['required']=required.include?(f['path'])
+  f.delete('defaultHint') if f['required']
   if f['path']=='obfs' && kind=='hysteria2'; f['kind']='choice';f['choices']=%w[salamander gecko]; end
   if f['path']=='transport' && kind=='mieru'; f['kind']='choice';f['choices']=%w[TCP UDP]; end
   if f['path']=='cipher' && kind=='vmess'; f['kind']='choice';f['choices']=%w[auto aes-128-gcm chacha20-poly1305 none zero]; end
