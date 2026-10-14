@@ -20,15 +20,11 @@ struct GeneralConfigurationView: View {
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 12) {
                     ForEach(schema.fields.filter { search.isEmpty || ($0.path + $0.description).localizedCaseInsensitiveContains(search) }) { field in
-                        GroupBox {
-                            HStack {
-                                Text(model.settings.options?[field.path] != nil ? "已修改" : "默认配置").font(.caption).foregroundStyle(.secondary)
-                                Spacer()
-                                Button("恢复默认") { model.setOption(field.path, value: nil) }
-                                    .disabled(model.settings.options?[field.path] == nil)
-                            }
+                        VStack(alignment: .leading, spacing: 0) {
                             VisualField(field: field, value: Binding(get: { model.option(field.path) }, set: { model.setOption(field.path, value: $0) }),
-                                        allowUnset: model.baseOption(field.path) == nil)
+                                        allowUnset: model.baseOption(field.path) == nil, compact: true)
+                                .disabled(!fieldEnabled(field.path))
+                            Divider()
                         }
                     }
                 }.padding(.trailing, 4)
@@ -40,6 +36,18 @@ struct GeneralConfigurationView: View {
             }
         }
     }
+    func fieldEnabled(_ path: String) -> Bool {
+        for parent in ["dns", "sniffer", "tun"] {
+            if path.hasPrefix(parent + "."), path != parent + ".enable" {
+                return model.option(parent + ".enable") == .boolean(true)
+            }
+        }
+        if path.hasPrefix("external-controller-cors.") {
+            return !(model.option("external-controller")?.text.isEmpty ?? true)
+        }
+        return true
+    }
+
 }
 
 struct ApplicationSettingsView: View {

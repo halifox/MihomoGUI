@@ -215,7 +215,11 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         "proxy-providers": providerConfig, "proxy-groups": groups, "rules": rules
     ]
     config["proxies"] = manualObjects
-    for (path, value) in settings.options ?? [:] { setConfigPath(path, value: value.native, in: &config) }
+    for (path, value) in settings.options ?? [:] {
+        // An empty visual input omits an optional field, even when our defaults contain it.
+        let omitted = value == .string("") && path != "external-controller" && path != "secret"
+        setConfigPath(path, value: omitted ? nil : value.native, in: &config)
+    }
     try validateFieldValues(settings.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
     try validateRuleResources(settings)
     try validateGeneralOptions(config)

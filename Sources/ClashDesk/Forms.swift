@@ -5,7 +5,23 @@ struct VisualField: View {
     let field: EditorField
     @Binding var value: ConfigValue?
     var allowUnset = true
+    var compact = false
     var body: some View {
+        if compact { compactRow }
+        else { legacyRow }
+    }
+    var compactRow: some View {
+        HStack(alignment: field.kind == "list" || field.kind == "map" || field.kind == "object" ? .top : .center, spacing: 20) {
+            Text(field.title).font(.system(.body, design: .monospaced))
+                .frame(width: 230, alignment: .leading).textSelection(.enabled)
+                .help(field.description)
+            VisualValue(field: field, value: Binding(get: {
+                value ?? (field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
+            }, set: { value = $0 }), compact: true)
+            Spacer(minLength: 0)
+        }.padding(.vertical, 10)
+    }
+    var legacyRow: some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(field.title).font(.system(.body, design: .monospaced)).textSelection(.enabled)
@@ -28,6 +44,7 @@ struct VisualField: View {
 struct VisualValue: View {
     let field: EditorField
     @Binding var value: ConfigValue
+    var compact = false
     var body: some View { input }
     private var text: Binding<String> {
         Binding(get: { value.text }, set: {
@@ -39,21 +56,21 @@ struct VisualValue: View {
     private var input: AnyView {
         switch field.kind {
         case "boolean":
-            return AnyView(Toggle(value == .boolean(true) ? "开启" : "关闭", isOn: Binding(get: { value == .boolean(true) }, set: { value = .boolean($0) })))
+            return AnyView(Toggle(compact ? "" : value == .boolean(true) ? "开启" : "关闭", isOn: Binding(get: { value == .boolean(true) }, set: { value = .boolean($0) })))
         case "choice":
             return AnyView(Picker("", selection: text) {
                 if !(field.choices ?? []).contains(value.text) { Text(value.text.isEmpty ? "请选择" : value.text).tag(value.text) }
                 ForEach(field.choices ?? [], id: \.self) { Text($0).tag($0) }
             }.labelsHidden())
         case "secret": return AnyView(SecureField(field.hint, text: text).textFieldStyle(.roundedBorder))
-        case "list": return AnyView(ValueList(field: field, value: $value))
-        case "map": return AnyView(ValueMap(field: field, value: $value))
+        case "list": return AnyView(ValueList(field: field, value: $value, compact: compact))
+        case "map": return AnyView(ValueMap(field: field, value: $value, compact: compact))
         case "object":
             return AnyView(VStack(alignment: .leading) {
                 ForEach(field.children ?? []) { child in
                     VisualField(field: child, value: Binding(get: { typedPath(child.path, in: value.object) }, set: {
                         var object = value.object; setTypedPath(child.path, value: $0, in: &object); value = .object(object)
-                    }))
+                    }), compact: compact)
                 }
             })
         default: return AnyView(TextField(field.hint, text: text).textFieldStyle(.roundedBorder))
@@ -78,6 +95,7 @@ func setTypedPath(_ path: String, value: ConfigValue?, in object: inout [String:
 struct ValueList: View {
     let field: EditorField
     @Binding var value: ConfigValue
+    var compact = false
     var item: EditorField {
         EditorField("item", kind: field.elementKind ?? "string", children: field.children)
     }
@@ -105,13 +123,14 @@ struct ValueList: View {
         }, set: {
             var array = value.array; guard array.indices.contains(index) else { return }
             array[index] = $0; value = .array(array)
-        }))
+        }), compact: compact)
     }
 }
 
 struct ValueMap: View {
     let field: EditorField
     @Binding var value: ConfigValue
+    var compact = false
     @State private var key = ""
     var item: EditorField { EditorField("value", kind: field.elementKind ?? "string", children: field.children) }
     var body: some View {
@@ -142,15 +161,15 @@ struct ValueMap: View {
                     }
                     VisualValue(field: itemSpec(name), value: Binding(get: { value.object[name] ?? emptyValue(item) }, set: {
                         var object = value.object; object[name] = $0; value = .object(object)
-                    }))
+                    }), compact: compact)
                 }
             }
             HStack {
                 TextField("键 / 名称", text: $key).textFieldStyle(.roundedBorder)
-                Button("添加") {
+                Button {
                     let name = key.trimmingCharacters(in: .whitespacesAndNewlines)
                     var object = value.object; object[name] = emptyValue(item); value = .object(object); key = ""
-                }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || value.object[key] != nil)
+                } label: { Label("添加", systemImage: "plus") }.disabled(key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || value.object[key] != nil)
             }
         }
     }
