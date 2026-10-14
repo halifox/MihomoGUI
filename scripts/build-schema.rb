@@ -168,7 +168,132 @@ Dir.glob(File.join(root,'proxies/*.md')).reject { |p| p =~ /\.(en|ru)\.md$/ || %
  fs.sort_by! { |f| [%w[name server port].index(f['path']) || (f['required'] ? 3 : 4),f['path']] }
  proxy_schemas << {'name'=>kind,'key'=>kind,'fields'=>fs,'document'=>'proxies/'+File.basename(file)}
 end
-payload={'sections'=>sections,'proxies'=>proxy_schemas}
+# Display order from https://github.com/MetaCubeX/mihomo/blob/Meta/docs/config.yaml,
+# including commented keys. Unlisted fields follow their listed siblings.
+configuration_order = %w[
+ port
+ socks-port
+ mixed-port
+ allow-lan
+ bind-address
+ authentication
+ skip-auth-prefixes
+ lan-allowed-ips
+ lan-disallowed-ips
+ find-process-mode
+ mode
+ geox-url
+ geox-url.geoip
+ geox-url.geosite
+ geox-url.mmdb
+ geo-auto-update
+ geo-update-interval
+ log-level
+ ipv6
+ tls
+ tls.certificate
+ tls.private-key
+ tls.ech-key
+ external-controller
+ external-controller-tls
+ secret
+ external-controller-cors
+ external-controller-cors.allow-origins
+ external-controller-cors.allow-private-network
+ external-controller-unix
+ tcp-concurrent
+ external-ui
+ external-ui-name
+ external-ui-url
+ external-doh-server
+ interface-name
+ disable-keep-alive
+ keep-alive-idle
+ keep-alive-interval
+ hosts
+ profile
+ profile.store-selected
+ profile.store-fake-ip
+ tun
+ tun.enable
+ tun.stack
+ tun.dns-hijack
+ tun.auto-detect-interface
+ tun.auto-route
+ tun.mtu
+ tun.gso
+ tun.gso-max-size
+ tun.strict-route
+ tun.congestion-controller
+ tun.route-address
+ tun.endpoint-independent-nat
+ tun.include-interface
+ tun.exclude-interface
+ sniffer
+ sniffer.enable
+ sniffer.force-dns-mapping
+ sniffer.parse-pure-ip
+ sniffer.override-destination
+ sniffer.sniff
+ sniffer.sniff.QUIC
+ sniffer.sniff.QUIC.ports
+ sniffer.sniff.TLS
+ sniffer.sniff.TLS.ports
+ sniffer.sniff.HTTP
+ sniffer.sniff.HTTP.ports
+ sniffer.sniff.HTTP.override-destination
+ sniffer.force-domain
+ sniffer.skip-src-address
+ sniffer.skip-dst-address
+ sniffer.skip-domain
+ dns
+ dns.cache-algorithm
+ dns.enable
+ dns.prefer-h3
+ dns.listen
+ dns.ipv6
+ dns.default-nameserver
+ dns.enhanced-mode
+ dns.fake-ip-range
+ dns.fake-ip-range6
+ dns.fake-ip-filter
+ dns.fake-ip-filter-mode
+ dns.fake-ip-ttl
+ dns.use-hosts
+ dns.respect-rules
+ dns.nameserver
+ dns.fallback
+ dns.proxy-server-nameserver
+ dns.proxy-server-nameserver-policy
+ dns.direct-nameserver
+ dns.direct-nameserver-follow-policy
+ dns.fallback-filter
+ dns.fallback-filter.geoip
+ dns.fallback-filter.geoip-code
+ dns.fallback-filter.ipcidr
+ dns.fallback-filter.domain
+ dns.fallback-filter.geosite
+ dns.fallback-lazy-query
+ dns.nameserver-policy
+ proxies
+]
+ranks = configuration_order.each_with_index.to_h
+configuration_fields = sections.flat_map do |section|
+ section['fields'].map { |field| field.merge('document'=>section['document'], 'title'=>field['path'].split('.').last) }
+end
+def configuration_tree(fields, ranks, prefix='')
+ keys = fields.map { |field| field['path'].delete_prefix(prefix).split('.').first }.uniq
+ keys.each_with_index.sort_by { |key,index| [ranks.fetch(prefix+key, Float::INFINITY),index] }.map do |key,index|
+  path = prefix + key
+  field = fields.find { |item| item['path'] == path }
+  next field if field
+  children = fields.select { |item| item['path'].start_with?(path+'.') }
+  {'path'=>path, 'title'=>key, 'kind'=>'group', 'hint'=>'', 'description'=>'', 'required'=>false,
+   'children'=>configuration_tree(children, ranks, path+'.')}
+ end
+end
+configuration = configuration_tree(configuration_fields, ranks)
+payload={'sections'=>sections,'proxies'=>proxy_schemas,'configuration'=>configuration}
 json=JSON.pretty_generate(payload)
 File.write('Sources/ClashCore/DocSchemas.swift',"// Generated from Meta-Docs config documentation by scripts/build-schema.rb.\nimport Foundation\n\nlet docSchemaJSON = #\"\"\"\n#{json}\n\"\"\"#\n")
 puts "Generated #{sections.sum { |s| s['fields'].length }} configuration fields and #{proxy_schemas.length} proxy types: #{proxy_schemas.map { |s| s['key'] }.join(', ')}"

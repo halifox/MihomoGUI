@@ -68,6 +68,7 @@ public struct EditorField: Codable, Identifiable {
     public var required: Bool
     public var choices: [String]?
     public var elementKind: String?
+    public var document: String?
     public var children: [EditorField]?
     public var id: String { path }
     public init(_ path: String, kind: String = "string", title: String? = nil, hint: String = "", required: Bool = false,
@@ -87,6 +88,7 @@ public struct EditorSchema: Codable, Identifiable {
 }
 
 public struct DocumentSchemas: Codable {
+    public var configuration: [EditorField]
     public var sections: [EditorSchema]
     public var proxies: [EditorSchema]
 }

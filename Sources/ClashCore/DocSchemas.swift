@@ -9217,6 +9217,1159 @@ let docSchemaJSON = #"""
       ],
       "document": "proxies/zerotier.md"
     }
+  ],
+  "configuration": [
+    {
+      "path": "port",
+      "title": "port",
+      "kind": "integer",
+      "hint": "7890",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "socks-port",
+      "title": "socks-port",
+      "kind": "integer",
+      "hint": "7891",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "mixed-port",
+      "title": "mixed-port",
+      "kind": "integer",
+      "hint": "7892",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "allow-lan",
+      "title": "allow-lan",
+      "kind": "boolean",
+      "hint": "true",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "bind-address",
+      "title": "bind-address",
+      "kind": "string",
+      "hint": "*",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "authentication",
+      "title": "authentication",
+      "kind": "list",
+      "hint": "[\"user1:pass1\",\"user2:pass2\"]",
+      "description": "",
+      "required": false,
+      "elementKind": "string",
+      "document": "general.md"
+    },
+    {
+      "path": "skip-auth-prefixes",
+      "title": "skip-auth-prefixes",
+      "kind": "list",
+      "hint": "[\"127.0.0.1/8\",\"::1/128\"]",
+      "description": "",
+      "required": false,
+      "elementKind": "string",
+      "document": "general.md"
+    },
+    {
+      "path": "lan-allowed-ips",
+      "title": "lan-allowed-ips",
+      "kind": "list",
+      "hint": "[\"0.0.0.0/0\",\"::/0\"]",
+      "description": "",
+      "required": false,
+      "elementKind": "string",
+      "document": "general.md"
+    },
+    {
+      "path": "lan-disallowed-ips",
+      "title": "lan-disallowed-ips",
+      "kind": "list",
+      "hint": "[\"192.168.0.3/32\"]",
+      "description": "",
+      "required": false,
+      "elementKind": "string",
+      "document": "general.md"
+    },
+    {
+      "path": "find-process-mode",
+      "title": "find-process-mode",
+      "kind": "choice",
+      "hint": "strict",
+      "description": "",
+      "required": false,
+      "choices": [
+        "always",
+        "strict",
+        "off"
+      ],
+      "document": "general.md"
+    },
+    {
+      "path": "mode",
+      "title": "mode",
+      "kind": "choice",
+      "hint": "rule",
+      "description": "",
+      "required": false,
+      "choices": [
+        "rule",
+        "global",
+        "direct"
+      ],
+      "document": "general.md"
+    },
+    {
+      "path": "geox-url",
+      "title": "geox-url",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "geox-url.geoip",
+          "title": "geoip",
+          "kind": "string",
+          "hint": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geoip.dat",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        },
+        {
+          "path": "geox-url.geosite",
+          "title": "geosite",
+          "kind": "string",
+          "hint": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/geosite.dat",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        },
+        {
+          "path": "geox-url.mmdb",
+          "title": "mmdb",
+          "kind": "string",
+          "hint": "https://testingcf.jsdelivr.net/gh/MetaCubeX/meta-rules-dat@release/country.mmdb",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        },
+        {
+          "path": "geox-url.asn",
+          "title": "asn",
+          "kind": "string",
+          "hint": "https://github.com/xishang0128/geoip/releases/download/latest/GeoLite2-ASN.mmdb",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        }
+      ]
+    },
+    {
+      "path": "geo-auto-update",
+      "title": "geo-auto-update",
+      "kind": "boolean",
+      "hint": "false",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "geo-update-interval",
+      "title": "geo-update-interval",
+      "kind": "integer",
+      "hint": "24",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "log-level",
+      "title": "log-level",
+      "kind": "choice",
+      "hint": "info",
+      "description": "",
+      "required": false,
+      "choices": [
+        "silent",
+        "error",
+        "warning",
+        "info",
+        "debug"
+      ],
+      "document": "general.md"
+    },
+    {
+      "path": "ipv6",
+      "title": "ipv6",
+      "kind": "boolean",
+      "hint": "true",
+      "description": "是否允许内核接受 IPv6 流量 可选值 true/false,默认为 true",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "tls",
+      "title": "tls",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "tls.certificate",
+          "title": "certificate",
+          "kind": "string",
+          "hint": "string",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        },
+        {
+          "path": "tls.private-key",
+          "title": "private-key",
+          "kind": "secret",
+          "hint": "string",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        },
+        {
+          "path": "tls.ech-key",
+          "title": "ech-key",
+          "kind": "string",
+          "hint": "-----BEGIN ECH KEYS-----\nACATwY30o/RKgD6hgeQxwrSiApLaCgU+HKh7B6SUrAHaDwBD/g0APwAAIAAgHjzK\nmadSJjYQIf9o1N5GXjkW4DEEeb17qMxHdwMdNnwADAABAAEAAQACAAEAAwAIdGVz\ndC5jb20AAA==\n-----END ECH KEYS-----",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        }
+      ]
+    },
+    {
+      "path": "external-controller",
+      "title": "external-controller",
+      "kind": "string",
+      "hint": "127.0.0.1:9090",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "external-controller-tls",
+      "title": "external-controller-tls",
+      "kind": "string",
+      "hint": "127.0.0.1:9443",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "secret",
+      "title": "secret",
+      "kind": "secret",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "external-controller-cors",
+      "title": "external-controller-cors",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "external-controller-cors.allow-origins",
+          "title": "allow-origins",
+          "kind": "list",
+          "hint": "[\"*\"]",
+          "description": "",
+          "required": false,
+          "elementKind": "string",
+          "document": "general.md"
+        },
+        {
+          "path": "external-controller-cors.allow-private-network",
+          "title": "allow-private-network",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        }
+      ]
+    },
+    {
+      "path": "external-controller-unix",
+      "title": "external-controller-unix",
+      "kind": "string",
+      "hint": "mihomo.sock",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "tcp-concurrent",
+      "title": "tcp-concurrent",
+      "kind": "boolean",
+      "hint": "true",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "external-ui",
+      "title": "external-ui",
+      "kind": "string",
+      "hint": "/path/to/ui/folder",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "external-ui-name",
+      "title": "external-ui-name",
+      "kind": "string",
+      "hint": "xd",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "external-ui-url",
+      "title": "external-ui-url",
+      "kind": "string",
+      "hint": "https://github.com/MetaCubeX/metacubexd/archive/refs/heads/gh-pages.zip",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "external-doh-server",
+      "title": "external-doh-server",
+      "kind": "string",
+      "hint": "/dns-query",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "interface-name",
+      "title": "interface-name",
+      "kind": "string",
+      "hint": "en0",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "disable-keep-alive",
+      "title": "disable-keep-alive",
+      "kind": "boolean",
+      "hint": "false",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "keep-alive-idle",
+      "title": "keep-alive-idle",
+      "kind": "integer",
+      "hint": "15",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "keep-alive-interval",
+      "title": "keep-alive-interval",
+      "kind": "integer",
+      "hint": "15",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "hosts",
+      "title": "hosts",
+      "kind": "map",
+      "hint": "{\"*.clash.dev\":\"127.0.0.1\",\"alpha.clash.dev\":\"::1\",\"test.com\":[\"1.1.1.1\",\"2.2.2.2\"],\"baidu.com\":\"google.com\"}",
+      "description": "",
+      "required": false,
+      "elementKind": "list",
+      "document": "dns/index.md"
+    },
+    {
+      "path": "profile",
+      "title": "profile",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "profile.store-selected",
+          "title": "store-selected",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        },
+        {
+          "path": "profile.store-fake-ip",
+          "title": "store-fake-ip",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "",
+          "required": false,
+          "document": "general.md"
+        }
+      ]
+    },
+    {
+      "path": "tun",
+      "title": "tun",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "tun.enable",
+          "title": "enable",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "启用 tun",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.stack",
+          "title": "stack",
+          "kind": "choice",
+          "hint": "mips",
+          "description": "tun 模式堆栈，如无使用问题，建议使用 mips 栈，默认 mips 可用值： system/gvisor/mixed/mips system 使用系统协议栈，可以提供更稳定/全面的 tun 体验，且占用相对其他堆栈更低 gvisor 通过在用户空间中实现网络协议栈，可以提供更高的安全性和隔离性，同时可以避免操作系统内核和用户空间之间的切换，从而在特定情况下具有更好的网络处理性能 mixed 混合堆栈，tcp 使用 system栈，udp 使用 gvisor栈，使用体验可能相对更好 mips 使用 mihomo ",
+          "required": false,
+          "choices": [
+            "system",
+            "gvisor",
+            "mixed",
+            "mips"
+          ],
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.dns-hijack",
+          "title": "dns-hijack",
+          "kind": "list",
+          "hint": "[\"any:53\",\"tcp://any:53\"]",
+          "description": "dns 劫持，将匹配到的连接导入内部 dns 模块，不书写协议则为 udp:// 在 MacOS/Windows 无法自动劫持发往局域网的 dns 请求 在 Android 如开启 私人dns 则无法自动劫持 dns 请求",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.auto-detect-interface",
+          "title": "auto-detect-interface",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "自动选择流量出口接口，多出口网卡同时连接的设备建议手动指定出口网卡",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.auto-route",
+          "title": "auto-route",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "自动设置全局路由，可以自动将全局流量路由进入 tun 网卡。",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.mtu",
+          "title": "mtu",
+          "kind": "integer",
+          "hint": "9000",
+          "description": "最大传输单元，会影响极限状态下的速率，一般用户默认即可。",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.gso",
+          "title": "gso",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "启用通用分段卸载，仅支持 Linux",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.gso-max-size",
+          "title": "gso-max-size",
+          "kind": "integer",
+          "hint": "65536",
+          "description": "数据块的最大长度",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.strict-route",
+          "title": "strict-route",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "启用 auto-route 时执行严格的路由规则 在 Linux 中: 让不支持的网络无法到达 将所有连接路由到 tun 它可以防止地址泄漏，并使 DNS 劫持在 Android 上工作。 在 Windows 中: 添加防火墙规则以阻止 Windows 的 普通多宿主 DNS 解析行为 造成的 DNS 泄露 它可能会使某些应用程序（如 VirtualBox）在某些情况下无法正常工作。",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.congestion-controller",
+          "title": "congestion-controller",
+          "kind": "choice",
+          "hint": "cubic",
+          "description": "TCP 拥塞控制算法，可选值：cubic、reno、bbr、bbr3，默认为 cubic，仅在使用 mips 协议栈时生效",
+          "required": false,
+          "choices": [
+            "cubic",
+            "reno",
+            "bbr",
+            "bbr3"
+          ],
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.route-address",
+          "title": "route-address",
+          "kind": "list",
+          "hint": "[\"0.0.0.0/1\",\"128.0.0.0/1\",\"::/1\",\"8000::/1\"]",
+          "description": "启用 auto-route时路由自定义路由网段而不是默认路由，一般无需配置。",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.endpoint-independent-nat",
+          "title": "endpoint-independent-nat",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "启用独立于端点的 NAT，性能可能会略有下降，所以不建议在不需要的时候开启。",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.include-interface",
+          "title": "include-interface",
+          "kind": "list",
+          "hint": "[\"eth0\"]",
+          "description": "限制被路由的接口，默认不限制，与 exclude-interface 冲突，不可一起配置",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.exclude-interface",
+          "title": "exclude-interface",
+          "kind": "list",
+          "hint": "[\"eth1\"]",
+          "description": "排除路由的接口，与 include-interface 冲突，不可一起配置",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.device",
+          "title": "device",
+          "kind": "string",
+          "hint": "utun0",
+          "description": "指定 tun 网卡名称，MacOS 设备只能使用 utun 开头的网卡名",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.inet6-address",
+          "title": "inet6-address",
+          "kind": "list",
+          "hint": "[\"fdfe:dcba:9876::1/126\"]",
+          "description": "指定tun的ipv6地址 目前会在程序启动时检查系统其他网卡是否有IPV6，如果不存在会禁用该功能，如果需要强制开启tun的v6地址，请手动设置SKIP_SYSTEM_IPV6_CHECK=1系统环境变量 需要同时将顶层配置中的ipv6设置为true才会生效",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.udp-timeout",
+          "title": "udp-timeout",
+          "kind": "integer",
+          "hint": "300",
+          "description": "UDP NAT 过期时间，以秒为单位，默认为 300(5 分钟)",
+          "required": false,
+          "document": "inbound/tun.md"
+        },
+        {
+          "path": "tun.route-exclude-address",
+          "title": "route-exclude-address",
+          "kind": "list",
+          "hint": "[\"192.168.0.0/16\",\"fc00::/7\"]",
+          "description": "启用 auto-route 时排除自定义网段",
+          "required": false,
+          "elementKind": "string",
+          "document": "inbound/tun.md"
+        }
+      ]
+    },
+    {
+      "path": "sniffer",
+      "title": "sniffer",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "sniffer.enable",
+          "title": "enable",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "是否启用 sniffer",
+          "required": false,
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.force-dns-mapping",
+          "title": "force-dns-mapping",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "对 redir-host 类型识别的流量进行强制嗅探",
+          "required": false,
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.parse-pure-ip",
+          "title": "parse-pure-ip",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "对所有未获取到域名的流量进行强制嗅探",
+          "required": false,
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.override-destination",
+          "title": "override-destination",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "是否使用嗅探结果作为实际访问，默认为 true",
+          "required": false,
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.sniff",
+          "title": "sniff",
+          "kind": "group",
+          "hint": "",
+          "description": "",
+          "required": false,
+          "children": [
+            {
+              "path": "sniffer.sniff.QUIC",
+              "title": "QUIC",
+              "kind": "group",
+              "hint": "",
+              "description": "",
+              "required": false,
+              "children": [
+                {
+                  "path": "sniffer.sniff.QUIC.ports",
+                  "title": "ports",
+                  "kind": "list",
+                  "hint": "[443,8443]",
+                  "description": "",
+                  "required": false,
+                  "elementKind": "integer",
+                  "document": "sniff/index.md"
+                }
+              ]
+            },
+            {
+              "path": "sniffer.sniff.TLS",
+              "title": "TLS",
+              "kind": "group",
+              "hint": "",
+              "description": "",
+              "required": false,
+              "children": [
+                {
+                  "path": "sniffer.sniff.TLS.ports",
+                  "title": "ports",
+                  "kind": "list",
+                  "hint": "[443,8443]",
+                  "description": "",
+                  "required": false,
+                  "elementKind": "integer",
+                  "document": "sniff/index.md"
+                }
+              ]
+            },
+            {
+              "path": "sniffer.sniff.HTTP",
+              "title": "HTTP",
+              "kind": "group",
+              "hint": "",
+              "description": "",
+              "required": false,
+              "children": [
+                {
+                  "path": "sniffer.sniff.HTTP.ports",
+                  "title": "ports",
+                  "kind": "list",
+                  "hint": "[80,\"8080-8880\"]",
+                  "description": "",
+                  "required": false,
+                  "elementKind": "string",
+                  "document": "sniff/index.md"
+                },
+                {
+                  "path": "sniffer.sniff.HTTP.override-destination",
+                  "title": "override-destination",
+                  "kind": "boolean",
+                  "hint": "true",
+                  "description": "",
+                  "required": false,
+                  "document": "sniff/index.md"
+                }
+              ]
+            }
+          ]
+        },
+        {
+          "path": "sniffer.force-domain",
+          "title": "force-domain",
+          "kind": "list",
+          "hint": "[\"+.v2ex.com\"]",
+          "description": "强制进行嗅探的域名列表，使用域名通配",
+          "required": false,
+          "elementKind": "string",
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.skip-src-address",
+          "title": "skip-src-address",
+          "kind": "list",
+          "hint": "[\"192.168.0.3/32\"]",
+          "description": "跳过嗅探的来源 IP 段列表",
+          "required": false,
+          "elementKind": "string",
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.skip-dst-address",
+          "title": "skip-dst-address",
+          "kind": "list",
+          "hint": "[\"192.168.0.3/32\"]",
+          "description": "跳过嗅探的目标 IP 段列表",
+          "required": false,
+          "elementKind": "string",
+          "document": "sniff/index.md"
+        },
+        {
+          "path": "sniffer.skip-domain",
+          "title": "skip-domain",
+          "kind": "list",
+          "hint": "[\"Mijia Cloud\"]",
+          "description": "跳过嗅探的域名列表，使用域名通配",
+          "required": false,
+          "elementKind": "string",
+          "document": "sniff/index.md"
+        }
+      ]
+    },
+    {
+      "path": "dns",
+      "title": "dns",
+      "kind": "group",
+      "hint": "",
+      "description": "",
+      "required": false,
+      "children": [
+        {
+          "path": "dns.cache-algorithm",
+          "title": "cache-algorithm",
+          "kind": "choice",
+          "hint": "arc",
+          "description": "支持的算法： - lru: Least Recently Used, 默认值 - arc: Adaptive Replacement Cache",
+          "required": false,
+          "choices": [
+            "lru",
+            "arc"
+          ],
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.enable",
+          "title": "enable",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "是否启用，如为 false，则使用系统 DNS 解析",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.prefer-h3",
+          "title": "prefer-h3",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "DOH 优先使用 http/3",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.listen",
+          "title": "listen",
+          "kind": "string",
+          "hint": "0.0.0.0:1053",
+          "description": "DNS 服务监听，支持 udp, tcp",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.ipv6",
+          "title": "ipv6",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "是否解析 IPV6, 如为 false, 则回应 AAAA 的空解析",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.default-nameserver",
+          "title": "default-nameserver",
+          "kind": "list",
+          "hint": "[\"223.5.5.5\"]",
+          "description": "默认 DNS, 用于解析 DNS 服务器 的域名 必须为 IP, 可为加密 DNS",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.enhanced-mode",
+          "title": "enhanced-mode",
+          "kind": "choice",
+          "hint": "fake-ip",
+          "description": "可选值 fake-ip/redir-host，默认redir-host mihomo 的 DNS 处理模式",
+          "required": false,
+          "choices": [
+            "fake-ip",
+            "redir-host"
+          ],
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fake-ip-range",
+          "title": "fake-ip-range",
+          "kind": "string",
+          "hint": "198.18.0.1/16",
+          "description": "fakeip 下的 IP 段设置，tun 的默认 IPV4 地址 也使用此值作为参考",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fake-ip-range6",
+          "title": "fake-ip-range6",
+          "kind": "string",
+          "hint": "fdfe:dcba:9876::1/64",
+          "description": "fakeip 下的 IPv6 段设置",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fake-ip-filter",
+          "title": "fake-ip-filter",
+          "kind": "list",
+          "hint": "[\"RULE-SET,reject-domain,fake-ip\",\"RULE-SET,proxy-domain,fake-ip\",\"GEOSITE,gfw,fake-ip\",\"DOMAIN,www.baidu.com,real-ip\",\"DOMAIN-SUFFIX,qq.com,real-ip\",\"DOMAIN-SUFFIX,jd.com,fake-ip\",\"MATCH,fake-ip\"]",
+          "description": "fakeip 过滤，以下地址不会下发 fakeip 映射用于连接 值支持域名通配以及引入域名集合",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fake-ip-filter-mode",
+          "title": "fake-ip-filter-mode",
+          "kind": "choice",
+          "hint": "rule",
+          "description": "可选 blacklist/whitelist/rule，默认blacklist，whitelist 即只有匹配成功才返回 fake-ip 当fake-ip-filter-mode设置为rule时，开启规则模式，此时fake-ip-filter的写法发生改变:",
+          "required": false,
+          "choices": [
+            "blacklist",
+            "whitelist",
+            "rule"
+          ],
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fake-ip-ttl",
+          "title": "fake-ip-ttl",
+          "kind": "integer",
+          "hint": "1",
+          "description": "配置fakeip查询返回的TTL，非必要情况下请勿修改",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.use-hosts",
+          "title": "use-hosts",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "是否回应配置中的 hosts，默认 true",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.respect-rules",
+          "title": "respect-rules",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "dns 连接遵守路由规则，需配置 proxy-server-nameserver 强烈不建议和 prefer-h3 一起使用",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.nameserver",
+          "title": "nameserver",
+          "kind": "list",
+          "hint": "[\"https://8.8.8.8/dns-query#proxy&ecs=1.1.1.1/24&ecs-override=true\"]",
+          "description": "默认的域名解析服务器",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fallback",
+          "title": "fallback",
+          "kind": "list",
+          "hint": "[\"tls://8.8.4.4\",\"tls://1.1.1.1\"]",
+          "description": "后备域名解析服务器，一般情况下使用境外 DNS, 保证结果可信 配置 fallback后默认启用 fallback-filter,geoip-code为 cn",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.proxy-server-nameserver",
+          "title": "proxy-server-nameserver",
+          "kind": "list",
+          "hint": "[\"https://doh.pub/dns-query\"]",
+          "description": "代理节点域名解析服务器，仅用于解析代理节点的域名，如果不填则遵循 nameserver-policy、nameserver 和 fallback 的配置",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.proxy-server-nameserver-policy",
+          "title": "proxy-server-nameserver-policy",
+          "kind": "map",
+          "hint": "{\"www.yournode.com\":\"114.114.114.114\"}",
+          "description": "格式同nameserver-policy，仅用于节点域名解析，当且仅当proxy-server-nameserver不为空时生效",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.direct-nameserver",
+          "title": "direct-nameserver",
+          "kind": "list",
+          "hint": "[\"system\"]",
+          "description": "用于 direct 出口域名解析的 DNS 服务器，如果不填则遵循 nameserver-policy、nameserver 和 fallback 的配置",
+          "required": false,
+          "elementKind": "string",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.direct-nameserver-follow-policy",
+          "title": "direct-nameserver-follow-policy",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "是否遵循 nameserver-policy，默认为不遵守，仅当 direct-nameserver 不为空时生效",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.fallback-filter",
+          "title": "fallback-filter",
+          "kind": "group",
+          "hint": "",
+          "description": "",
+          "required": false,
+          "children": [
+            {
+              "path": "dns.fallback-filter.geoip",
+              "title": "geoip",
+              "kind": "boolean",
+              "hint": "true",
+              "description": "",
+              "required": false,
+              "document": "dns/index.md"
+            },
+            {
+              "path": "dns.fallback-filter.geoip-code",
+              "title": "geoip-code",
+              "kind": "string",
+              "hint": "CN",
+              "description": "",
+              "required": false,
+              "document": "dns/index.md"
+            },
+            {
+              "path": "dns.fallback-filter.ipcidr",
+              "title": "ipcidr",
+              "kind": "list",
+              "hint": "[\"240.0.0.0/4\",\"0.0.0.0/32\",\"127.0.0.1/32\",\"100.64.0.0/10\"]",
+              "description": "",
+              "required": false,
+              "elementKind": "string",
+              "document": "dns/index.md"
+            },
+            {
+              "path": "dns.fallback-filter.domain",
+              "title": "domain",
+              "kind": "list",
+              "hint": "[\"+.google.com\",\"+.facebook.com\",\"+.youtube.com\"]",
+              "description": "",
+              "required": false,
+              "elementKind": "string",
+              "document": "dns/index.md"
+            },
+            {
+              "path": "dns.fallback-filter.geosite",
+              "title": "geosite",
+              "kind": "list",
+              "hint": "[\"gfw\"]",
+              "description": "",
+              "required": false,
+              "elementKind": "string",
+              "document": "dns/index.md"
+            }
+          ]
+        },
+        {
+          "path": "dns.fallback-lazy-query",
+          "title": "fallback-lazy-query",
+          "kind": "boolean",
+          "hint": "false",
+          "description": "默认值为 false ，如果为 true 会先判断来自 nameserver 的结果是否满足 fallback-filter 后再发起查询",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.nameserver-policy",
+          "title": "nameserver-policy",
+          "kind": "map",
+          "hint": "{\"+.arpa\":\"10.0.0.1\",\"rule-set:cn\":[\"https://doh.pub/dns-query\",\"https://dns.alidns.com/dns-query\"]}",
+          "description": "指定域名查询的解析服务器，可使用 geosite, 优先于 nameserver/fallback 查询 键支持域名通配 值支持字符串/数组",
+          "required": false,
+          "elementKind": "list",
+          "document": "dns/index.md"
+        },
+        {
+          "path": "dns.use-system-hosts",
+          "title": "use-system-hosts",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "是否查询系统 hosts，默认 true",
+          "required": false,
+          "document": "dns/index.md"
+        }
+      ]
+    },
+    {
+      "path": "proxies",
+      "title": "proxies",
+      "kind": "list",
+      "hint": "[{\"name\":\"proxy\",\"type\":\"ss\"}]",
+      "description": "",
+      "required": false,
+      "elementKind": "object",
+      "children": [
+        {
+          "path": "name",
+          "title": "name",
+          "kind": "string",
+          "hint": "proxy",
+          "description": "",
+          "required": false
+        },
+        {
+          "path": "type",
+          "title": "type",
+          "kind": "string",
+          "hint": "ss",
+          "description": "",
+          "required": false
+        }
+      ],
+      "document": "dns/index.md"
+    },
+    {
+      "path": "unified-delay",
+      "title": "unified-delay",
+      "kind": "boolean",
+      "hint": "true",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "geodata-mode",
+      "title": "geodata-mode",
+      "kind": "boolean",
+      "hint": "true",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "geodata-loader",
+      "title": "geodata-loader",
+      "kind": "choice",
+      "hint": "memconservative",
+      "description": "",
+      "required": false,
+      "choices": [
+        "memconservative",
+        "standard"
+      ],
+      "document": "general.md"
+    },
+    {
+      "path": "global-ua",
+      "title": "global-ua",
+      "kind": "string",
+      "hint": "clash.meta",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    },
+    {
+      "path": "etag-support",
+      "title": "etag-support",
+      "kind": "boolean",
+      "hint": "true",
+      "description": "",
+      "required": false,
+      "document": "general.md"
+    }
   ]
 }
 """#
