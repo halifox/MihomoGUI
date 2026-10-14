@@ -29,7 +29,11 @@ public func groupEditorFields(_ type: String) -> [EditorField] {
 
 public func ruleProviderEditorFields(_ type: String) -> [EditorField] {
     var fields: [EditorField] = [EditorField("behavior", kind: "choice", required: true, choices: ["domain", "ipcidr", "classical"])]
-    if type != "inline" { fields.append(EditorField("format", kind: "choice", choices: ["yaml", "text", "mrs"])) }
+    if type != "inline" {
+        var format = EditorField("format", kind: "choice", choices: ["yaml", "text", "mrs"])
+        format.defaultHint = "yaml"
+        fields.append(format)
+    }
     if type == "http" {
         fields += [EditorField("url", hint: "https://example.com/rules.yaml", required: true),
             EditorField("interval", kind: "integer", hint: "600"), EditorField("size-limit", kind: "integer"),

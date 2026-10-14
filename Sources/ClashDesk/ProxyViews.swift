@@ -225,16 +225,13 @@ struct ProxyEditorView: View {
             Text(original == nil ? "添加代理" : "编辑代理").font(.title2.bold())
             formRow("type *") {
                 Picker("代理类型", selection: $type) {
-                    ForEach(documentSchemas.proxies) { Text($0.name).tag($0.key) }
+                    ForEach(documentSchemas.proxies) { Text(optionLabel($0.key)).tag($0.key) }
                 }.labelsHidden()
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(schema.fields) { field in
-                        VStack(spacing: 0) {
-                            VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
-                            Divider()
-                        }
+                        VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
                     }
                     DisclosureGroup("额外字段") {
                         ForEach(fields.keys.filter { !knownFields.contains($0) }.sorted(), id: \.self) { path in

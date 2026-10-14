@@ -43,14 +43,15 @@ struct ResourcesView: View {
                     TableColumn("选择节点") { row in
                         if let group = row.group, group.type == "select" {
                             Picker("选择节点", selection: Binding(get: {
-                                group.fields["default-selected"]?.text ?? ""
+                                let selected = group.fields["default-selected"]?.text ?? ""
+                                return selected.isEmpty ? group.targets.first ?? "" : selected
                             }, set: { target in
                                 var updated = group
                                 updated.fields["default-selected"] = .string(target)
                                 do { try model.saveProxyGroup(updated) }
                                 catch { model.error = error.localizedDescription }
                             })) {
-                                Text("第一个成员").tag("")
+                                if group.targets.isEmpty { Text("空（Empty）").tag("") }
                                 ForEach(group.targets, id: \.self) { target in
                                     Text(memberLabel(target)).tag(target)
                                 }
@@ -78,7 +79,7 @@ struct ResourcesView: View {
     func memberLabel(_ target: String) -> String {
         if let node = model.allNodes.first(where: { "node:" + $0.id == target }) { return model.nodeLabel(node) }
         if target.hasPrefix("group:") { return "代理组 / " + target.dropFirst(6) }
-        if target.hasPrefix("builtin:") { return String(target.dropFirst(8)) }
+        if target.hasPrefix("builtin:") { return optionLabel(String(target.dropFirst(8))) }
         return "已失效：" + target
     }
     func source(_ row: ResourceRow) -> String {
@@ -113,7 +114,7 @@ struct ResourceEditorView: View {
                 formRow("name *") { TextField("规则集名称", text: $name).textFieldStyle(.roundedBorder) }
                 formRow("type *") {
                     Picker("类型", selection: $type) {
-                        ForEach(["http", "file", "inline"], id: \.self) { Text($0).tag($0) }
+                        ForEach(["http", "file", "inline"], id: \.self) { Text(optionLabel($0)).tag($0) }
                     }.labelsHidden()
                 }
             }
@@ -127,7 +128,7 @@ struct ResourceEditorView: View {
                         HStack(spacing: 12) {
                             FieldKeyLabel(title: "type *", key: "type").frame(width: 200, alignment: .leading)
                             Picker("类型", selection: $type) {
-                                ForEach(["select", "url-test", "fallback", "load-balance"], id: \.self) { Text($0).tag($0) }
+                                ForEach(["select", "url-test", "fallback", "load-balance"], id: \.self) { Text(optionLabel($0)).tag($0) }
                             }.labelsHidden()
                             Spacer(minLength: 0)
                         }.padding(.vertical, 3)
@@ -150,8 +151,11 @@ struct ResourceEditorView: View {
                         if groups && field.path == "default-selected" {
                             HStack {
                                 FieldKeyLabel(title: "default-selected", key: "default-selected").frame(width: 200, alignment: .leading)
-                                Picker("默认成员", selection: Binding(get: { fields["default-selected"]?.text ?? "" }, set: { fields["default-selected"] = .string($0) })) {
-                                    Text("第一个成员").tag("")
+                                Picker("默认成员", selection: Binding(get: {
+                                    let selected = fields["default-selected"]?.text ?? ""
+                                    return selected.isEmpty ? targets.first ?? "" : selected
+                                }, set: { fields["default-selected"] = .string($0) })) {
+                                    if targets.isEmpty { Text("空（Empty）").tag("") }
                                     ForEach(Array(Set(targets)).sorted(), id: \.self) { target in Text(memberLabel(target)).tag(target) }
                                 }.labelsHidden()
                             }
@@ -197,15 +201,15 @@ struct ResourceEditorView: View {
     }
     func memberLabel(_ target: String) -> String {
         if let node = model.allNodes.first(where: { "node:" + $0.id == target }) { return model.nodeLabel(node) }
-        return target.hasPrefix("group:") ? "代理组 / " + target.dropFirst(6) : target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : "已失效：" + target
+        return target.hasPrefix("group:") ? "代理组 / " + target.dropFirst(6) : target.hasPrefix("builtin:") ? optionLabel(String(target.dropFirst(8))) : "已失效：" + target
     }
     func memberPicker(_ index: Int) -> some View {
         Picker("成员", selection: Binding(get: { targets.indices.contains(index) ? targets[index] : "" }, set: {
             if targets.indices.contains(index) { targets[index] = $0 }
         })) {
-            Text("DIRECT · 直连").tag("builtin:DIRECT")
-            Text("REJECT · 拒绝").tag("builtin:REJECT")
-            Text("REJECT-DROP · 丢弃").tag("builtin:REJECT-DROP")
+            Text(optionLabel("DIRECT")).tag("builtin:DIRECT")
+            Text(optionLabel("REJECT")).tag("builtin:REJECT")
+            Text(optionLabel("REJECT-DROP")).tag("builtin:REJECT-DROP")
             if targets.indices.contains(index), !["builtin:DIRECT", "builtin:REJECT", "builtin:REJECT-DROP"].contains(targets[index]),
                !model.allNodes.contains(where: { "node:" + $0.id == targets[index] }),
                !(model.settings.proxyGroups ?? []).contains(where: { "group:" + $0.name == targets[index] }) {

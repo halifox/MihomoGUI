@@ -166,7 +166,7 @@ struct StatisticsView: View {
                 Text("流量统计").font(.title2.bold())
                 Spacer()
                 Picker("时间范围", selection: $model.hours) {
-                    Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
+                    Text("最近 24 小时（Last 24 hours）").tag(24); Text("最近 7 天（Last 7 days）").tag(168); Text("最近 30 天（Last 30 days）").tag(720)
                 }.frame(width: 220)
             }.pageActions()
                 Table(model.traffic) {

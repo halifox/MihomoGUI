@@ -282,7 +282,32 @@ final class CoreTests: XCTestCase {
         XCTAssertThrowsError(try generateConfig(draft))
     }
 
+    func testEmptyChoiceValidationAndOmission() throws {
+        let required = EditorField("behavior", kind: "choice", required: true, choices: ["domain"])
+        XCTAssertThrowsError(try validateFieldValues([:], schema: [required]))
+        XCTAssertThrowsError(try validateFieldValues(["behavior": .string("")], schema: [required]))
+        try validateFieldValues(["behavior": .string("domain")], schema: [required])
+        let ipVersion = documentSchemas.proxies.first { $0.key == "http" }!.fields.first { $0.path == "ip-version" }!
+        XCTAssertEqual(ipVersion.defaultHint, "dual")
+        let dnsMode = documentSchemas.sections.flatMap(\.fields).first { $0.path == "dns.enhanced-mode" }!
+        XCTAssertEqual(dnsMode.defaultHint, "redir-host")
+        XCTAssertEqual(ruleProviderEditorFields("http").first { $0.path == "format" }?.defaultHint, "yaml")
+        let optional = EditorField("mode", kind: "choice", choices: ["rule"])
+        XCTAssertEqual(emptyValue(optional), .string(""))
+        try validateFieldValues(["mode": .string("")], schema: [optional])
+        let proxy = ManualProxy(type: "http", fields: ["name": .string("Test"), "server": .string("127.0.0.1"), "port": .integer(8080), "ip-version": .string("")])
+        XCTAssertTrue(try proxy.configuration()["ip-version"] == nil)
+        let hysteria = ManualProxy(type: "hysteria2", fields: ["name": .string("Test"), "server": .string("127.0.0.1"), "port": .integer(443), "password": .string("test"), "obfs": .string("")])
+        XCTAssertTrue(try hysteria.configuration()["obfs"] == nil)
+        var settings = Settings(); settings.defaultDirect = true; settings.options = ["mode": .string("")]
+        XCTAssertTrue(try configurationObject(settings)["mode"] == nil)
+        settings.proxyGroups = [ProxyGroup(name: "Test", targets: ["builtin:DIRECT"], fields: ["default-selected": .string("")])]
+        let groups = try configurationObject(settings)["proxy-groups"] as! [[String: Any]]
+        XCTAssertTrue(groups.first { $0["name"] as? String == "Test" }?["default-selected"] == nil)
+    }
+
     static var allTests = [
+        ("testEmptyChoiceValidationAndOmission", testEmptyChoiceValidationAndOmission),
         ("testConfigIgnoresSubscriptionRulesAndKeepsTableOrder", testConfigIgnoresSubscriptionRulesAndKeepsTableOrder),
         ("testRejectsRuleInjectionAndDeletedSubscription", testRejectsRuleInjectionAndDeletedSubscription),
         ("testTrafficDeltasResetAndPruneInactiveConnections", testTrafficDeltasResetAndPruneInactiveConnections),

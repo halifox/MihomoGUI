@@ -9,9 +9,9 @@ struct PolicyPicker: View {
     @Binding var selection: String
     var body: some View {
         Picker("出口", selection: $selection) {
-            Text("DIRECT · 直连").tag("builtin:DIRECT")
-            Text("REJECT · 拒绝").tag("builtin:REJECT")
-            Text("REJECT-DROP · 丢弃").tag("builtin:REJECT-DROP")
+            Text(optionLabel("DIRECT")).tag("builtin:DIRECT")
+            Text(optionLabel("REJECT")).tag("builtin:REJECT")
+            Text(optionLabel("REJECT-DROP")).tag("builtin:REJECT-DROP")
             if selection.hasPrefix("node:"), !model.allNodes.contains(where: { "node:" + $0.id == selection }) {
                 Text("已失效：" + selection.dropFirst(5)).tag(selection)
             }
@@ -126,19 +126,19 @@ struct RuleEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     formRow("type *") {
-                        Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text($0.rawValue).tag($0) } }.labelsHidden()
+                        Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) } }.labelsHidden()
                     }
                     if kind.isCIDR {
                         formRow("address *") { TextField("192.168.1.0 或 2001:db8::", text: $address) }
                         formRow("prefix *") { TextField("掩码位数", text: $prefix).frame(width: 90) }
                     } else if kind == .network {
                         formRow("network *") {
-                            Picker("网络协议", selection: $value) { Text("TCP").tag("tcp"); Text("UDP").tag("udp") }.labelsHidden()
+                            Picker("网络协议", selection: $value) { Text(optionLabel("tcp")).tag("tcp"); Text(optionLabel("udp")).tag("udp") }.labelsHidden()
                         }
                     } else if kind == .ruleSet {
                         formRow("rule-set *") {
                             Picker("集合名称", selection: $value) {
-                                Text("请选择集合").tag("")
+                                Text("空（Empty）").tag("")
                                 ForEach((model.settings.options?["rule-providers"]?.object.keys.sorted() ?? []), id: \.self) { Text($0).tag($0) }
                             }.labelsHidden()
                         }
@@ -150,7 +150,7 @@ struct RuleEditorView: View {
                                 formRow("condition[\(index + 1)].type") {
                                     HStack {
                                         Picker("条件", selection: $conditions[index].kind) {
-                                            ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text($0.rawValue).tag($0) }
+                                            ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) }
                                         }.labelsHidden()
                                         if conditions.count > 1 && kind != .not && kind != .subRule {
                                             Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除条件")
@@ -176,7 +176,7 @@ struct RuleEditorView: View {
                     if kind == .subRule {
                         formRow("sub-rule *") {
                             Picker("子规则", selection: $subTarget) {
-                                Text("请选择子规则").tag("")
+                                Text("空（Empty）").tag("")
                                 ForEach(model.settings.options?["sub-rules"]?.object.keys.sorted() ?? [], id: \.self) { Text($0).tag($0) }
                             }.labelsHidden()
                         }
@@ -214,7 +214,7 @@ struct RuleEditorView: View {
             var rule = RouteRule(kind: kind, value: payload, node: node)
             if let original { rule.id = original.id }
             rule.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
-            rule.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
+            rule.builtin = target.hasPrefix("builtin:") ? optionLabel(String(target.dropFirst(8))) : nil
             rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
             try model.saveRule(rule); dismiss()
         } catch { self.error = error.localizedDescription }
