@@ -101,6 +101,7 @@ public struct Settings: Codable {
     public var corePath = ""
     public var secret = UUID().uuidString + UUID().uuidString
     public var subscriptions: [Subscription] = []
+    public var subscriptionProxies: [String: [ConfigValue]]?
     public var rules: [RouteRule] = []
     public var defaultNode: Node?
     public var defaultDirect: Bool?
@@ -147,13 +148,25 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     guard selected.allSatisfy({ ($0.provider == "manual" ? manualNames.contains($0.name) : providers.contains($0.provider)) }) else {
         throw DeskError("规则引用了已删除的订阅，请重新选择节点")
     }
-    var providerConfig: [String: Any] = [:]
-    for subscription in settings.subscriptions {
-        providerConfig[subscription.provider] = [
-            "type": "http", "url": subscription.url, "path": "./providers/\(subscription.id).yaml",
-            "interval": 3600, "proxy": "DIRECT",
-            "health-check": ["enable": false]
-        ] as [String: Any]
+    var proxyObjects = manualObjects
+    var aliases: [Node: String] = [:]
+    for (sourceIndex, subscription) in settings.subscriptions.enumerated() {
+        let entries = settings.subscriptionProxies?[subscription.id] ?? []
+        var names: [String: String] = [:]
+        for (index, entry) in entries.enumerated() {
+            guard let name = entry.object["name"]?.text, !name.isEmpty, names[name] == nil else {
+                throw DeskError("订阅包含空名称或重复名称节点")
+            }
+            names[name] = "CD.Proxy.\(sourceIndex).\(index)"
+        }
+        for entry in entries {
+            var proxy = entry.object.mapValues(\.native)
+            let name = entry.object["name"]!.text
+            proxy["name"] = names[name]!
+            if let dialer = proxy["dialer-proxy"] as? String, let renamed = names[dialer] { proxy["dialer-proxy"] = renamed }
+            aliases[Node(provider: subscription.provider, name: name)] = names[name]!
+            proxyObjects.append(proxy)
+        }
     }
     var groups: [[String: Any]] = []
     var nodeGroups: [Node: String] = [:]
@@ -164,9 +177,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             groups.append(["name": name, "type": "select", "proxies": [node.name]])
             continue
         }
-        groups.append(["name": name, "type": "select", "use": [node.provider],
-                       "filter": "^" + NSRegularExpression.escapedPattern(for: node.name) + "$",
-                       "empty-fallback": "REJECT"])
+        groups.append(["name": name, "type": "select", "proxies": [aliases[node] ?? "REJECT"]])
     }
     if let policy = settings.defaultPolicy {
         guard ["DIRECT", "REJECT", "REJECT-DROP"].contains(policy) else { throw DeskError("默认出口策略无效") }
@@ -177,7 +188,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         groups.append(["name": defaultGroup, "type": "select", "proxies": [nodeGroups[node]!]])
     } else {
         groups.append(["name": defaultGroup, "type": "select",
-                       "use": settings.subscriptions.map(\.provider), "proxies": manualNames.isEmpty ? ["REJECT"] : manualNames, "empty-fallback": "REJECT"])
+                       "proxies": proxyObjects.isEmpty ? ["REJECT"] : proxyObjects.compactMap { $0["name"] as? String }])
     }
     var rules: [String] = []
     let ordered = settings.ruleOrderMigrated == nil
@@ -216,14 +227,15 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
                 "fallback": ["1.1.1.1", "8.8.8.8"],
                 "fallback-filter": ["geoip": true, "geoip-code": "CN", "geosite": ["gfw"],
                                     "ipcidr": ["240.0.0.0/4"], "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]]],
-        "proxy-providers": providerConfig, "proxy-groups": groups, "rules": rules
+        "proxy-groups": groups, "rules": rules
     ]
-    config["proxies"] = manualObjects
+    config["proxies"] = proxyObjects
     for (path, value) in settings.options ?? [:] {
         // An empty visual input omits an optional field, even when our defaults contain it.
         let omitted = value == .string("") && path != "external-controller" && path != "secret"
         setConfigPath(path, value: omitted ? nil : value.native, in: &config)
     }
+    config.removeValue(forKey: "proxy-providers")
     try validateFieldValues(settings.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
     try validateRuleResources(settings)
     try validateGeneralOptions(config)

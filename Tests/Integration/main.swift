@@ -35,6 +35,7 @@ struct Integration {
         }
         guard imported.count == 2, imported.first == settings.defaultNode else { throw DeskError("节点导入没有保留订阅顺序") }
         guard imported.allSatisfy({ $0.supportsUDP == false }) else { throw DeskError("HTTP 节点 UDP 能力解析错误") }
+        settings.subscriptionProxies = [subscription.id: try readSubscriptionProxies(fixture).map { ConfigValue(native: $0) }]
         try populateNodeEndpoints(&imported, provider: subscription.provider, file: fixture)
         guard imported.allSatisfy({ $0.server == "127.0.0.1" && $0.port == String(proxyPort) }) else {
             throw DeskError("订阅真实服务器与端口提取失败")
@@ -61,7 +62,8 @@ struct Integration {
         config["external-controller"] = "127.0.0.1:19191"
         config["mixed-port"] = 0
         config["dns"] = ["enable": false]
-        config["proxy-providers"] = [subscription.provider: ["type": "file", "path": fixture.path]]
+        guard config["proxy-providers"] == nil,
+              !String(decoding: try yamlData(config), as: UTF8.self).contains(subscription.url) else { throw DeskError("订阅地址泄露到运行配置") }
         let configURL = directory.appendingPathComponent("config.yaml")
         try yamlData(config).write(to: configURL)
         func process(_ arguments: [String]) throws -> Process {
@@ -84,11 +86,12 @@ struct Integration {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         guard ready else { throw DeskError("隔离内核未就绪") }
-        let nodes = try await api.nodes()
-        guard nodes == imported else { throw DeskError("节点集合解析错误") }
+        let runtimeProxies = try JSONSerialization.jsonObject(with: await api.request("/proxies")) as! [String: Any]
+        let available = runtimeProxies["proxies"] as! [String: Any]
+        guard available["CD.Proxy.0.0"] != nil, available["CD.Proxy.0.1"] != nil else { throw DeskError("内联节点没有加载") }
         let groupData = try await api.request("/proxies/CD.Node.0")
         let group = try JSONSerialization.jsonObject(with: groupData) as! [String: Any]
-        guard group["all"] as? [String] == [fixtureName] else { throw DeskError("精确节点过滤未生效") }
+        guard group["all"] as? [String] == ["CD.Proxy.0.0"] else { throw DeskError("精确节点过滤未生效") }
         let rulesObject = try JSONSerialization.jsonObject(with: await api.request("/rules")) as! [String: Any]
         let loadedRules = rulesObject["rules"] as! [[String: Any]]
         guard loadedRules.contains(where: { $0["payload"] as? String == processPath }),
@@ -116,7 +119,10 @@ struct Integration {
             server: 127.0.0.1
             port: 9
         """.write(to: fixture, atomically: true, encoding: .utf8)
-        try await api.updateSubscriptions(settings.subscriptions)
+        settings.subscriptionProxies = [subscription.id: try readSubscriptionProxies(fixture).map { ConfigValue(native: $0) }]
+        let changed = try configurationObject(settings)
+        config["proxies"] = changed["proxies"]; config["proxy-groups"] = changed["proxy-groups"]
+        try await api.reload(yamlData(config))
         let missing = try JSONSerialization.jsonObject(with: await api.request("/proxies/CD.Node.0")) as! [String: Any]
         guard missing["all"] as? [String] == ["REJECT"] else { throw DeskError("节点失效时没有使用 REJECT") }
         print("PASS: disappeared node rejects instead of rerouting")
