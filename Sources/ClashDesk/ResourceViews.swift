@@ -35,7 +35,7 @@ struct ResourcesView: View {
                 Button {
                     if let selected { model.deleteResource(selected, groups: groups) }
                 } label: { Label("删除", systemImage: "trash") }.disabled(model.busy || selected == nil)
-            }
+            }.pageActions()
             Table(rows, selection: $selection) {
                 TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
                 TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
