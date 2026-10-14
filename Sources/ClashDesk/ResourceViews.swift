@@ -35,9 +35,9 @@ struct ResourcesView: View {
                 Spacer()
                 Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
                 Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selected == nil)
-                Button {
+                DeleteButton(message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
                     if let selected { model.deleteResource(selected, groups: groups) }
-                } label: { Label("删除", systemImage: "trash") }.disabled(model.busy || selected == nil)
+                }.disabled(model.busy || selected == nil)
             }.pageActions()
             if groups {
                 Table(rows, selection: $selection) {
@@ -143,7 +143,10 @@ struct ResourceEditorView: View {
                                         memberPicker(index)
                                         Button { targets.swapAt(index, index - 1) } label: { formActionIcon("arrow.up") }.buttonStyle(.bordered).controlSize(.regular).help("上移").disabled(index == 0)
                                         Button { targets.swapAt(index, index + 1) } label: { formActionIcon("arrow.down") }.buttonStyle(.bordered).controlSize(.regular).help("下移").disabled(index + 1 == targets.count)
-                                        Button { targets.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除成员")
+                                        DeleteButton(title: "删除成员", message: "确定删除第 \(index + 1) 个成员吗？此操作无法撤销。") {
+                                            guard targets.indices.contains(index) else { return }
+                                            targets.remove(at: index)
+                                        }
                                     }
                                 }
                                 Button { targets.append(model.allNodes.first.map { "node:" + $0.id } ?? "builtin:REJECT") } label: { Label("添加成员", systemImage: "plus") }

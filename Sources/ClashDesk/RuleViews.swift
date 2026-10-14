@@ -60,9 +60,9 @@ struct RulesView: View {
                 Button {
                     if let selection { model.moveRule(selection, offset: 1) }
                 } label: { Label("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
-                Button {
+                DeleteButton(message: "确定删除所选路由规则吗？此操作无法撤销。") {
                     if let selection { model.deleteRule(selection); self.selection = nil }
-                } label: { Label("删除", systemImage: "minus") }.disabled(selectedIndex == nil || model.busy)
+                }.disabled(selectedIndex == nil || model.busy)
             }.pageActions()
             Table(rows, selection: $selection) {
                 TableColumn("类型") { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true))
@@ -159,7 +159,10 @@ struct RuleEditorView: View {
                                             ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) }
                                         }.labelsHidden()
                                         if conditions.count > 1 && kind != .not && kind != .subRule {
-                                            Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除条件")
+                                            DeleteButton(title: "删除条件", message: "确定删除第 \(index + 1) 个条件吗？此操作无法撤销。") {
+                                                guard conditions.indices.contains(index) else { return }
+                                                conditions.remove(at: index)
+                                            }
                                         }
                                     }
                                 }
