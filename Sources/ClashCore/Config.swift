@@ -320,3 +320,9 @@ public func generateConfig(_ settings: Settings) throws -> Data {
         "dns", "sniffer", "find-process-mode", "proxies", "proxy-providers", "proxy-groups", "rule-providers", "sub-rules", "rules"
     ])
 }
+
+public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings) -> Bool {
+    if settings.corePath != applied.corePath { return true }
+    guard let current = try? generateConfig(settings), let previous = try? generateConfig(applied) else { return true }
+    return current != previous
+}
