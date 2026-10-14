@@ -22,10 +22,10 @@ func bytes(_ value: Int64) -> String {
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, outbound, rules, connections, traffic, settings
+    case general, subscriptions, outbound, rules, connections, traffic, settings
     var id: Int { rawValue }
-    var title: String { ["通用配置", "出站代理", "路由规则", "当前连接", "流量统计", "设置"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "network", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
+    var title: String { ["通用配置", "订阅管理", "出站代理", "路由规则", "当前连接", "流量统计", "设置"][rawValue] }
+    var icon: String { ["slider.horizontal.3", "link", "network", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
 }
 
 struct DeskView: View {
@@ -60,6 +60,7 @@ struct DeskView: View {
                 Group {
                     switch page ?? .general {
                     case .general: GeneralConfigurationView()
+                    case .subscriptions: SubscriptionsView()
                     case .outbound: OutboundProxiesView()
                     case .rules: RulesView()
                     case .connections: ConnectionsView()

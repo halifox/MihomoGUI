@@ -1,12 +1,53 @@
 import SwiftUI
 import ClashCore
 
+struct SubscriptionsView: View {
+    @EnvironmentObject var model: DeskModel
+    @State private var selection: String?
+    @State private var name = ""
+    @State private var url = ""
+    var selected: Subscription? { model.settings.subscriptions.first { $0.id == selection } }
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack {
+                Text("订阅管理").font(.title2.bold())
+                Text("\(model.settings.subscriptions.count) 个订阅").foregroundStyle(.secondary)
+                Spacer()
+                Button { if let selected { model.deleteSubscription(selected) } } label: {
+                    Label("删除订阅", systemImage: "minus")
+                }.disabled(model.busy || selected == nil)
+                Button("更新全部订阅") { model.refreshSubscriptions() }
+                    .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
+            }
+            Table(model.settings.subscriptions, selection: $selection) {
+                TableColumn("名称") { subscription in Text(subscription.name).textSelection(.enabled) }.width(min: 130, ideal: 180)
+                TableColumn("订阅链接") { subscription in Text(subscription.url).lineLimit(1).textSelection(.enabled) }
+                TableColumn("节点数") { subscription in
+                    Text(String(model.nodes.filter { $0.provider == subscription.provider }.count))
+                }.width(80)
+                TableColumn("操作") { subscription in
+                    Button("删除") { model.deleteSubscription(subscription) }.disabled(model.busy)
+                }.width(80)
+            }
+            GroupBox("添加订阅") {
+                HStack {
+                    TextField("订阅名称", text: $name).frame(width: 180)
+                    TextField("HTTPS Clash YAML 订阅地址", text: $url)
+                    Button { model.addSubscription(name: name, url: url) } label: {
+                        Label("添加并拉取", systemImage: "plus")
+                    }.disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                }.textFieldStyle(.roundedBorder).padding(8)
+            }
+            Text(model.settings.corePath.isEmpty ? "请先在设置中选择 mihomo 二进制文件，再拉取订阅。" : "订阅节点保存在本地，并在出站代理页面显示。被规则引用的订阅需先调整出口才能删除。")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+    }
+}
+
 struct OutboundProxiesView: View {
     @EnvironmentObject var model: DeskModel
     @State private var adding = false
     @State private var editing: ManualProxy?
-    @State private var name = ""
-    @State private var url = ""
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -14,25 +55,6 @@ struct OutboundProxiesView: View {
                 Text("\(model.allNodes.count) 个代理").foregroundStyle(.secondary)
                 Spacer()
                 Button { adding = true } label: { Label("添加代理", systemImage: "plus") }.disabled(model.busy)
-            }
-            GroupBox("从订阅导入") {
-                VStack(alignment: .leading, spacing: 10) {
-                    ForEach(model.settings.subscriptions) { subscription in
-                        HStack {
-                            Text(subscription.name).fontWeight(.medium)
-                            Text(URL(string: subscription.url)?.host ?? "无效地址").foregroundStyle(.secondary)
-                            Spacer()
-                            Button("删除") { model.deleteSubscription(subscription) }.disabled(model.busy)
-                        }
-                    }
-                    HStack {
-                        TextField("订阅名称", text: $name).frame(width: 150)
-                        SecureField("HTTPS Clash YAML 订阅地址", text: $url)
-                        Button("拉取并保存") { model.addSubscription(name: name, url: url) }
-                            .disabled(model.busy || model.settings.corePath.isEmpty || name.isEmpty || url.isEmpty)
-                        Button("更新订阅") { model.refreshSubscriptions() }.disabled(model.busy || model.settings.subscriptions.isEmpty)
-                    }
-                }.padding(8)
             }
             Table(model.allNodes) {
                 TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }
