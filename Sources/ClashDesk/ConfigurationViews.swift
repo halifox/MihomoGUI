@@ -92,6 +92,31 @@ struct ApplicationSettingsView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 20) {
                 Text("设置与调试").font(.title2.bold())
+                GroupBox("服务控制") {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 10) {
+                            Image(systemName: "network").font(.title2).foregroundStyle(.blue)
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("ClashDesk · 0.5").font(.headline)
+                                Text("内核 \(model.coreRunning ? "在线" : "离线") · 统计 \(statsStatus)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if model.busy { ProgressView().controlSize(.small) }
+                        }
+                        HStack {
+                            Button("安装 / 启动全部") { model.startAll() }.disabled(model.busy)
+                            Button("应用运行配置") { model.applyLive() }.disabled(model.busy || !model.coreRunning)
+                            Menu("停止") {
+                                Button("停止代理") { model.perform { try await stopCore() } }
+                                Button("停止统计") { model.perform { try await stopStatistics() } }
+                                Button("停止全部服务") {
+                                    model.perform { try await stopCore(); try await stopStatistics() }
+                                }
+                            }.disabled(model.busy)
+                        }
+                    }.padding(8)
+                }
                 GroupBox("mihomo 二进制") {
                     HStack {
                         Text(model.settings.corePath.isEmpty ? "尚未配置" : model.settings.corePath)
@@ -146,6 +171,10 @@ struct ApplicationSettingsView: View {
 
             }
         }
+    }
+    var statsStatus: String {
+        guard let sample = model.lastSample else { return "未采集" }
+        return Date().timeIntervalSince(sample) < 20 ? "采集中" : "采集已暂停"
     }
     func info(_ title: String, _ value: String) -> some View {
         GridRow { Text(title).foregroundStyle(.secondary); Text(value).textSelection(.enabled) }

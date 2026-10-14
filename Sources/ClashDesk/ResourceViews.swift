@@ -29,7 +29,6 @@ struct ResourcesView: View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text(title).font(.title2.bold())
-                Text("\(rows.count) 项").foregroundStyle(.secondary)
                 Spacer()
                 Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
                 Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selected == nil)
