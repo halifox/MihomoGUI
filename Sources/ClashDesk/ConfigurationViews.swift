@@ -11,162 +11,35 @@ struct GeneralConfigurationView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    configurationRows(prefix: "").padding(6)
+                    ConfigurationRows(fields: documentSchemas.configuration).padding(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.padding(.trailing, 4)
             }.disabled(model.busy)
 
         }
     }
-    // Order from mihomo Meta/docs/config.yaml, including commented configuration keys.
-    // Fields absent from the example retain their schema order after listed siblings.
-    let configurationOrder = """
-    port
-    socks-port
-    mixed-port
-    allow-lan
-    bind-address
-    authentication
-    skip-auth-prefixes
-    lan-allowed-ips
-    lan-disallowed-ips
-    find-process-mode
-    mode
-    geox-url
-    geox-url.geoip
-    geox-url.geosite
-    geox-url.mmdb
-    geo-auto-update
-    geo-update-interval
-    log-level
-    ipv6
-    tls
-    tls.certificate
-    tls.private-key
-    tls.ech-key
-    external-controller
-    external-controller-tls
-    secret
-    external-controller-cors
-    external-controller-cors.allow-origins
-    external-controller-cors.allow-private-network
-    external-controller-unix
-    tcp-concurrent
-    external-ui
-    external-ui-name
-    external-ui-url
-    external-doh-server
-    interface-name
-    disable-keep-alive
-    keep-alive-idle
-    keep-alive-interval
-    hosts
-    profile
-    profile.store-selected
-    profile.store-fake-ip
-    tun
-    tun.enable
-    tun.stack
-    tun.dns-hijack
-    tun.auto-detect-interface
-    tun.auto-route
-    tun.mtu
-    tun.gso
-    tun.gso-max-size
-    tun.strict-route
-    tun.congestion-controller
-    tun.route-address
-    tun.endpoint-independent-nat
-    tun.include-interface
-    tun.exclude-interface
-    sniffer
-    sniffer.enable
-    sniffer.force-dns-mapping
-    sniffer.parse-pure-ip
-    sniffer.override-destination
-    sniffer.sniff
-    sniffer.sniff.QUIC
-    sniffer.sniff.QUIC.ports
-    sniffer.sniff.TLS
-    sniffer.sniff.TLS.ports
-    sniffer.sniff.HTTP
-    sniffer.sniff.HTTP.ports
-    sniffer.sniff.HTTP.override-destination
-    sniffer.force-domain
-    sniffer.skip-src-address
-    sniffer.skip-dst-address
-    sniffer.skip-domain
-    dns
-    dns.cache-algorithm
-    dns.enable
-    dns.prefer-h3
-    dns.listen
-    dns.ipv6
-    dns.default-nameserver
-    dns.enhanced-mode
-    dns.fake-ip-range
-    dns.fake-ip-range6
-    dns.fake-ip-filter
-    dns.fake-ip-filter-mode
-    dns.fake-ip-ttl
-    dns.use-hosts
-    dns.respect-rules
-    dns.nameserver
-    dns.fallback
-    dns.proxy-server-nameserver
-    dns.proxy-server-nameserver-policy
-    dns.direct-nameserver
-    dns.direct-nameserver-follow-policy
-    dns.fallback-filter
-    dns.fallback-filter.geoip
-    dns.fallback-filter.geoip-code
-    dns.fallback-filter.ipcidr
-    dns.fallback-filter.domain
-    dns.fallback-filter.geosite
-    dns.fallback-lazy-query
-    dns.nameserver-policy
-    proxies
-    """.split(whereSeparator: \.isWhitespace).map(String.init)
-    var fields: [EditorField] { documentSchemas.sections.flatMap(\.fields) }
-    func configurationRows(prefix: String) -> AnyView {
-        let pathPrefix = prefix.isEmpty ? "" : prefix + "."
-        let nestedFields = fields.filter { $0.path.hasPrefix(pathPrefix) }
-        var keys: [String] = []
-        for field in nestedFields {
-            let key = String(field.path.dropFirst(pathPrefix.count).split(separator: ".")[0])
-            if !keys.contains(key) { keys.append(key) }
-        }
-        let orderedKeys = keys.enumerated().sorted { lhs, rhs in
-            let left = configurationOrder.firstIndex(of: pathPrefix + lhs.element) ?? Int.max
-            let right = configurationOrder.firstIndex(of: pathPrefix + rhs.element) ?? Int.max
-            return left == right ? lhs.offset < rhs.offset : left < right
-        }.map(\.element)
-        return AnyView(VStack(alignment: .leading, spacing: 6) {
-            ForEach(orderedKeys, id: \.self) { key in
-                let path = pathPrefix + key
-                if let field = nestedFields.first(where: { $0.path == path }) {
-                    VisualField(field: displayField(field), value: Binding(get: {
+}
+
+private struct ConfigurationRows: View {
+    @EnvironmentObject var model: DeskModel
+    let fields: [EditorField]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(fields) { field in
+                if field.kind == "group" {
+                    GroupBox {
+                        ConfigurationRows(fields: field.children ?? []).padding(4)
+                    }
+                } else {
+                    VisualField(field: field, value: Binding(get: {
                         model.option(field.path)
                     }, set: { model.setOption(field.path, value: $0) }),
                                 allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: fieldEnabled(field.path))
-                        .environment(\.formHelpDocument, document(for: field))
-                } else {
-                    GroupBox {
-                        configurationRows(prefix: path).padding(4)
-                    }
+                        .environment(\.formHelpDocument, field.document ?? "general.md")
                 }
             }
-        })
-    }
-    func document(for field: EditorField) -> String {
-        documentSchemas.sections.first { schema in
-            schema.fields.contains { $0.path == field.path }
-        }?.document ?? "general.md"
-    }
-    func displayField(_ field: EditorField) -> EditorField {
-        var result = field
-        result.title = field.path.split(separator: ".").last.map(String.init) ?? field.title
-        return result
+        }
     }
     func fieldEnabled(_ path: String) -> Bool {
         for parent in ["dns", "sniffer", "tun"] {
