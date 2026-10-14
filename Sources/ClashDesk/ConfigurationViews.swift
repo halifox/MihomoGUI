@@ -90,93 +90,89 @@ struct ApplicationSettingsView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text("设置与调试").font(.title2.bold())
-                GroupBox("服务控制") {
-                    VStack(alignment: .leading, spacing: 12) {
-                        HStack(spacing: 10) {
-                            Image(systemName: "network").font(.title2).foregroundStyle(.blue)
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("ClashDesk · 0.5").font(.headline)
-                                Text("内核 \(model.coreRunning ? "在线" : "离线") · 统计 \(statsStatus)")
-                                    .font(.caption).foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            if model.busy { ProgressView().controlSize(.small) }
-                        }
-                        HStack {
-                            Button("安装 / 启动全部") { model.startAll() }.disabled(model.busy)
-                            Button("应用运行配置") { model.applyLive() }.disabled(model.busy || !model.coreRunning)
-                            Menu("停止") {
-                                Button("停止代理") { model.perform { try await stopCore() } }
-                                Button("停止统计") { model.perform { try await stopStatistics() } }
-                                Button("停止全部服务") {
-                                    model.perform { try await stopCore(); try await stopStatistics() }
-                                }
-                            }.disabled(model.busy)
-                        }
-                    }.padding(8)
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("设置").font(.title2.bold())
+                    Spacer()
+                    Text("ClashDesk · 0.5").font(.caption).foregroundStyle(.secondary)
+                    Button { model.toggleAllServices() } label: {
+                        Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                    }.disabled(model.busy)
+                    Button("应用更改") { model.applyLive() }.disabled(model.busy || !model.coreRunning)
                 }
-                GroupBox("mihomo 二进制") {
+                GroupBox {
+                    VStack(alignment: .leading, spacing: 4) {
+                        formRow("内核状态", help: "mihomo 控制接口是否可访问。") {
+                            statusBadge(model.coreRunning ? "在线" : "离线", active: model.coreRunning)
+                        }
+                        formRow("采集服务", help: "后台流量采集服务的状态。等待采集表示服务已启动，但尚未收到近期采集数据。") {
+                            statusBadge(statsStatus, active: model.statsPID != nil && statsStatus == "采集中")
+                        }
+                        info("内核版本", model.coreVersion ?? "—", "当前运行的 mihomo 版本。")
+                        info("内存占用", model.coreMemory.map(bytes) ?? "—", "mihomo 控制接口报告的内存使用量。")
+                        info("内核 PID", model.corePID.map(String.init) ?? "—", "由 launchd 管理的 mihomo 进程编号。")
+                        info("采集服务 PID", model.statsPID.map(String.init) ?? "—", "独立流量采集服务的进程编号。")
+                        info("上次采集时间", model.lastSample.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "未采集", "后台服务最近一次成功采集流量的时间。")
+                        info("控制接口", model.activeController, "已应用配置中的 mihomo 控制接口地址。")
+                        info("用户数据目录", model.directory.path, "客户端设置、订阅缓存和统计数据库保存的位置。")
+                        info("系统内核目录", rootDirectory, "系统 mihomo 服务的运行配置和数据目录。")
+                    }.padding(6)
+                } label: {
                     HStack {
-                        Text(model.settings.corePath.isEmpty ? "尚未配置" : model.settings.corePath)
-                            .font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                        Text("运行概览")
                         Spacer()
-                        Button("选择文件") { model.chooseCore() }.disabled(model.busy)
-                    }.padding(8)
+                        if model.busy { ProgressView().controlSize(.small) }
+                        Button { model.perform { await model.refreshDiagnostics() } } label: { Image(systemName: "arrow.clockwise") }
+                            .buttonStyle(.borderless).help("刷新运行信息").disabled(model.busy)
+                    }
+                }
+                GroupBox("内核文件") {
+                    formRow("core-path", help: "选择可执行的 macOS mihomo 二进制文件，用于代理运行、订阅解析和延迟测试。") {
+                        HStack {
+                            Text(model.settings.corePath.isEmpty ? "尚未配置" : model.settings.corePath)
+                                .font(.system(.body, design: .monospaced)).lineLimit(1).truncationMode(.middle)
+                                .textSelection(.enabled).help(model.settings.corePath)
+                            Spacer(minLength: 0)
+                            Button("选择文件") { model.chooseCore() }.disabled(model.busy)
+                        }
+                    }.padding(6)
                 }
                 GroupBox("延迟测试") {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 14) {
-                            GridRow {
-                                FieldKeyLabel(title: "unified-delay", key: "unified-delay")
-                                Toggle("统一延迟", isOn: Binding(get: {
-                                    model.option("unified-delay") != .boolean(false)
-                                }, set: { model.setOption("unified-delay", value: .boolean($0)) }))
-                            }
-                            GridRow {
-                                FieldKeyLabel(title: "测试地址", key: "测试地址")
-                                TextField("HTTP / HTTPS URL", text: Binding(get: {
-                                    model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
-                                }, set: { model.settings.delayTestURL = $0; model.scheduleConfigurationSave() }))
-                            }
-                            GridRow {
-                                FieldKeyLabel(title: "超时（毫秒）", key: "超时（毫秒）")
-                                TextField("5000", value: Binding(get: {
-                                    model.settings.delayTestTimeoutMilliseconds ?? 5000
-                                }, set: { model.settings.delayTestTimeoutMilliseconds = $0; model.scheduleConfigurationSave() }), format: .number.grouping(.never))
-                                    .frame(width: 150)
-                            }
-                        }.textFieldStyle(.roundedBorder)
-
-                    }.padding(12).disabled(model.busy)
+                    VStack(alignment: .leading, spacing: 4) {
+                        formRow("unified-delay") {
+                            Toggle("", isOn: Binding(get: {
+                                model.option("unified-delay") != .boolean(false)
+                            }, set: { model.setOption("unified-delay", value: .boolean($0)) })).disabled(model.busy)
+                        }
+                        formRow("测试地址") {
+                            TextField("HTTP / HTTPS URL", text: Binding(get: {
+                                model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
+                            }, set: { model.settings.delayTestURL = $0; model.scheduleConfigurationSave() })).disabled(model.busy)
+                        }
+                        formRow("超时（毫秒）") {
+                            TextField("5000", value: Binding(get: {
+                                model.settings.delayTestTimeoutMilliseconds ?? 5000
+                            }, set: { model.settings.delayTestTimeoutMilliseconds = $0; model.scheduleConfigurationSave() }), format: .number.grouping(.never))
+                                .frame(width: 150).disabled(model.busy)
+                        }
+                    }.textFieldStyle(.roundedBorder).padding(6)
                 }
-                GroupBox("运行信息") {
-                    Grid(alignment: .leading, horizontalSpacing: 36, verticalSpacing: 16) {
-                        info("内核状态", model.coreRunning ? "运行中" : "离线")
-                        info("mihomo 版本", model.coreVersion ?? "—")
-                        info("Clash 内存占用", model.coreMemory.map(bytes) ?? "—")
-                        info("Clash 进程 PID", model.corePID.map(String.init) ?? "—")
-                        info("后台采集服务 PID", model.statsPID.map(String.init) ?? "—")
-                        info("采集时间", model.lastSample.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "未采集")
-                        info("控制接口", model.activeController)
-                        info("用户数据目录", model.directory.path)
-                        info("系统内核目录", rootDirectory)
-                    }.padding(12)
-                }
-                HStack {
-                    Button("刷新调试信息") { model.perform { await model.refreshDiagnostics() } }.disabled(model.busy)
-                    Button("启动统计后台") { model.perform { try await startStatistics(directory: model.directory) } }.disabled(model.busy)
-                }
-
-            }
-        }
+            }.controlSize(.small)
+        }.environment(\.formHelpDocument, "settings")
     }
     var statsStatus: String {
-        guard let sample = model.lastSample else { return "未采集" }
-        return Date().timeIntervalSince(sample) < 20 ? "采集中" : "采集已暂停"
+        guard model.statsPID != nil else { return "已停止" }
+        guard let sample = model.lastSample else { return "等待采集" }
+        return Date().timeIntervalSince(sample) < 20 ? "采集中" : "等待采集"
     }
-    func info(_ title: String, _ value: String) -> some View {
-        GridRow { Text(title).foregroundStyle(.secondary); Text(value).textSelection(.enabled) }
+    func statusBadge(_ text: String, active: Bool) -> some View {
+        HStack(spacing: 5) {
+            Circle().fill(active ? Color.green : Color.secondary).frame(width: 6, height: 6)
+            Text(text)
+        }.padding(.horizontal, 8).padding(.vertical, 3)
+            .background((active ? Color.green : Color.secondary).opacity(0.10), in: Capsule())
+    }
+    func info(_ title: String, _ value: String, _ help: String) -> some View {
+        formRow(title, help: help) { Text(value).lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(value) }
     }
 }

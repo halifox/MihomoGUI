@@ -186,6 +186,16 @@ final class CoreTests: XCTestCase {
         settings.subscriptions[0].usage = usage
         let persistedUsage = try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(settings))
         XCTAssertEqual(persistedUsage.subscriptions[0].usage, usage)
+        let applied = settings
+        XCTAssertTrue(!runtimeConfigurationChanged(settings, applied: applied))
+        settings.delayTestTimeoutMilliseconds = 9000
+        XCTAssertTrue(!runtimeConfigurationChanged(settings, applied: applied))
+        settings.options?["unified-delay"] = .boolean(false)
+        XCTAssertTrue(runtimeConfigurationChanged(settings, applied: applied))
+        settings.options?.removeValue(forKey: "unified-delay")
+        settings.corePath = "/tmp/different-mihomo"
+        XCTAssertTrue(runtimeConfigurationChanged(settings, applied: applied))
+        settings.corePath = applied.corePath; settings.delayTestTimeoutMilliseconds = nil
         XCTAssertEqual(try settings.delayTestParameters().timeout, 5000)
         settings.delayTestURL = "https://example.org/health"
         settings.delayTestTimeoutMilliseconds = 25000

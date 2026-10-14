@@ -249,6 +249,7 @@ struct FieldHelpButton: View {
     @Environment(\.formHelpDocument) private var context
     @State private var presented = false
     var document: String {
+        if context == "settings", key == "unified-delay" { return "general.md" }
         if !context.isEmpty { return context }
         if key.hasPrefix("dns.") || key == "hosts" { return "dns/index.md" }
         if key.hasPrefix("sniffer.") { return "sniff/index.md" }
@@ -304,7 +305,7 @@ struct FieldHelpButton: View {
                     if explanation.count > 260 {
                         ScrollView { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 200)
                     } else { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true) }
-                    if document != "subscription" {
+                    if !["subscription", "settings"].contains(document) {
                         Link("配置文档", destination: URL(string: "https://wiki.metacubex.one/config/" + document.replacingOccurrences(of: "index.md", with: "").replacingOccurrences(of: ".md", with: "/"))!)
                     }
                 }.padding(14).frame(width: 340, alignment: .leading)

@@ -72,6 +72,18 @@ final class DeskModel: ObservableObject {
     }
     var api: CoreAPI { (try? CoreAPI(settings: runtimeSettings)) ?? CoreAPI(secret: runtimeSettings.secret) }
     var allNodes: [Node] { (settings.manualProxies ?? []).map(\.node) + nodes }
+    var servicesActive: Bool { coreRunning || corePID != nil || statsPID != nil }
+    var hasUnappliedChanges: Bool { runtimeConfigurationChanged(settings, applied: runtimeSettings) }
+    func toggleAllServices() {
+        if !servicesActive { startAll(); return }
+        perform {
+            var failures: [String] = []
+            do { try await stopCore() } catch { failures.append(error.localizedDescription) }
+            do { try await stopStatistics() } catch { failures.append(error.localizedDescription) }
+            await self.refreshDiagnostics()
+            if !failures.isEmpty { throw DeskError(failures.joined(separator: "\n")) }
+        }
+    }
     var activeController: String { runtimeSettings.options?["external-controller"]?.text ?? "127.0.0.1:19090" }
     func refresh() async {
         do {
@@ -302,7 +314,7 @@ final class DeskModel: ObservableObject {
             // Listening address and authentication belong to the controller service lifecycle.
             // A confirmed restart guarantees the UI and collector switch to a working new endpoint.
             let hasLocalRules = snapshot.options?["rule-providers"]?.object.values.contains { $0.object["type"] == .string("file") } ?? false
-            let resolvedAction: ConfigAction = action == .reload && (controllerChanged || hasLocalRules) ? .start : action
+            let resolvedAction: ConfigAction = action == .reload && (controllerChanged || hasLocalRules || snapshot.corePath != self.runtimeSettings.corePath) ? .start : action
             self.configPreview = ConfigPreview(settings: snapshot, config: try generateConfig(snapshot), action: resolvedAction)
         }
     }
