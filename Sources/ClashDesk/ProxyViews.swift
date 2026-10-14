@@ -96,13 +96,11 @@ struct SubscriptionEditorView: View {
             Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
             formRow("name *") { TextField("订阅名称", text: $name) }
             formRow("url *") { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
-            Text("成功拉取并解析节点后才保存订阅；失败时保留当前内容供修改重试。")
-                .font(.caption).foregroundStyle(.secondary)
             if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.busy)
                 Spacer()
                 if model.busy { ProgressView().controlSize(.small) }
+                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.busy)
                 Button(model.busy ? "正在拉取…" : "拉取并保存") {
                     var subscription = Subscription(name: name, url: url)
                     if let original { subscription.id = original.id }
@@ -209,7 +207,6 @@ struct ProxyEditorView: View {
     let original: ManualProxy?
     @State private var type: String
     @State private var fields: [String: ConfigValue]
-    @State private var search = ""
     @State private var error: String?
     init(proxy: ManualProxy? = nil) {
         original = proxy
@@ -231,10 +228,9 @@ struct ProxyEditorView: View {
                     ForEach(documentSchemas.proxies) { Text($0.name).tag($0.key) }
                 }.labelsHidden()
             }
-            formRow("搜索字段") { TextField("搜索协议字段", text: $search).textFieldStyle(.roundedBorder) }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(schema.fields.filter { search.isEmpty || ($0.path + configFieldTitle($0.path, document: schema.document) + $0.description).localizedCaseInsensitiveContains(search) }) { field in
+                    ForEach(schema.fields) { field in
                         VStack(spacing: 0) {
                             VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
                             Divider()
