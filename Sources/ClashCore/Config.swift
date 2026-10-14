@@ -19,8 +19,34 @@ public struct Subscription: Codable, Identifiable, Hashable {
     public var name: String
     public var url: String
     public var lastUpdatedAt: Date?
+    public var usage: SubscriptionUsage?
     public init(name: String, url: String) { self.name = name; self.url = url }
     public var provider: String { "subscription-" + id }
+}
+
+public struct SubscriptionUsage: Codable, Hashable {
+    public var upload: Int64?
+    public var download: Int64?
+    public var total: Int64?
+    public var expiresAt: Date?
+    public var used: Int64? {
+        guard let upload, let download else { return nil }
+        let (sum, overflow) = upload.addingReportingOverflow(download)
+        return overflow ? nil : sum
+    }
+    public var remaining: Int64? {
+        guard let total, let used else { return nil }
+        return max(0, total - used)
+    }
+    public init(header: String) {
+        var fields: [String: Int64] = [:]
+        for part in header.split(separator: ";") {
+            let pair = part.split(separator: "=", maxSplits: 1).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            if pair.count == 2, let number = Int64(pair[1]), number >= 0 { fields[pair[0].lowercased()] = number }
+        }
+        upload = fields["upload"]; download = fields["download"]; total = fields["total"]
+        if let expiry = fields["expire"], expiry > 0 { expiresAt = Date(timeIntervalSince1970: Double(expiry)) }
+    }
 }
 
 public struct Node: Codable, Hashable, Identifiable {

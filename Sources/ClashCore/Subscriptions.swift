@@ -196,13 +196,18 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
 }
 
 public func fetchSubscriptions(_ subscriptions: [Subscription], corePath: String, directory: URL) async throws -> [Node] {
+    try await fetchSubscriptionData(subscriptions, corePath: corePath, directory: directory).nodes
+}
+
+public func fetchSubscriptionData(_ subscriptions: [Subscription], corePath: String, directory: URL) async throws -> (nodes: [Node], subscriptions: [Subscription]) {
     guard !subscriptions.isEmpty else { throw DeskError("请先添加订阅地址") }
     guard FileManager.default.isExecutableFile(atPath: corePath) else { throw DeskError("请先配置 mihomo 二进制文件路径") }
     let staging = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-fetch-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: staging) }
     var providers: [(String, URL)] = []
-    for subscription in subscriptions {
+    var updated = subscriptions
+    for (index, subscription) in subscriptions.enumerated() {
         guard let url = URL(string: subscription.url), url.scheme == "https", url.host != nil else { throw DeskError("订阅必须是 HTTPS 地址") }
         var request = URLRequest(url: url)
         request.timeoutInterval = 30; request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -212,6 +217,7 @@ public func fetchSubscriptions(_ subscriptions: [Subscription], corePath: String
         guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
             throw DeskError("订阅“\(subscription.name)”下载失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）")
         }
+        updated[index].usage = http.value(forHTTPHeaderField: "subscription-userinfo").map { SubscriptionUsage(header: $0) }
         let size = try download.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size > 0, size <= 16 * 1024 * 1024 else { throw DeskError("订阅为空或超过 16 MiB") }
         let target = staging.appendingPathComponent(subscription.id + ".yaml")
@@ -229,5 +235,5 @@ public func fetchSubscriptions(_ subscriptions: [Subscription], corePath: String
         try Data(contentsOf: providers[index].1).write(to: target, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
     }
-    return nodes
+    return (nodes, updated)
 }
