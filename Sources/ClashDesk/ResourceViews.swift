@@ -79,28 +79,42 @@ struct ResourceEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集合")).font(.title2.bold())
-            HStack {
-                TextField("名称", text: $name).textFieldStyle(.roundedBorder)
-                Picker("类型", selection: $type) {
-                    ForEach(groups ? ["select", "url-test", "fallback", "load-balance"] : ["http", "file", "inline"], id: \.self) { Text($0).tag($0) }
-                }.frame(width: 220)
+            if !groups {
+                HStack {
+                    TextField("名称", text: $name).textFieldStyle(.roundedBorder)
+                    Picker("类型", selection: $type) {
+                        ForEach(["http", "file", "inline"], id: \.self) { Text($0).tag($0) }
+                    }.frame(width: 220)
+                }
             }
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
                     if groups {
-                        GroupBox("成员（按顺序使用）") {
+                        HStack(spacing: 12) {
+                            Text("name *").font(.system(.body, design: .monospaced)).frame(width: 200, alignment: .leading)
+                            TextField("代理组名称", text: $name).textFieldStyle(.roundedBorder)
+                        }.padding(.vertical, 3)
+                        HStack(spacing: 12) {
+                            Text("type *").font(.system(.body, design: .monospaced)).frame(width: 200, alignment: .leading)
+                            Picker("类型", selection: $type) {
+                                ForEach(["select", "url-test", "fallback", "load-balance"], id: \.self) { Text($0).tag($0) }
+                            }.labelsHidden()
+                            Spacer(minLength: 0)
+                        }.padding(.vertical, 3)
+                        HStack(alignment: .top, spacing: 12) {
+                            Text("proxies").font(.system(.body, design: .monospaced)).frame(width: 200, alignment: .leading).help("成员按顺序使用，可调整顺序")
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(targets.indices, id: \.self) { index in
                                     HStack {
                                         memberPicker(index)
-                                        Button { targets.swapAt(index, index - 1) } label: { Image(systemName: "arrow.up") }.disabled(index == 0)
-                                        Button { targets.swapAt(index, index + 1) } label: { Image(systemName: "arrow.down") }.disabled(index + 1 == targets.count)
-                                        Button { targets.remove(at: index) } label: { Image(systemName: "minus") }
+                                        Button { targets.swapAt(index, index - 1) } label: { formActionIcon("arrow.up") }.buttonStyle(.bordered).controlSize(.small).help("上移").disabled(index == 0)
+                                        Button { targets.swapAt(index, index + 1) } label: { formActionIcon("arrow.down") }.buttonStyle(.bordered).controlSize(.small).help("下移").disabled(index + 1 == targets.count)
+                                        Button { targets.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除成员")
                                     }
                                 }
                                 Button { targets.append(model.allNodes.first.map { "node:" + $0.id } ?? "builtin:REJECT") } label: { Label("添加成员", systemImage: "plus") }
-                            }.padding(4)
-                        }
+                            }
+                        }.padding(.vertical, 3)
                     }
                     ForEach(schema) { field in
                         if groups && field.path == "default-selected" {
