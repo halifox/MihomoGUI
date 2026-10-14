@@ -18,6 +18,7 @@ public struct Subscription: Codable, Identifiable, Hashable {
     public var id: String = UUID().uuidString
     public var name: String
     public var url: String
+    public var lastUpdatedAt: Date?
     public init(name: String, url: String) { self.name = name; self.url = url }
     public var provider: String { "subscription-" + id }
 }
@@ -26,6 +27,9 @@ public struct Node: Codable, Hashable, Identifiable {
     public var provider: String
     public var name: String
     public var protocolName: String?
+    public var supportsUDP: Bool?
+    public var server: String?
+    public var port: String?
     public var delayMilliseconds: Int?
     public var delayFailed: Bool?
     public var id: String { provider + "/" + name }

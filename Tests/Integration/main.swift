@@ -30,10 +30,15 @@ struct Integration {
             server: 127.0.0.1
             port: \(proxyPort)
         """.write(to: fixture, atomically: true, encoding: .utf8)
-        let imported = try await withProviderCore(corePath: core, providers: [(subscription.provider, fixture)]) { api in
+        var imported = try await withProviderCore(corePath: core, providers: [(subscription.provider, fixture)]) { api in
             try await api.nodes(providerOrder: [subscription.provider])
         }
         guard imported.count == 2, imported.first == settings.defaultNode else { throw DeskError("节点导入没有保留订阅顺序") }
+        guard imported.allSatisfy({ $0.supportsUDP == false }) else { throw DeskError("HTTP 节点 UDP 能力解析错误") }
+        try populateNodeEndpoints(&imported, provider: subscription.provider, file: fixture)
+        guard imported.allSatisfy({ $0.server == "127.0.0.1" && $0.port == String(proxyPort) }) else {
+            throw DeskError("订阅真实服务器与端口提取失败")
+        }
         try saveNodeCache(imported, directory: directory)
         guard try loadNodeCache(directory: directory) == imported else { throw DeskError("节点本地缓存错误") }
         let previewDelay = try await withProviderCore(corePath: core, providers: [(subscription.provider, fixture)]) { api in

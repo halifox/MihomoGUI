@@ -6,6 +6,7 @@ struct SubscriptionsView: View {
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: Subscription?
+    var selected: Subscription? { model.settings.subscriptions.first { $0.id == selection } }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -14,6 +15,9 @@ struct SubscriptionsView: View {
                 Spacer()
                 Button { adding = true } label: { Label("添加订阅", systemImage: "plus") }
                     .disabled(model.busy)
+                Button("更新") { if let selected { model.refreshSubscription(selected) } }.disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
+                Button("编辑") { editing = selected }.disabled(model.busy || selected == nil)
+                Button("删除") { if let selected { model.deleteSubscription(selected) } }.disabled(model.busy || selected == nil)
                 Button("更新全部订阅") { model.refreshSubscriptions() }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }
@@ -23,13 +27,11 @@ struct SubscriptionsView: View {
                 TableColumn("节点数") { subscription in
                     Text(String(model.nodes.filter { $0.provider == subscription.provider }.count))
                 }.width(80)
-                TableColumn("操作") { subscription in
-                    HStack {
-                        Button("更新") { model.refreshSubscription(subscription) }
-                        Button("编辑") { editing = subscription }
-                        Button("删除") { model.deleteSubscription(subscription) }
-                    }.disabled(model.busy)
-                }.width(180)
+                TableColumn("上次更新时间") { subscription in
+                    Text(subscription.lastUpdatedAt.map {
+                        $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute().second())
+                    } ?? "未记录").monospacedDigit()
+                }.width(190)
             }
             Text(model.settings.corePath.isEmpty ? "请先在设置中选择 mihomo 二进制文件，再拉取订阅。" : "订阅节点保存在本地，并在出站代理页面显示。被规则引用的订阅需先调整出口才能删除。")
                 .font(.caption).foregroundStyle(.secondary)
@@ -86,6 +88,21 @@ struct OutboundProxiesView: View {
     @EnvironmentObject var model: DeskModel
     @State private var adding = false
     @State private var editing: ManualProxy?
+    @State private var selection: String?
+    var udpKey: Data {
+        let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
+        var data = Data(model.settings.corePath.utf8)
+        data.append((try? encoder.encode(model.settings.subscriptions)) ?? Data())
+        for proxy in model.settings.manualProxies ?? [] {
+            data.append(Data(proxy.type.utf8))
+            data.append((try? encoder.encode(proxy.fields)) ?? Data())
+        }
+        return data
+    }
+    var selectedManual: ManualProxy? {
+        guard let node = model.allNodes.first(where: { $0.id == selection }) else { return nil }
+        return model.manualProxy(for: node)
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
@@ -93,35 +110,35 @@ struct OutboundProxiesView: View {
                 Text("\(model.allNodes.count) 个代理").foregroundStyle(.secondary)
                 Spacer()
                 Button { adding = true } label: { Label("添加代理", systemImage: "plus") }.disabled(model.busy)
+                ControlGroup {
+                    Button("编辑") { editing = selectedManual }
+                    Button("删除") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }
+                }.disabled(model.busy || selectedManual == nil)
+
             }
-            Table(model.allNodes) {
+            Table(model.allNodes, selection: $selection) {
                 TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }
                 TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(105)
-                TableColumn("服务器") { node in
-                    Text(model.manualProxy(for: node)?.fields["server"]?.text ?? "由订阅管理").textSelection(.enabled)
-                }
-                TableColumn("端口") { node in Text(model.manualProxy(for: node)?.fields["port"]?.text ?? "—") }.width(65)
+                TableColumn("UDP") { node in
+                    let supported = node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP
+                    Text(supported.map { $0 ? "支持" : "不支持" } ?? "未知")
+                }.width(85)
                 TableColumn("来源") { node in
                     Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
                 }.width(100)
-                TableColumn("管理") { node in
-                    if let proxy = model.manualProxy(for: node) {
-                        HStack {
-                            Button("编辑") { editing = proxy }
-                            Button("删除") { model.deleteManualProxy(proxy) }
-                        }.disabled(model.busy)
-                    } else { Text("订阅节点").foregroundStyle(.secondary) }
-                }.width(110)
                 TableColumn("延迟") { node in
-                    if model.testingNode == node.id { Text("测试中…") }
-                    else if node.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
-                    else { Text(node.delayMilliseconds.map { "\($0) ms" } ?? "未测试") }
-                }.width(90)
-                TableColumn("测试延迟") { node in Button("测试") { model.testDelay(node) }.disabled(model.busy) }.width(85)
+                    Button { model.testDelay(node) } label: {
+                        if model.testingNode == node.id { Text("测试中…") }
+                        else if node.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
+                        else { Text(node.delayMilliseconds.map { "\($0) ms" } ?? "未测试") }
+                    }.buttonStyle(.borderless).disabled(model.busy).help("点击测试延迟")
+                }.width(110)
             }
-            Text("手动代理按协议生成表单；订阅节点由订阅更新。首次添加代理后，MATCH 指向第一个代理。")
+
+            Text("手动代理按协议生成表单；订阅节点由订阅更新。点击延迟值测速，选中手动代理后可编辑或删除。")
                 .font(.caption).foregroundStyle(.secondary)
         }
+        .task(id: udpKey) { await model.refreshManualUDP() }
         .sheet(isPresented: $adding) { ProxyEditorView() }
         .sheet(item: $editing) { ProxyEditorView(proxy: $0) }
     }
