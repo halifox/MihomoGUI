@@ -112,7 +112,7 @@ public func emptyValue(_ field: EditorField) -> ConfigValue {
     }
 }
 
-public func setConfigPath(_ path: String, value: Any, in object: inout [String: Any]) {
+public func setConfigPath(_ path: String, value: Any?, in object: inout [String: Any]) {
     let parts = path.split(separator: ".", maxSplits: 1).map(String.init)
     if parts.count == 1 { object[path] = value; return }
     var nested = object[parts[0]] as? [String: Any] ?? [:]
@@ -164,6 +164,7 @@ public struct ManualProxy: Codable, Identifiable {
 public func validateFieldValues(_ values: [String: ConfigValue], schema: [EditorField]) throws {
     for field in schema {
         guard let value = values[field.path] else { continue }
+        if !field.required, value == .string("") { continue }
         switch (field.kind, value) {
         case ("integer", .integer), ("number", .number), ("number", .integer), ("boolean", .boolean),
              ("string", .string), ("secret", .string), ("choice", .string), ("list", .array), ("map", .object): break
