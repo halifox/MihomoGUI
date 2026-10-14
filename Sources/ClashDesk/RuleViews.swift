@@ -31,6 +31,15 @@ struct RulesView: View {
     var rows: [RuleTableItem] {
         model.settings.rules.map { RuleTableItem(id: $0.id, rule: $0) } + [RuleTableItem(id: matchID, rule: nil)]
     }
+    func targetText(_ row: RuleTableItem) -> String {
+        if let rule = row.rule, rule.kind == .subRule { return "子规则：" + (rule.subRuleTarget ?? "未选择") }
+        let node = row.rule == nil ? model.settings.defaultNode : row.rule?.node
+        if let node {
+            return model.allNodes.contains(node) ? model.nodeLabel(node) : "已失效：" + node.id
+        }
+        let builtin = row.rule == nil ? model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT") : row.rule?.builtin ?? "DIRECT"
+        return builtin == "DIRECT" ? "DIRECT · 直连" : builtin == "REJECT-DROP" ? "REJECT-DROP · 丢弃" : "REJECT · 拒绝"
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
@@ -52,11 +61,11 @@ struct RulesView: View {
                 } label: { Label("删除", systemImage: "minus") }.disabled(selectedIndex == nil || model.busy)
             }
             Table(rows, selection: $selection) {
-                TableColumn("类型") { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(185)
-                TableColumn("匹配条件") { row in Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled) }
+                TableColumn("类型") { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true))
+                TableColumn("匹配条件") { row in Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled) }.width(tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }))
                 TableColumn("附加选项") { row in
                     Text([row.rule?.noResolve == true ? "no-resolve" : nil, row.rule?.sourceIP == true ? "src" : nil].compactMap { $0 }.joined(separator: ", "))
-                }.width(120)
+                }.width(tableColumnWidth("附加选项", rows.map { [ $0.rule?.noResolve == true ? "no-resolve" : nil, $0.rule?.sourceIP == true ? "src" : nil ].compactMap { $0 }.joined(separator: ", ") }))
                 TableColumn("出口") { row in
                     if let rule = row.rule {
                         if rule.kind == .subRule { Text("子规则：" + (rule.subRuleTarget ?? "未选择")) }
@@ -68,7 +77,7 @@ struct RulesView: View {
                         PolicyPicker(selection: Binding(get: { model.targetID(node: model.settings.defaultNode, builtin: model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT")) }, set: { model.setDefaultTarget($0) }))
                             .disabled(model.busy)
                     }
-                }.width(260)
+                }.width(tableColumnWidth("出口", rows.map(targetText), padding: 48))
             }
             DisclosureGroup("规则集合与子规则（RULE-SET / SUB-RULE）") { RuleResourcesView() }.padding(.vertical, 4)
 
