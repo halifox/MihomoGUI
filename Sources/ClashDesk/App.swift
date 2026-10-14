@@ -59,6 +59,30 @@ enum DeskPage: Int, CaseIterable, Identifiable {
     var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
 }
 
+private struct TableDataReadyKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
+extension EnvironmentValues {
+    var tableDataReady: Bool {
+        get { self[TableDataReadyKey.self] }
+        set { self[TableDataReadyKey.self] = newValue }
+    }
+}
+
+private struct DeferredTableData: ViewModifier {
+    @State private var ready = false
+    func body(content: Content) -> some View {
+        content.environment(\.tableDataReady, ready)
+            .task {
+                // Give the empty table a frame before constructing its rows and measuring columns.
+                do { try await Task.sleep(nanoseconds: 20_000_000) } catch { return }
+                guard !Task.isCancelled else { return }
+                ready = true
+            }
+    }
+}
+
 struct DeskView: View {
     @EnvironmentObject var model: DeskModel
     @State private var page: DeskPage? = .general
@@ -82,6 +106,8 @@ struct DeskView: View {
                     case .settings: ApplicationSettingsView()
                     }
                 }.padding(20)
+                    .modifier(DeferredTableData())
+                    .id(page ?? .general)
             }
 
         }
@@ -197,10 +223,12 @@ struct RouteMenu: View {
 
 struct StatisticsView: View {
     @EnvironmentObject var model: DeskModel
+    @Environment(\.tableDataReady) private var tableDataReady
     @State private var selection: Set<String> = []
     var activeCounts: [String: Int] { Dictionary(model.connections.map { (model.trafficGrouping.key(for: $0), 1) }, uniquingKeysWith: +) }
     var body: some View {
-        let counts = activeCounts
+        let rows = tableDataReady ? model.traffic : []
+        let counts = tableDataReady ? activeCounts : [:]
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Text("流量统计").font(.title2.bold())
@@ -216,16 +244,16 @@ struct StatisticsView: View {
                 Text("采集已暂停，以下为历史数据。最后采集：" + sampled.formatted(date: .abbreviated, time: .standard))
                     .font(.caption).foregroundStyle(.secondary)
             }
-                Table(model.traffic, selection: $selection) {
+                Table(rows, selection: $selection) {
                     TableColumn(model.trafficGrouping.title) { row in
                         Text(row.domain)
-                    }.width(tableColumnWidth(model.trafficGrouping.title, model.traffic.map(\.domain)))
-                    TableColumn("程序数") { row in Text(String(row.processCount)) }.width(tableColumnWidth("程序数", model.traffic.map { String($0.processCount) }, numeric: true))
-                    TableColumn("出口数") { row in Text(String(row.outboundCount)) }.width(tableColumnWidth("出口数", model.traffic.map { String($0.outboundCount) }, numeric: true))
-                    TableColumn("当前连接数") { row in Text(String(counts[row.domain] ?? 0)) }.width(tableColumnWidth("当前连接数", model.traffic.map { String(counts[$0.domain] ?? 0) }, numeric: true))
-                    TableColumn("上传") { row in Text(bytes(row.upload)).monospacedDigit() }.width(tableColumnWidth("上传", model.traffic.map { bytes($0.upload) }, numeric: true))
-                    TableColumn("下载") { row in Text(bytes(row.download)).monospacedDigit() }.width(tableColumnWidth("下载", model.traffic.map { bytes($0.download) }, numeric: true))
-                    TableColumn("总流量") { row in Text(bytes(row.upload + row.download)).monospacedDigit() }.width(tableColumnWidth("总流量", model.traffic.map { bytes($0.upload + $0.download) }, numeric: true))
+                    }.width(tableColumnWidth(model.trafficGrouping.title, rows.map(\.domain)))
+                    TableColumn("程序数") { row in Text(String(row.processCount)) }.width(tableColumnWidth("程序数", rows.map { String($0.processCount) }, numeric: true))
+                    TableColumn("出口数") { row in Text(String(row.outboundCount)) }.width(tableColumnWidth("出口数", rows.map { String($0.outboundCount) }, numeric: true))
+                    TableColumn("当前连接数") { row in Text(String(counts[row.domain] ?? 0)) }.width(tableColumnWidth("当前连接数", rows.map { String(counts[$0.domain] ?? 0) }, numeric: true))
+                    TableColumn("上传") { row in Text(bytes(row.upload)).monospacedDigit() }.width(tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true))
+                    TableColumn("下载") { row in Text(bytes(row.download)).monospacedDigit() }.width(tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true))
+                    TableColumn("总流量") { row in Text(bytes(row.upload + row.download)).monospacedDigit() }.width(tableColumnWidth("总流量", rows.map { bytes($0.upload + $0.download) }, numeric: true))
                 }
                 .contextMenu(forSelectionType: String.self) { ids in
                     if ids.count == 1, let id = ids.first, let row = model.traffic.first(where: { $0.id == id }) {
@@ -238,7 +266,7 @@ struct StatisticsView: View {
                     }
                 }
                 .overlay {
-                    if model.traffic.isEmpty {
+                    if tableDataReady && rows.isEmpty {
                         Text(model.statisticsError.map { "统计不可用：" + $0 } ?? "暂无统计。启动服务后访问网站，数据会自动显示。").foregroundStyle(.secondary).allowsHitTesting(false)
                     }
                 }
@@ -250,28 +278,30 @@ struct StatisticsView: View {
 
 struct ConnectionsView: View {
     @EnvironmentObject var model: DeskModel
+    @Environment(\.tableDataReady) private var tableDataReady
     var body: some View {
+        let rows = tableDataReady ? model.connections : []
         VStack(alignment: .leading, spacing: 12) {
             Text("活动连接").font(.title2.bold())
-            Table(model.connections) {
+            Table(rows) {
                 TableColumn("域名 / IP") { connection in
                     Text(connection.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: connection.domain) }
-                }.width(tableColumnWidth("域名 / IP", model.connections.map(\.domain)))
+                }.width(tableColumnWidth("域名 / IP", rows.map(\.domain)))
                 TableColumn("程序") { connection in
                     Text(connection.process).help(connection.process).contextMenu {
                         if connection.process != "未知程序" {
                             RouteMenu(kind: connection.process.hasPrefix("/") ? .processPath : .processName, value: connection.process)
                         }
                     }
-                }.width(tableColumnWidth("程序", model.connections.map(\.process)))
-                TableColumn("协议") { connection in Text(connection.metadata.network ?? "—") }.width(tableColumnWidth("协议", model.connections.map { $0.metadata.network ?? "—" }))
-                TableColumn("出口") { connection in Text(connection.outbound) }.width(tableColumnWidth("出口", model.connections.map(\.outbound)))
-                TableColumn("上传") { connection in Text(bytes(connection.upload)) }.width(tableColumnWidth("上传", model.connections.map { bytes($0.upload) }, numeric: true))
-                TableColumn("下载") { connection in Text(bytes(connection.download)) }.width(tableColumnWidth("下载", model.connections.map { bytes($0.download) }, numeric: true))
+                }.width(tableColumnWidth("程序", rows.map(\.process)))
+                TableColumn("协议") { connection in Text(connection.metadata.network ?? "—") }.width(tableColumnWidth("协议", rows.map { $0.metadata.network ?? "—" }))
+                TableColumn("出口") { connection in Text(connection.outbound) }.width(tableColumnWidth("出口", rows.map(\.outbound)))
+                TableColumn("上传") { connection in Text(bytes(connection.upload)) }.width(tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true))
+                TableColumn("下载") { connection in Text(bytes(connection.download)) }.width(tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true))
                 TableColumn("操作") { connection in
                     Button("断开") { model.perform { try await model.api.closeConnection(connection.id) } }
                         .disabled(model.busy)
-                }.width(tableColumnWidth("操作", model.connections.isEmpty ? [] : ["断开"], padding: 42))
+                }.width(tableColumnWidth("操作", rows.isEmpty ? [] : ["断开"], padding: 42))
             }
         }
     }

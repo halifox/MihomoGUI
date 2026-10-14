@@ -4,6 +4,7 @@ import ClashCore
 
 struct SubscriptionsView: View {
     @EnvironmentObject var model: DeskModel
+    @Environment(\.tableDataReady) private var tableDataReady
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: Subscription?
@@ -24,7 +25,7 @@ struct SubscriptionsView: View {
                 Button { model.refreshSubscriptions() } label: { Label("全部更新", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }.pageActions()
-            Table(model.settings.subscriptions, selection: $selection) {
+            Table(tableDataReady ? model.settings.subscriptions : [], selection: $selection) {
                 TableColumn("名称") { subscription in
                     Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
                 }.width(contentWidth("名称"))
@@ -73,7 +74,7 @@ struct SubscriptionsView: View {
         }
     }
     func contentWidth(_ column: String) -> CGFloat {
-        tableColumnWidth(column, model.settings.subscriptions.map { columnText($0, column) },
+        tableColumnWidth(column, (tableDataReady ? model.settings.subscriptions : []).map { columnText($0, column) },
                          numeric: column != "名称", maximum: column == "名称" ? 260 : 300)
     }
 
@@ -122,6 +123,7 @@ struct SubscriptionEditorView: View {
 
 struct OutboundProxiesView: View {
     @EnvironmentObject var model: DeskModel
+    @Environment(\.tableDataReady) private var tableDataReady
     @State private var adding = false
     @State private var editing: ManualProxy?
     @State private var selection: String?
@@ -140,6 +142,7 @@ struct OutboundProxiesView: View {
         return model.manualProxy(for: node)
     }
     var body: some View {
+        let rows = tableDataReady ? model.allNodes : []
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("出站代理").font(.title2.bold())
@@ -159,23 +162,23 @@ struct OutboundProxiesView: View {
                           systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
                 }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
             }.pageActions()
-            Table(model.allNodes, selection: $selection) {
-                TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", model.allNodes.map(\.name)))
-                TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(tableColumnWidth("类型", model.allNodes.map { $0.protocolName ?? "—" }))
+            Table(rows, selection: $selection) {
+                TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
+                TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }))
                 TableColumn("UDP") { node in
                     let supported = node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP
                     Text(supported.map { $0 ? "支持" : "不支持" } ?? "未知")
-                }.width(tableColumnWidth("UDP", model.allNodes.map { node in
+                }.width(tableColumnWidth("UDP", rows.map { node in
                     (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
                 }))
                 TableColumn("来源") { node in
                     Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
-                }.width(tableColumnWidth("来源", model.allNodes.map { node in
+                }.width(tableColumnWidth("来源", rows.map { node in
                     node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
                 }))
                 TableColumn("延迟") { node in
                     NodeDelayCell(model: model, nodeID: node.id)
-                }.width(tableColumnWidth("延迟", model.allNodes.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"]))
+                }.width(tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"]))
             }
 
 
