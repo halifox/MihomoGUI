@@ -18,7 +18,7 @@ struct GeneralConfigurationView: View {
                                     if group.isEmpty {
                                         fieldRows(schema, group: group)
                                     } else {
-                                        GroupBox(group) {
+                                        GroupBox(configFieldTitle(group, document: schema.document)) {
                                             fieldRows(schema, group: group).padding(4)
                                         }
                                     }
