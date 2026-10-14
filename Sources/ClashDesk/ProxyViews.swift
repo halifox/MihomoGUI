@@ -93,7 +93,7 @@ struct SubscriptionEditorView: View {
         _url = State(initialValue: subscription?.url ?? "")
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
             TextField("订阅名称", text: $name)
             TextField("HTTPS Clash YAML 订阅地址", text: $url)
@@ -117,7 +117,7 @@ struct SubscriptionEditorView: View {
                     .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if model.settings.corePath.isEmpty { Text("请先在设置中选择 mihomo 二进制文件。").foregroundStyle(.orange) }
-        }.textFieldStyle(.roundedBorder).padding(24).frame(width: 620)
+        }.textFieldStyle(.roundedBorder).padding(16).controlSize(.small).frame(width: 620)
             .interactiveDismissDisabled(model.busy)
     }
 }
@@ -224,7 +224,7 @@ struct ProxyEditorView: View {
     var schema: EditorSchema { documentSchemas.proxies.first { $0.key == type }! }
     var knownFields: Set<String> { Set(schema.fields.map(\.path)) }
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加出站代理" : "编辑出站代理").font(.title2.bold())
             HStack {
                 Picker("代理类型", selection: $type) {
@@ -234,13 +234,16 @@ struct ProxyEditorView: View {
                 TextField("搜索协议字段", text: $search).frame(width: 250)
             }
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 12) {
+                LazyVStack(alignment: .leading, spacing: 2) {
                     ForEach(schema.fields.filter { search.isEmpty || ($0.path + $0.description).localizedCaseInsensitiveContains(search) }) { field in
-                        GroupBox { VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 })) }
+                        VStack(spacing: 0) {
+                            VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
+                            Divider()
+                        }
                     }
                     DisclosureGroup("额外字段") {
                         ForEach(fields.keys.filter { !knownFields.contains($0) }.sorted(), id: \.self) { path in
-                            VisualField(field: customSpec(path), value: Binding(get: { fields[path] }, set: { fields[path] = $0 }))
+                            VisualField(field: customSpec(path), value: Binding(get: { fields[path] }, set: { fields[path] = $0 }), compact: true)
                         }
                         CustomFieldEditor(fields: $fields)
                     }
@@ -259,7 +262,7 @@ struct ProxyEditorView: View {
                     } catch { self.error = error.localizedDescription }
                 }.buttonStyle(.borderedProminent)
             }
-        }.padding(24).frame(width: 760, height: 740)
+        }.padding(16).controlSize(.small).frame(width: 720, height: 560)
         .onChange(of: type) { _ in
             let common = fields.filter { ["name", "server", "port"].contains($0.key) }
             fields = common

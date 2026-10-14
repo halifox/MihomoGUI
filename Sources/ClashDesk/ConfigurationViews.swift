@@ -4,26 +4,26 @@ import ClashCore
 struct GeneralConfigurationView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("通用配置").font(.title2.bold())
                 Spacer()
             }
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: 6) {
                     ForEach(documentSchemas.sections.filter { !visibleFields($0).isEmpty }) { schema in
                         GroupBox {
-                            VStack(alignment: .leading, spacing: 12) {
+                            VStack(alignment: .leading, spacing: 6) {
                                 ForEach(fieldGroups(schema), id: \.self) { group in
                                     if group.isEmpty {
                                         fieldRows(schema, group: group)
                                     } else {
                                         GroupBox(group) {
-                                            fieldRows(schema, group: group).padding(8)
+                                            fieldRows(schema, group: group).padding(4)
                                         }
                                     }
                                 }
-                            }.padding(10).frame(maxWidth: .infinity, alignment: .leading)
+                            }.padding(6).frame(maxWidth: .infinity, alignment: .leading)
                         } label: {
                             HStack {
                                 Text(schema.name).font(.headline)
@@ -101,7 +101,7 @@ struct ApplicationSettingsView: View {
                     }.padding(8)
                 }
                 GroupBox("延迟测试") {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 6) {
                         Grid(alignment: .leading, horizontalSpacing: 24, verticalSpacing: 14) {
                             GridRow {
                                 Text("unified-delay")

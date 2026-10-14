@@ -236,8 +236,25 @@ public func validateRuleResources(_ settings: Settings) throws {
               ["domain", "ipcidr", "classical"].contains(fields["behavior"]?.text ?? "") else {
             throw DeskError("规则集合 \(name) 需要有效的 type 与 behavior")
         }
+        try validateFieldValues(fields, schema: ruleProviderEditorFields(fields["type"]?.text ?? ""))
+        if let target = fields["proxy"]?.text {
+            if target.hasPrefix("group:") {
+                guard (settings.proxyGroups ?? []).contains(where: { $0.name == String(target.dropFirst(6)) }) else { throw DeskError("规则集合下载出口引用了不存在的代理组") }
+            } else if let node = referencedNode(target) {
+                guard node.provider == "manual" ? (settings.manualProxies ?? []).contains(where: { $0.name == node.name }) : settings.subscriptions.contains(where: { $0.provider == node.provider }) else { throw DeskError("规则集合下载出口的节点来源已删除") }
+            } else {
+                let name = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : target
+                guard ["DIRECT", "REJECT", "REJECT-DROP"].contains(name) || (settings.proxyGroups ?? []).contains(where: { $0.name == name }) || (settings.manualProxies ?? []).contains(where: { $0.name == name }) else { throw DeskError("规则集合下载出口无效") }
+            }
+        }
+        if let format = fields["format"]?.text {
+            guard ["yaml", "text", "mrs"].contains(format), !(format == "mrs" && fields["behavior"]?.text == "classical") else { throw DeskError("mrs 格式仅支持 domain / ipcidr") }
+        }
+        for key in ["interval", "size-limit"] {
+            if let value = fields[key], case .integer(let number) = value, number < 0 { throw DeskError("规则集合 \(key) 不能为负数") }
+        }
         if fields["type"]?.text == "http" {
-            guard let url = URL(string: fields["url"]?.text ?? ""), url.scheme == "https", url.host != nil else { throw DeskError("规则集合 \(name) 需要 HTTPS url") }
+            guard let url = URL(string: fields["url"]?.text ?? ""), ["http", "https"].contains(url.scheme ?? ""), url.host != nil else { throw DeskError("规则集合 \(name) 需要 HTTP / HTTPS url") }
         }
         if fields["type"]?.text == "file", (fields["path"]?.text ?? "").isEmpty { throw DeskError("文件规则集合 \(name) 需要 path") }
         if fields["type"]?.text == "inline", fields["payload"] == nil { throw DeskError("内联规则集合 \(name) 需要 payload 列表") }

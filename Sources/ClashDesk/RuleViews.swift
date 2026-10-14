@@ -5,7 +5,7 @@ private let matchID = "default-match"
 struct RuleTableItem: Identifiable { let id: String; let rule: RouteRule? }
 
 struct PolicyPicker: View {
-    @EnvironmentObject var model: DeskModel
+    @ObservedObject var model: DeskModel
     @Binding var selection: String
     var body: some View {
         Picker("出口", selection: $selection) {
@@ -15,6 +15,7 @@ struct PolicyPicker: View {
             if selection.hasPrefix("node:"), !model.allNodes.contains(where: { "node:" + $0.id == selection }) {
                 Text("已失效：" + selection.dropFirst(5)).tag(selection)
             }
+            ForEach(model.settings.proxyGroups ?? []) { Text("代理组 / " + $0.name).tag("group:" + $0.name) }
             ForEach(model.allNodes) { node in Text(model.nodeLabel(node)).tag("node:" + node.id) }
         }.labelsHidden()
     }
@@ -33,6 +34,7 @@ struct RulesView: View {
     }
     func targetText(_ row: RuleTableItem) -> String {
         if let rule = row.rule, rule.kind == .subRule { return "子规则：" + (rule.subRuleTarget ?? "未选择") }
+        if let group = row.rule == nil ? model.settings.defaultProxyGroup : row.rule?.proxyGroup { return "代理组 / " + group }
         let node = row.rule == nil ? model.settings.defaultNode : row.rule?.node
         if let node {
             return model.allNodes.contains(node) ? model.nodeLabel(node) : "已失效：" + node.id
@@ -70,11 +72,11 @@ struct RulesView: View {
                     if let rule = row.rule {
                         if rule.kind == .subRule { Text("子规则：" + (rule.subRuleTarget ?? "未选择")) }
                         else {
-                            PolicyPicker(selection: Binding(get: { model.targetID(node: rule.node, builtin: rule.builtin) }, set: { model.setRuleTarget(rule, target: $0) }))
+                            PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: rule.node, builtin: rule.builtin, group: rule.proxyGroup) }, set: { model.setRuleTarget(rule, target: $0) }))
                                 .disabled(model.busy)
                         }
                     } else {
-                        PolicyPicker(selection: Binding(get: { model.targetID(node: model.settings.defaultNode, builtin: model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT")) }, set: { model.setDefaultTarget($0) }))
+                        PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: model.settings.defaultNode, builtin: model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT"), group: model.settings.defaultProxyGroup) }, set: { model.setDefaultTarget($0) }))
                             .disabled(model.busy)
                     }
                 }.width(tableColumnWidth("出口", rows.map(targetText), padding: 48))
@@ -113,18 +115,18 @@ struct RuleEditorView: View {
         let cidr = (rule?.value ?? "").split(separator: "/").map(String.init)
         _address = State(initialValue: cidr.first ?? "")
         _prefix = State(initialValue: cidr.count == 2 ? cidr[1] : "24")
-        _target = State(initialValue: rule?.node.map { "node:" + $0.id } ?? "builtin:" + (rule?.builtin ?? "DIRECT"))
+        _target = State(initialValue: rule?.proxyGroup.map { "group:" + $0 } ?? rule?.node.map { "node:" + $0.id } ?? "builtin:" + (rule?.builtin ?? "DIRECT"))
         _noResolve = State(initialValue: rule?.noResolve ?? false)
         _sourceIP = State(initialValue: rule?.sourceIP ?? false)
         _subTarget = State(initialValue: rule?.subRuleTarget ?? "")
         _advancedLogic = State(initialValue: rule?.kind.isLogic == true)
     }
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加路由规则" : "编辑路由规则").font(.title2.bold())
             Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text($0.rawValue).tag($0) } }
             ScrollView {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: 8) {
                     if kind.isCIDR {
                         Text("IP 地址与掩码").font(.headline)
                         HStack {
@@ -174,7 +176,7 @@ struct RuleEditorView: View {
                         }
                     } else {
                         Text("出口节点 / 内置策略").font(.headline)
-                        PolicyPicker(selection: $target)
+                        PolicyPicker(model: model, selection: $target)
                     }
                 }.textFieldStyle(.roundedBorder)
             }
@@ -184,7 +186,7 @@ struct RuleEditorView: View {
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存规则") { save() }.buttonStyle(.borderedProminent)
             }
-        }.padding(24).frame(width: 760, height: 600)
+        }.padding(16).controlSize(.small).frame(width: 720, height: 540)
         .onChange(of: kind) { changed in
             if changed == .network { value = "tcp" }
             if changed == .ipCIDR6 { prefix = "64"; address = "" }
@@ -208,6 +210,7 @@ struct RuleEditorView: View {
             if target.hasPrefix("node:"), node == nil { throw DeskError("所选代理已失效，请重新选择出口") }
             var rule = RouteRule(kind: kind, value: payload, node: node)
             if let original { rule.id = original.id }
+            rule.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
             rule.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
             rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
             try model.saveRule(rule); dismiss()

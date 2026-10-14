@@ -52,10 +52,10 @@ func tableColumnWidth(_ title: String, _ values: [String], numeric: Bool = false
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, subscriptions, outbound, rules, connections, traffic, settings
+    case general, subscriptions, outbound, groups, rules, ruleSets, connections, traffic, settings
     var id: Int { rawValue }
-    var title: String { ["通用配置", "订阅管理", "出站代理", "路由规则", "当前连接", "流量统计", "设置"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "link", "network", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
+    var title: String { ["通用配置", "订阅管理", "出站代理", "代理组", "路由规则", "规则集合", "当前连接", "流量统计", "设置"][rawValue] }
+    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "list.bullet.rectangle", "folder", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
 }
 
 struct DeskView: View {
@@ -92,6 +92,8 @@ struct DeskView: View {
                     case .general: GeneralConfigurationView()
                     case .subscriptions: SubscriptionsView()
                     case .outbound: OutboundProxiesView()
+                    case .groups: ResourcesView(groups: true)
+                    case .ruleSets: ResourcesView(groups: false)
                     case .rules: RulesView()
                     case .connections: ConnectionsView()
                     case .traffic: StatisticsView()
