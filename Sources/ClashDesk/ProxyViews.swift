@@ -143,19 +143,20 @@ struct OutboundProxiesView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("出站代理").font(.title2.bold())
+                Text("代理").font(.title2.bold())
                 Spacer()
                 Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
                 Button { editing = selectedManual } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
                 Button { if let proxy = selectedManual { model.deleteManualProxy(proxy) } } label: { Label("删除", systemImage: "trash") }.disabled(model.busy || selectedManual == nil)
-                Button { if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) } } label: {
-                    Label("测延迟", systemImage: "speedometer")
-                }.disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
+                Button {
+                    if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
+                } label: { Label("延迟", systemImage: "speedometer") }
+                    .disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
                 Button {
                     if model.isTestingDelays { model.cancelDelayTests() }
                     else { model.testAllDelays() }
                 } label: {
-                    Label(model.isTestingDelays ? "取消测延迟" : "全部测延迟",
+                    Label(model.isTestingDelays ? "取消测延迟" : "全部延迟",
                           systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
                 }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
             }
@@ -223,7 +224,7 @@ struct ProxyEditorView: View {
     var knownFields: Set<String> { Set(schema.fields.map(\.path)) }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(original == nil ? "添加出站代理" : "编辑出站代理").font(.title2.bold())
+            Text(original == nil ? "添加代理" : "编辑代理").font(.title2.bold())
             HStack {
                 Picker("代理类型", selection: $type) {
                     ForEach(documentSchemas.proxies) { Text($0.name).tag($0.key) }
