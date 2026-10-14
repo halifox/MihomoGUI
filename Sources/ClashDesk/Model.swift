@@ -35,6 +35,8 @@ final class DeskModel: ObservableObject {
     private var diagnosticsDate = Date.distantPast
     let directory: URL
     private var monitor: Task<Void, Never>?
+    private var configurationSaveTask: Task<Void, Never>?
+    private var configurationSavePending = false
 
     init() {
         directory = (try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk")
@@ -98,20 +100,29 @@ final class DeskModel: ObservableObject {
     func option(_ path: String) -> ConfigValue? { settings.options?[path] ?? baseOption(path) }
     func setOption(_ path: String, value: ConfigValue?) {
         var options = settings.options ?? [:]; options[path] = value; settings.options = options
+        scheduleConfigurationSave()
     }
     func saveGeneralConfiguration() {
         do {
             try validateFieldValues(settings.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
-            _ = try generateConfig(settings); try save()
-            message = "通用配置已保存；启动 / 应用前将显示 YAML 预览。"
+            _ = try generateConfig(settings)
+            try save()
         } catch { self.error = error.localizedDescription }
     }
-    func saveDelayConfiguration() {
+    func scheduleConfigurationSave() {
+        configurationSavePending = true
+        configurationSaveTask?.cancel()
+        configurationSaveTask = Task { [weak self] in
+            do { try await Task.sleep(nanoseconds: 350_000_000) } catch { return }
+            self?.flushConfigurationSave()
+        }
+    }
+    func flushConfigurationSave() {
+        guard configurationSavePending else { return }
+        configurationSaveTask?.cancel(); configurationSaveTask = nil
         do {
-            let parameters = try settings.delayTestParameters()
-            settings.delayTestURL = parameters.url
-            try save()
-            message = "测速设置已保存；统一延迟与通用配置同步，运行中的内核需确认应用后更新。"
+            // Persist editable drafts; validate the full configuration before applying to mihomo.
+            try save(); configurationSavePending = false
         } catch { self.error = error.localizedDescription }
     }
     func perform(_ operation: @escaping () async throws -> Void) {

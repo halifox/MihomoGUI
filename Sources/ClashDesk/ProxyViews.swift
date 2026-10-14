@@ -22,8 +22,8 @@ struct SubscriptionsView: View {
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }
             Table(model.settings.subscriptions, selection: $selection) {
-                TableColumn("名称") { subscription in Text(subscription.name).textSelection(.enabled) }.width(min: 130, ideal: 180)
-                TableColumn("订阅链接") { subscription in Text(subscription.url).lineLimit(1).textSelection(.enabled) }
+                TableColumn("名称") { subscription in Text(subscription.name).textSelection(.enabled) }.width(min: 80, ideal: 110, max: 150)
+                TableColumn("订阅链接") { subscription in Text(subscription.url).lineLimit(1).textSelection(.enabled) }.width(min: 300, ideal: 550)
                 TableColumn("节点数") { subscription in
                     Text(String(model.nodes.filter { $0.provider == subscription.provider }.count))
                 }.width(80)
@@ -33,8 +33,7 @@ struct SubscriptionsView: View {
                     } ?? "未记录").monospacedDigit()
                 }.width(190)
             }
-            Text(model.settings.corePath.isEmpty ? "请先在设置中选择 mihomo 二进制文件，再拉取订阅。" : "订阅节点保存在本地，并在出站代理页面显示。被规则引用的订阅需先调整出口才能删除。")
-                .font(.caption).foregroundStyle(.secondary)
+
         }
         .sheet(isPresented: $adding) { SubscriptionEditorView() }
         .sheet(item: $editing) { SubscriptionEditorView(subscription: $0) }
@@ -110,10 +109,8 @@ struct OutboundProxiesView: View {
                 Text("\(model.allNodes.count) 个代理").foregroundStyle(.secondary)
                 Spacer()
                 Button { adding = true } label: { Label("添加代理", systemImage: "plus") }.disabled(model.busy)
-                ControlGroup {
-                    Button("编辑") { editing = selectedManual }
-                    Button("删除") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }
-                }.disabled(model.busy || selectedManual == nil)
+                Button("编辑") { editing = selectedManual }.disabled(model.busy || selectedManual == nil)
+                Button("删除") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
 
             }
             Table(model.allNodes, selection: $selection) {
@@ -127,12 +124,11 @@ struct OutboundProxiesView: View {
                     Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
                 }.width(100)
                 TableColumn("延迟") { node in
-                    NodeDelayCell(nodeID: node.id)
+                    NodeDelayCell(model: model, nodeID: node.id)
                 }.width(110)
             }
 
-            Text("手动代理按协议生成表单；订阅节点由订阅更新。点击延迟值测速，选中手动代理后可编辑或删除。")
-                .font(.caption).foregroundStyle(.secondary)
+
         }
         .task(id: udpKey) { await model.refreshManualUDP() }
         .sheet(isPresented: $adding) { ProxyEditorView() }
@@ -141,7 +137,7 @@ struct OutboundProxiesView: View {
 }
 
 struct NodeDelayCell: View {
-    @EnvironmentObject var model: DeskModel
+    @ObservedObject var model: DeskModel
     let nodeID: String
     var node: Node? { model.allNodes.first { $0.id == nodeID } }
     var body: some View {

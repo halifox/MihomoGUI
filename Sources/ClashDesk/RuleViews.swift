@@ -71,8 +71,7 @@ struct RulesView: View {
                 }.width(260)
             }
             DisclosureGroup("规则集合与子规则（RULE-SET / SUB-RULE）") { RuleResourcesView() }.padding(.vertical, 4)
-            Text("MATCH 始终位于最后。出口可直接修改；其余条件通过编辑表单修改，CIDR 支持 no-resolve / src。保存后预览并应用配置。")
-                .font(.caption).foregroundStyle(.secondary)
+
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
         .sheet(item: $editing) { RuleEditorView(rule: $0) }
