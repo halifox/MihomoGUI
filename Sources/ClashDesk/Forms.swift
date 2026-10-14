@@ -305,9 +305,6 @@ struct FieldHelpButton: View {
                     if explanation.count > 260 {
                         ScrollView { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true).frame(maxWidth: .infinity, alignment: .leading) }.frame(height: 200)
                     } else { Text(LocalizedStringKey(explanation)).fixedSize(horizontal: false, vertical: true) }
-                    if !["subscription", "settings"].contains(document) {
-                        Link("配置文档", destination: URL(string: "https://wiki.metacubex.one/config/" + document.replacingOccurrences(of: "index.md", with: "").replacingOccurrences(of: ".md", with: "/"))!)
-                    }
                 }.padding(14).frame(width: 340, alignment: .leading)
             }
     }

@@ -147,7 +147,6 @@ struct ResourceEditorView: View {
             }
             if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
-                Link("配置文档", destination: URL(string: "https://wiki.metacubex.one/config/" + (groups ? "proxy-groups/" : "rule-providers/"))!)
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save() }.buttonStyle(.borderedProminent)
