@@ -266,13 +266,12 @@ struct FieldHelpButton: View {
     var explanation: String {
         if key == "allow-lan" { return "允许其他设备经过 Clash 的[代理端口](https://wiki.metacubex.one/config/inbound/port/)访问互联网。" }
         if context == "subscription" {
-            return key == "name" ? "订阅在客户端中显示的名称，用于区分不同订阅来源。" : "提供 Clash YAML 节点配置的 HTTPS 订阅地址。成功拉取并解析节点后才会保存；地址不会传给 mihomo。"
+            return key == "name" ? "订阅在客户端中显示的名称，用于区分不同订阅来源。" : "提供 Clash YAML 节点配置的 HTTPS 订阅地址。"
         }
         if kind.isEmpty && !description.isEmpty { return description }
         let client: [String: String] = [
             "测试地址": "测速时通过所选节点访问的 HTTP / HTTPS 地址。默认使用返回 HTTP 204 的测试页面；仅用于客户端测速。",
             "超时（毫秒）": "单个节点测速请求的最长等待时间，单位毫秒。默认 5000，允许范围为 1–120000；超过该时间显示失败或超时。",
-            "搜索字段": "按字段名称或说明筛选当前协议表单，不会写入 mihomo 配置。",
             "key": "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.handshake-timeout。",
             "address": "CIDR 规则匹配的 IP 地址。IPv4 使用点分十进制，IPv6 使用冒号分隔的地址。",
             "prefix": "CIDR 网络前缀长度：IPv4 为 0–32，IPv6 为 0–128。",
