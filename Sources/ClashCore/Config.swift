@@ -156,6 +156,7 @@ public struct Settings: Codable {
 }
 
 public func loadSettings(from directory: URL) throws -> Settings {
+    try recoverFileCommit(directory: directory)
     let url = directory.appendingPathComponent("settings.json")
     guard FileManager.default.fileExists(atPath: url.path) else { return Settings() }
     return try JSONDecoder().decode(Settings.self, from: Data(contentsOf: url))
@@ -325,4 +326,51 @@ public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings)
     if settings.corePath != applied.corePath { return true }
     guard let current = try? generateConfig(settings), let previous = try? generateConfig(applied) else { return true }
     return current != previous
+}
+
+// A journal survives interrupted commits; readers recover before loading settings.
+public func recoverFileCommit(directory: URL) throws {
+    let journal = directory.appendingPathComponent("file-commit")
+    guard FileManager.default.fileExists(atPath: journal.appendingPathComponent("ready").path) else { return }
+    let names = try JSONDecoder().decode([String].self, from: Data(contentsOf: journal.appendingPathComponent("manifest.json")))
+    for (index, name) in names.enumerated() {
+        let target = directory.appendingPathComponent(name)
+        let backup = journal.appendingPathComponent("old-\(index)")
+        if FileManager.default.fileExists(atPath: backup.path) {
+            try Data(contentsOf: backup).write(to: target, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        } else if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
+    }
+    let retired = directory.appendingPathComponent("file-commit-done-" + UUID().uuidString)
+    try FileManager.default.moveItem(at: journal, to: retired)
+    try? FileManager.default.removeItem(at: retired)
+}
+
+public func commitFiles(_ files: [(String, Data)], directory: URL, write: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws {
+    try recoverFileCommit(directory: directory)
+    let journal = directory.appendingPathComponent("file-commit")
+    if FileManager.default.fileExists(atPath: journal.path) { try FileManager.default.removeItem(at: journal) }
+    try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+    for (index, file) in files.enumerated() {
+        let target = directory.appendingPathComponent(file.0)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.copyItem(at: target, to: journal.appendingPathComponent("old-\(index)")) }
+    }
+    try JSONEncoder().encode(files.map { $0.0 }).write(to: journal.appendingPathComponent("manifest.json"))
+    try Data().write(to: journal.appendingPathComponent("ready"))
+    do {
+        for file in files {
+            let target = directory.appendingPathComponent(file.0)
+            try write(file.1, target)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        }
+        let retired = directory.appendingPathComponent("file-commit-done-" + UUID().uuidString)
+        try FileManager.default.moveItem(at: journal, to: retired)
+        try? FileManager.default.removeItem(at: retired)
+    } catch {
+        let original = error
+        do { try recoverFileCommit(directory: directory) }
+        catch { throw DeskError("保存失败且恢复未完成：\(original.localizedDescription)；\(error.localizedDescription)") }
+        throw original
+    }
 }

@@ -5,10 +5,11 @@ public func providerFile(_ subscription: Subscription, directory: URL) -> URL {
     directory.appendingPathComponent("providers").appendingPathComponent(subscription.id + ".yaml")
 }
 
-public func loadNodeCache(directory: URL) throws -> [Node] {
+public func loadNodeCache(directory: URL, populateEndpoints: Bool = true) throws -> [Node] {
     let url = directory.appendingPathComponent("nodes.json")
     guard FileManager.default.fileExists(atPath: url.path) else { return [] }
     var nodes = try JSONDecoder().decode([Node].self, from: Data(contentsOf: url))
+    guard populateEndpoints else { return nodes }
     for provider in Set(nodes.filter { $0.server == nil }.map(\.provider)) where provider.hasPrefix("subscription-") {
         let id = String(provider.dropFirst("subscription-".count))
         guard UUID(uuidString: id) != nil else { continue }
@@ -21,6 +22,8 @@ public func loadNodeCache(directory: URL) throws -> [Node] {
 }
 
 public func readSubscriptionProxies(_ file: URL) throws -> [[String: Any]] {
+    let size = try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+    guard size > 0, size <= 16 * 1024 * 1024 else { throw DeskError("订阅为空或超过 16 MiB") }
     let output = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-proxies-" + UUID().uuidString)
     FileManager.default.createFile(atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600])
     defer { try? FileManager.default.removeItem(at: output) }
@@ -28,7 +31,7 @@ public func readSubscriptionProxies(_ file: URL) throws -> [[String: Any]] {
     defer { try? handle.close() }
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
-    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], true); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); def clean(v); case v; when Hash; v.each_with_object({}) { |(k,x),h| h[k]=clean(x) unless x.nil? }; when Array; v.compact.map { |x| clean(x) }; else v; end; end; puts JSON.generate(clean(rows))"#, file.path]
+    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], false); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); def clean(v, depth=0); abort 'YAML nesting too deep' if depth > 64; case v; when Hash; v.each_with_object({}) { |(k,x),h| h[k]=clean(x, depth+1) unless x.nil? }; when Array; v.compact.map { |x| clean(x, depth+1) }; else v; end; end; puts JSON.generate(clean(rows))"#, file.path]
     process.standardOutput = handle; process.standardError = FileHandle.nullDevice
     try process.run(); process.waitUntilExit()
     guard process.terminationStatus == 0,
@@ -58,7 +61,7 @@ public func populateNodeEndpoints(_ nodes: inout [Node], provider: String, file:
     defer { try? handle.close() }
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
-    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], true); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); puts JSON.generate(rows.select { |p| p.is_a?(Hash) && p['name'].is_a?(String) }.map { |p| {name: p['name'], server: p['server']&.to_s, port: (p['port'] || p['ports'])&.to_s} })"#, file.path]
+    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], false); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); puts JSON.generate(rows.select { |p| p.is_a?(Hash) && p['name'].is_a?(String) }.map { |p| {name: p['name'], server: p['server']&.to_s, port: (p['port'] || p['ports'])&.to_s} })"#, file.path]
     process.standardOutput = handle; process.standardError = FileHandle.nullDevice
     try process.run(); process.waitUntilExit()
     guard process.terminationStatus == 0 else { throw DeskError("无法读取订阅节点的服务器与端口") }

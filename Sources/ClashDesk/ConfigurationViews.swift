@@ -80,7 +80,7 @@ struct ApplicationSettingsView: View {
                             }
                             info("内核版本", model.coreVersion ?? "—", "当前运行的 mihomo 版本。")
                             info("内存占用", model.coreMemory.map(bytes) ?? "—", "mihomo 控制接口报告的内存使用量。")
-                            info("内核 PID", model.corePID.map(String.init) ?? "—", "由 launchd 管理的 mihomo 进程编号。")
+                            info("内核服务 PID", model.corePID.map(String.init) ?? "—", "由 launchd 管理的内核服务进程编号，包含内核与日志采集子进程。")
                             info("采集服务 PID", model.statsPID.map(String.init) ?? "—", "独立流量采集服务的进程编号。")
                             info("上次采集时间", model.lastSample.map { $0.formatted(date: .abbreviated, time: .standard) } ?? "未采集", "后台服务最近一次成功采集流量的时间。")
                             info("控制接口", model.activeController, "已应用配置中的 mihomo 控制接口地址。")
@@ -91,6 +91,8 @@ struct ApplicationSettingsView: View {
                         HStack {
                             Text("运行概览")
                             Spacer()
+                            Button("查看日志") { model.perform { model.serviceLogs = try await readServiceLogs(directory: model.directory) } }
+                                .disabled(model.busy).help("读取系统内核日志需要管理员授权")
                             if model.busy { ProgressView().controlSize(.small) }
                             Button { model.perform { await model.refreshDiagnostics() } } label: { Image(systemName: "arrow.clockwise") }
                                 .buttonStyle(.borderless).help("刷新运行信息").disabled(model.busy)

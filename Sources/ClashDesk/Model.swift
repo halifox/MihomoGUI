@@ -19,9 +19,11 @@ final class DeskModel: ObservableObject {
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
     @Published var traffic: [DomainTrafficRow] = []
+    @Published var statisticsError: String?
     @Published var testingNodes: Set<String> = []
     @Published var isTestingDelays = false
     private var delayTask: Task<Void, Never>?
+    @Published var serviceLogs: String?
     @Published var configPreview: ConfigPreview?
     @Published var coreRunning = false
     @Published var lastSample: Date?
@@ -49,8 +51,7 @@ final class DeskModel: ObservableObject {
                 settings.rules = settings.rules.filter { $0.kind.isProcess } + settings.rules.filter { !$0.kind.isProcess }
                 settings.ruleOrderMigrated = true
             }
-            if settings.subscriptionProxies == nil { try cacheSubscriptionProxies(&settings, directory: directory) }
-            nodes = try loadNodeCache(directory: directory)
+            nodes = try loadNodeCache(directory: directory, populateEndpoints: false)
             if settings.defaultNode == nil, settings.defaultDirect != true, settings.defaultPolicy == nil, settings.defaultProxyGroup == nil { settings.defaultNode = allNodes.first }
             // Persist the API secret before starting any service.
             try saveSettings(settings, to: directory)
@@ -61,8 +62,34 @@ final class DeskModel: ObservableObject {
     }
     func startMonitor() {
         guard monitor == nil else { return }
-        if nodes.isEmpty, !settings.subscriptions.isEmpty, !settings.corePath.isEmpty { refreshSubscriptions() }
         monitor = Task { [weak self] in
+            if let self, self.settings.subscriptionProxies == nil {
+                let snapshot = self.settings; let folder = self.directory
+                do {
+                    let cached = try await Task.detached {
+                        var candidate = snapshot
+                        try cacheSubscriptionProxies(&candidate, directory: folder)
+                        return candidate.subscriptionProxies
+                    }.value
+                    if self.settings.subscriptionProxies == nil,
+                       self.settings.subscriptions.map({ $0.id + $0.url }) == snapshot.subscriptions.map({ $0.id + $0.url }) {
+                        self.settings.subscriptionProxies = cached; try self.save()
+                    }
+                } catch { self.error = error.localizedDescription }
+            }
+            if let self, self.nodes.contains(where: { $0.server == nil }) {
+                let folder = self.directory
+                do {
+                    let populated = try await Task.detached { try loadNodeCache(directory: folder) }.value
+                    let endpoints = Dictionary(populated.map { ($0.id, $0) }, uniquingKeysWith: { first, _ in first })
+                    for index in self.nodes.indices {
+                        if self.nodes[index].server == nil, let endpoint = endpoints[self.nodes[index].id] {
+                            self.nodes[index].server = endpoint.server; self.nodes[index].port = endpoint.port
+                        }
+                    }
+                } catch { self.error = error.localizedDescription }
+            }
+            if let self, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty, !self.settings.corePath.isEmpty { self.refreshSubscriptions() }
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.refresh()
@@ -91,10 +118,13 @@ final class DeskModel: ObservableObject {
             connections = live; coreRunning = true
         } catch { coreRunning = false; connections = [] }
         do {
-            let database = try TrafficDatabase(url: directory.appendingPathComponent("traffic.sqlite"), readOnly: true)
-            traffic = try database.domainRows(since: Date().addingTimeInterval(-Double(hours) * 3600))
-            lastSample = try database.lastSample()
-        } catch { lastSample = nil }
+            let folder = directory; let range = hours
+            let result = try await Task.detached {
+                let database = try TrafficDatabase(url: folder.appendingPathComponent("traffic.sqlite"), readOnly: true)
+                return (try database.domainRows(since: Date().addingTimeInterval(-Double(range) * 3600)), try database.lastSample())
+            }.value
+            traffic = result.0; lastSample = result.1; statisticsError = nil
+        } catch { lastSample = nil; traffic = []; statisticsError = error.localizedDescription }
         if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
     }
     func refreshDiagnostics() async {
@@ -141,6 +171,7 @@ final class DeskModel: ObservableObject {
     }
     func perform(_ operation: @escaping () async throws -> Void) {
         guard !busy else { return }
+        flushConfigurationSave()
         busy = true
         Task {
             defer { busy = false }
@@ -150,11 +181,21 @@ final class DeskModel: ObservableObject {
     }
     func save() throws { try saveSettings(settings, to: directory) }
     func importSubscriptions(_ candidate: ClashCore.Settings) async throws {
-        let fetched = try await fetchSubscriptionData(candidate.subscriptions, corePath: candidate.corePath, directory: directory)
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-update-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: staging) }
+        let fetched = try await fetchSubscriptionData(candidate.subscriptions, corePath: candidate.corePath, directory: staging)
         let imported = fetched.nodes
         var updated = candidate
         updated.subscriptions = fetched.subscriptions
-        try cacheSubscriptionProxies(&updated, directory: directory)
+        let sources = updated.subscriptions.map { source in
+            (source.id, providerFile(source, directory: staging))
+        }
+        updated.subscriptionProxies = try await Task.detached {
+            var cached: [String: [ConfigValue]] = [:]
+            for (id, file) in sources { cached[id] = try readSubscriptionProxies(file).map { ConfigValue(native: $0) } }
+            return cached
+        }.value
         let updatedAt = Date()
         for index in updated.subscriptions.indices { updated.subscriptions[index].lastUpdatedAt = updatedAt }
         if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil, updated.defaultProxyGroup == nil { updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first }
@@ -164,12 +205,12 @@ final class DeskModel: ObservableObject {
             merged[index].delayMilliseconds = previous[merged[index].id]?.delayMilliseconds
             merged[index].delayFailed = previous[merged[index].id]?.delayFailed
         }
-        try saveNodeCache(merged, directory: directory)
-        try saveSettings(updated, to: directory)
+        try await commitSubscriptionUpdate(updated, nodes: merged, sources: updated.subscriptions, staging: staging)
         settings = updated; nodes = merged
         message = "已拉取并保存 \(nodes.count) 个节点。可在规则表修改 MATCH 的出口。"
     }
     func saveSubscription(_ subscription: Subscription) async throws {
+        flushConfigurationSave()
         var subscription = subscription
         subscription.name = subscription.name.trimmingCharacters(in: .whitespacesAndNewlines)
         subscription.url = subscription.url.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -200,15 +241,23 @@ final class DeskModel: ObservableObject {
         let merged = updated.subscriptions.flatMap { source in
             source.id == subscription.id ? imported : nodes.filter { $0.provider == source.provider }
         }
-        let target = providerFile(subscription, directory: directory)
-        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-        try Data(contentsOf: providerFile(subscription, directory: staging)).write(to: target, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
-        try cacheSubscriptionProxies(&updated, directory: directory)
-        try saveNodeCache(merged, directory: directory)
-        try saveSettings(updated, to: directory)
+        let sourceFile = providerFile(subscription, directory: staging)
+        let entries = try await Task.detached { try readSubscriptionProxies(sourceFile).map { ConfigValue(native: $0) } }.value
+        var cached = updated.subscriptionProxies ?? [:]; cached[subscription.id] = entries
+        updated.subscriptionProxies = cached
+        try await commitSubscriptionUpdate(updated, nodes: merged, sources: [subscription], staging: staging)
         settings = updated; nodes = merged
         message = "订阅已保存，共 \(imported.count) 个节点。"
+    }
+    private func commitSubscriptionUpdate(_ updated: ClashCore.Settings, nodes: [Node], sources: [Subscription], staging: URL) async throws {
+        let folder = directory
+        try await Task.detached {
+            _ = try generateConfig(updated)
+            var files = try sources.map { ("providers/" + $0.id + ".yaml", try Data(contentsOf: providerFile($0, directory: staging))) }
+            files.append(("nodes.json", try JSONEncoder().encode(nodes)))
+            files.append(("settings.json", try JSONEncoder().encode(updated)))
+            try commitFiles(files, directory: folder)
+        }.value
     }
     func refreshSubscription(_ subscription: Subscription) {
         perform { try await self.saveSubscription(subscription) }
@@ -324,15 +373,8 @@ final class DeskModel: ObservableObject {
             if action == .start, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
             let snapshot = self.settings
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
-            let currentEndpoint = try controllerEndpoint(self.runtimeSettings)
-            let newEndpoint = try controllerEndpoint(snapshot)
-            let newAddress = snapshot.options?["external-controller"]?.text ?? "127.0.0.1:19090"
-            let controllerChanged = self.activeController != newAddress || currentEndpoint.secret != newEndpoint.secret
-            // Listening address and authentication belong to the controller service lifecycle.
-            // A confirmed restart guarantees the UI and collector switch to a working new endpoint.
-            let hasLocalRules = snapshot.options?["rule-providers"]?.object.values.contains { $0.object["type"] == .string("file") } ?? false
-            let resolvedAction: ConfigAction = action == .reload && (controllerChanged || hasLocalRules || snapshot.corePath != self.runtimeSettings.corePath) ? .start : action
-            self.configPreview = ConfigPreview(settings: snapshot, config: try generateConfig(snapshot), action: resolvedAction)
+            _ = try controllerEndpoint(snapshot)
+            self.configPreview = ConfigPreview(settings: snapshot, config: try generateConfig(snapshot), action: .start)
         }
     }
     func confirmConfig(_ preview: ConfigPreview) {
@@ -341,22 +383,14 @@ final class DeskModel: ObservableObject {
         perform {
             switch preview.action {
             case .preview: return
-            case .start:
-                try saveSettings(preview.settings, to: self.directory)
-                self.settings = preview.settings
+            case .start, .reload:
                 try await installAndStartCore(settings: preview.settings, config: preview.config, directory: self.directory)
-                try saveRuntimeSettings(preview.settings, to: self.directory)
                 self.runtimeSettings = preview.settings
-                try await startStatistics(directory: self.directory)
-                self.message = "已按确认的配置启动服务，退出 GUI 后继续运行。"
-            case .reload:
-                try await self.api.reload(preview.config)
+                // Preserve drafts if saving them fails; the confirmed endpoint is already committed.
                 try saveSettings(preview.settings, to: self.directory)
-                try saveRuntimeSettings(preview.settings, to: self.directory)
-                self.runtimeSettings = preview.settings
                 self.settings = preview.settings
-                try await upgradeRunningStatistics(directory: self.directory)
-                self.message = "已应用确认的配置；重启持久化请点击“安装 / 启动全部”。已有连接保持原路由。"
+                try await startStatistics(directory: self.directory)
+                self.message = "已保存并启动确认的配置，服务重启后继续使用此配置。"
             }
         }
     }
