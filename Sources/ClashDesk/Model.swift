@@ -130,11 +130,45 @@ final class DeskModel: ObservableObject {
         settings = updated; nodes = merged
         message = "已拉取并保存 \(nodes.count) 个节点。可在规则表修改 MATCH 的出口。"
     }
-    func addSubscription(name: String, url: String) {
-        var candidate = settings
-        candidate.subscriptions.append(Subscription(name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                                                    url: url.trimmingCharacters(in: .whitespacesAndNewlines)))
-        perform { try await self.importSubscriptions(candidate) }
+    func saveSubscription(_ subscription: Subscription) async throws {
+        var subscription = subscription
+        subscription.name = subscription.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        subscription.url = subscription.url.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !subscription.name.isEmpty else { throw DeskError("请输入订阅名称") }
+        guard !settings.subscriptions.contains(where: { $0.id != subscription.id && $0.url == subscription.url }) else {
+            throw DeskError("该订阅地址已存在")
+        }
+        let staging = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-subscription-" + UUID().uuidString)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: staging) }
+        var imported = try await fetchSubscriptions([subscription], corePath: settings.corePath, directory: staging)
+        guard !imported.isEmpty else { throw DeskError("订阅没有可用节点，未保存") }
+        let previous = Dictionary(uniqueKeysWithValues: nodes.map { ($0.id, $0) })
+        for index in imported.indices {
+            imported[index].delayMilliseconds = previous[imported[index].id]?.delayMilliseconds
+            imported[index].delayFailed = previous[imported[index].id]?.delayFailed
+        }
+        var updated = settings
+        if let index = updated.subscriptions.firstIndex(where: { $0.id == subscription.id }) {
+            updated.subscriptions[index] = subscription
+        } else { updated.subscriptions.append(subscription) }
+        if updated.defaultNode == nil, updated.defaultDirect != true, updated.defaultPolicy == nil {
+            updated.defaultNode = updated.manualProxies?.first?.node ?? imported.first
+        }
+        let merged = updated.subscriptions.flatMap { source in
+            source.id == subscription.id ? imported : nodes.filter { $0.provider == source.provider }
+        }
+        let target = providerFile(subscription, directory: directory)
+        try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+        try Data(contentsOf: providerFile(subscription, directory: staging)).write(to: target, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        try saveNodeCache(merged, directory: directory)
+        try saveSettings(updated, to: directory)
+        settings = updated; nodes = merged
+        message = "订阅已保存，共 \(imported.count) 个节点。"
+    }
+    func refreshSubscription(_ subscription: Subscription) {
+        perform { try await self.saveSubscription(subscription) }
     }
     func refreshSubscriptions() {
         let candidate = settings
