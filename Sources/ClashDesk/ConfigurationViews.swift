@@ -11,10 +11,8 @@ struct GeneralConfigurationView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    GroupBox("全局配置") {
-                        configurationRows(prefix: "").padding(6)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
+                    configurationRows(prefix: "").padding(6)
+                        .frame(maxWidth: .infinity, alignment: .leading)
                 }.padding(.trailing, 4)
             }.disabled(model.busy)
 
