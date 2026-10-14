@@ -116,7 +116,7 @@ struct SubscriptionEditorView: View {
                     .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if model.settings.corePath.isEmpty { Text("请先在设置中选择 mihomo 二进制文件。").foregroundStyle(.orange) }
-        }.textFieldStyle(.roundedBorder).padding(16).controlSize(.small).frame(width: 620)
+        }.textFieldStyle(.roundedBorder).padding(16).controlSize(.regular).frame(width: 620)
             .environment(\.formHelpDocument, "subscription")
             .interactiveDismissDisabled(model.busy)
     }
@@ -261,7 +261,7 @@ struct ProxyEditorView: View {
                     } catch { self.error = error.localizedDescription }
                 }.buttonStyle(.borderedProminent)
             }
-        }.padding(16).controlSize(.small).frame(width: 720, height: 560)
+        }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
         .environment(\.formHelpDocument, schema.document)
         .onChange(of: type) { _ in
             let common = fields.filter { ["name", "server", "port"].contains($0.key) }

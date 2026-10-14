@@ -153,7 +153,7 @@ struct RuleEditorView: View {
                                             ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text($0.rawValue).tag($0) }
                                         }.labelsHidden()
                                         if conditions.count > 1 && kind != .not && kind != .subRule {
-                                            Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除条件")
+                                            Button { conditions.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除条件")
                                         }
                                     }
                                 }
@@ -189,7 +189,7 @@ struct RuleEditorView: View {
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存规则") { save() }.buttonStyle(.borderedProminent)
             }
-        }.padding(16).controlSize(.small).frame(width: 720, height: 540)
+        }.padding(16).controlSize(.regular).frame(width: 720, height: 540)
         .environment(\.formHelpDocument, "rules/index.md")
         .onChange(of: kind) { changed in
             if changed == .network { value = "tcp" }
