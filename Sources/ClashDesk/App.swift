@@ -1,4 +1,5 @@
 import SwiftUI
+import Darwin
 import ClashCore
 
 @main
@@ -96,6 +97,9 @@ struct DeskView: View {
                 Button("关闭") { model.serviceLogs = nil }.keyboardShortcut(.cancelAction)
             }.padding(20).frame(width: 760, height: 520)
         }
+        .sheet(item: $model.rulePrefill) { prefill in
+            RuleEditorView(prefill: prefill)
+        }
         .sheet(item: $model.configPreview) { preview in
             ConfigPreviewView(preview: preview)
         }
@@ -145,26 +149,55 @@ struct RouteMenu: View {
     @EnvironmentObject var model: DeskModel
     let kind: RuleKind
     let value: String
-    var effectiveKind: RuleKind {
-        if !kind.isProcess, validCIDR(value + "/32") { return .ipCIDR }
-        if !kind.isProcess, validCIDR(value + "/128") { return .ipCIDR6 }
-        return kind
-    }
-    var effectiveValue: String { effectiveKind == .ipCIDR ? value + "/32" : effectiveKind == .ipCIDR6 ? value + "/128" : value }
+    var isIPv4: Bool { !kind.isProcess && validCIDR(value + "/32") }
+    var isIPv6: Bool { !kind.isProcess && validCIDR(value + "/128") }
     var body: some View {
-        Menu("添加\(effectiveKind.isProcess ? "程序" : effectiveKind.isCIDR ? "IP" : "域名")规则") {
-            Button("直连") { add(nil) }
-            ForEach(model.allNodes) { node in Button(model.nodeLabel(node)) { add(node) } }
+        if !value.isEmpty && !["未知目标", "未知 IP", "未知端口", "未知程序"].contains(value) {
+            Section("添加路由规则") {
+                if kind.isProcess {
+                    Button("进程名称（PROCESS-NAME）") {
+                        open(.processName, (value as NSString).lastPathComponent)
+                    }
+                    if value.hasPrefix("/") {
+                        Button("进程路径（PROCESS-PATH）") { open(.processPath, value) }
+                    }
+                } else if isIPv4 || isIPv6 {
+                    Button("目标 IP（\(isIPv4 ? "IP-CIDR /32" : "IP-CIDR6 /128")）") {
+                        open(isIPv4 ? .ipCIDR : .ipCIDR6, value + (isIPv4 ? "/32" : "/128"))
+                    }
+                    Button("目标网段（\(isIPv4 ? "IP-CIDR /24" : "IP-CIDR6 /64")）") {
+                        open(isIPv4 ? .ipCIDR : .ipCIDR6, subnet)
+                    }
+                } else if kind == .destinationPort {
+                    Button("目标端口（DST-PORT）") { open(.destinationPort, value) }
+                } else if kind == .domain {
+                    Button("完整域名（DOMAIN）") { open(.domain, value) }
+                    Button("域名后缀（DOMAIN-SUFFIX）") { open(.suffix, value) }
+                    Button("域名关键词（DOMAIN-KEYWORD）") { open(.keyword, value) }
+                }
+            }
         }
     }
-    func add(_ node: Node?) {
-        do { try model.addRule(kind: effectiveKind, value: effectiveValue, node: node); model.message = "规则已保存，请点击“应用运行配置”。" }
-        catch { model.error = error.localizedDescription }
+    var subnet: String {
+        if isIPv4 {
+            return value.split(separator: ".").prefix(3).joined(separator: ".") + ".0/24"
+        }
+        var address = [UInt8](repeating: 0, count: 16)
+        let parsed = address.withUnsafeMutableBytes { inet_pton(AF_INET6, value, $0.baseAddress) }
+        guard parsed == 1 else { return value + "/64" }
+        for index in 8..<16 { address[index] = 0 }
+        var buffer = [CChar](repeating: 0, count: Int(INET6_ADDRSTRLEN))
+        let converted = address.withUnsafeBytes { inet_ntop(AF_INET6, $0.baseAddress, &buffer, socklen_t(buffer.count)) }
+        return (converted == nil ? value : String(cString: buffer)) + "/64"
+    }
+    func open(_ kind: RuleKind, _ value: String) {
+        model.rulePrefill = RouteRule(kind: kind, value: value, node: nil)
     }
 }
 
 struct StatisticsView: View {
     @EnvironmentObject var model: DeskModel
+    @State private var selection: Set<String> = []
     var activeCounts: [String: Int] { Dictionary(model.connections.map { (model.trafficGrouping.key(for: $0), 1) }, uniquingKeysWith: +) }
     var body: some View {
         let counts = activeCounts
@@ -183,13 +216,9 @@ struct StatisticsView: View {
                 Text("采集已暂停，以下为历史数据。最后采集：" + sampled.formatted(date: .abbreviated, time: .standard))
                     .font(.caption).foregroundStyle(.secondary)
             }
-                Table(model.traffic) {
+                Table(model.traffic, selection: $selection) {
                     TableColumn(model.trafficGrouping.title) { row in
-                        Text(row.domain).textSelection(.enabled).contextMenu {
-                            if model.trafficGrouping == .domain { RouteMenu(kind: .domain, value: row.domain) }
-                            if model.trafficGrouping == .process && row.domain != "未知程序" { RouteMenu(kind: row.domain.hasPrefix("/") ? .processPath : .processName, value: row.domain) }
-                            if model.trafficGrouping == .port && row.domain != "未知端口" { RouteMenu(kind: .destinationPort, value: row.domain) }
-                        }
+                        Text(row.domain)
                     }.width(tableColumnWidth(model.trafficGrouping.title, model.traffic.map(\.domain)))
                     TableColumn("程序数") { row in Text(String(row.processCount)) }.width(tableColumnWidth("程序数", model.traffic.map { String($0.processCount) }, numeric: true))
                     TableColumn("出口数") { row in Text(String(row.outboundCount)) }.width(tableColumnWidth("出口数", model.traffic.map { String($0.outboundCount) }, numeric: true))
@@ -197,6 +226,16 @@ struct StatisticsView: View {
                     TableColumn("上传") { row in Text(bytes(row.upload)).monospacedDigit() }.width(tableColumnWidth("上传", model.traffic.map { bytes($0.upload) }, numeric: true))
                     TableColumn("下载") { row in Text(bytes(row.download)).monospacedDigit() }.width(tableColumnWidth("下载", model.traffic.map { bytes($0.download) }, numeric: true))
                     TableColumn("总流量") { row in Text(bytes(row.upload + row.download)).monospacedDigit() }.width(tableColumnWidth("总流量", model.traffic.map { bytes($0.upload + $0.download) }, numeric: true))
+                }
+                .contextMenu(forSelectionType: String.self) { ids in
+                    if ids.count == 1, let id = ids.first, let row = model.traffic.first(where: { $0.id == id }) {
+                        switch model.trafficGrouping {
+                        case .domain: RouteMenu(kind: .domain, value: row.domain)
+                        case .process: RouteMenu(kind: row.domain.hasPrefix("/") ? .processPath : .processName, value: row.domain)
+                        case .ip: RouteMenu(kind: .ipCIDR, value: row.domain)
+                        case .port: RouteMenu(kind: .destinationPort, value: row.domain)
+                        }
+                    }
                 }
                 .overlay {
                     if model.traffic.isEmpty {

@@ -25,6 +25,7 @@ final class DeskModel: ObservableObject {
     private var delayTask: Task<Void, Never>?
     @Published var serviceLogs: String?
     @Published var configPreview: ConfigPreview?
+    @Published var rulePrefill: RouteRule?
     @Published var coreRunning = false
     @Published var lastSample: Date?
     @Published var busy = false
@@ -124,7 +125,10 @@ final class DeskModel: ObservableObject {
                 let database = try TrafficDatabase(url: folder.appendingPathComponent("traffic.sqlite"), readOnly: true)
                 return (try database.groupedRows(since: Date().addingTimeInterval(-Double(range) * 3600), by: grouping), try database.lastSample())
             }.value
-            traffic = result.0; lastSample = result.1; statisticsError = nil
+            guard grouping == trafficGrouping, range == hours else { return }
+            if traffic != result.0 { traffic = result.0 }
+            if lastSample != result.1 { lastSample = result.1 }
+            if statisticsError != nil { statisticsError = nil }
         } catch { lastSample = nil; traffic = []; statisticsError = error.localizedDescription }
         if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
     }

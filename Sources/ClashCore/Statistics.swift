@@ -61,7 +61,7 @@ public struct TrafficRow: Identifiable {
     public var download: Int64
 }
 
-public struct DomainTrafficRow: Identifiable {
+public struct DomainTrafficRow: Identifiable, Equatable {
     public var id: String { domain }
     public var domain: String
     public var upload: Int64

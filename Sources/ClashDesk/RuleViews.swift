@@ -107,18 +107,19 @@ struct RuleEditorView: View {
     @State private var advancedLogic: Bool
     @State private var conditions = [RuleCondition(), RuleCondition(kind: .network, value: "tcp")]
     @State private var error: String?
-    init(rule: RouteRule? = nil) {
+    init(rule: RouteRule? = nil, prefill: RouteRule? = nil) {
         original = rule
-        _kind = State(initialValue: rule?.kind ?? .domain)
-        _value = State(initialValue: rule?.value ?? "")
-        let cidr = (rule?.value ?? "").split(separator: "/").map(String.init)
+        let initial = rule ?? prefill
+        _kind = State(initialValue: initial?.kind ?? .domain)
+        _value = State(initialValue: initial?.value ?? "")
+        let cidr = (initial?.value ?? "").split(separator: "/").map(String.init)
         _address = State(initialValue: cidr.first ?? "")
         _prefix = State(initialValue: cidr.count == 2 ? cidr[1] : "24")
-        _target = State(initialValue: rule?.proxyGroup.map { "group:" + $0 } ?? rule?.node.map { "node:" + $0.id } ?? "builtin:" + (rule?.builtin ?? "DIRECT"))
-        _noResolve = State(initialValue: rule?.noResolve ?? false)
-        _sourceIP = State(initialValue: rule?.sourceIP ?? false)
-        _subTarget = State(initialValue: rule?.subRuleTarget ?? "")
-        _advancedLogic = State(initialValue: rule?.kind.isLogic == true)
+        _target = State(initialValue: initial?.proxyGroup.map { "group:" + $0 } ?? initial?.node.map { "node:" + $0.id } ?? "builtin:" + (initial?.builtin ?? "DIRECT"))
+        _noResolve = State(initialValue: initial?.noResolve ?? false)
+        _sourceIP = State(initialValue: initial?.sourceIP ?? false)
+        _subTarget = State(initialValue: initial?.subRuleTarget ?? "")
+        _advancedLogic = State(initialValue: initial?.kind.isLogic == true)
     }
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
