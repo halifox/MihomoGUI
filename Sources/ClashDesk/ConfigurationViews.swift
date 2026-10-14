@@ -11,62 +11,49 @@ struct GeneralConfigurationView: View {
             }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
-                    ForEach(documentSchemas.sections.filter { !visibleFields($0).isEmpty }) { schema in
-                        GroupBox {
-                            VStack(alignment: .leading, spacing: 6) {
-                                ForEach(fieldGroups(schema), id: \.self) { group in
-                                    if group.isEmpty {
-                                        fieldRows(schema, group: group)
-                                    } else {
-                                        GroupBox(configFieldTitle(group, document: schema.document)) {
-                                            fieldRows(schema, group: group).padding(4)
-                                        }
-                                    }
-                                }
-                            }.padding(6).frame(maxWidth: .infinity, alignment: .leading)
-                                .environment(\.formHelpDocument, schema.document)
-                        } label: {
-                            HStack {
-                                Text(schema.name).font(.headline)
-                                Spacer()
-                            }
-                        }
+                    GroupBox("全局配置") {
+                        configurationRows(prefix: "").padding(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }.padding(.trailing, 4)
             }.disabled(model.busy)
 
         }
     }
-    func visibleFields(_ schema: EditorSchema) -> [EditorField] { schema.fields }
-    func localPath(_ field: EditorField, schema: EditorSchema) -> String {
-        let prefix = schema.key + "."
-        return field.path.hasPrefix(prefix) ? String(field.path.dropFirst(prefix.count)) : field.path
-    }
-    func groupName(_ field: EditorField, schema: EditorSchema) -> String {
-        let path = localPath(field, schema: schema)
-        return path.split(separator: ".").dropLast().joined(separator: ".")
-    }
-    func fieldGroups(_ schema: EditorSchema) -> [String] {
-        var groups: [String] = []
-        for field in visibleFields(schema) {
-            let group = groupName(field, schema: schema)
-            if !groups.contains(group) { groups.append(group) }
+    var fields: [EditorField] { documentSchemas.sections.flatMap(\.fields) }
+    func configurationRows(prefix: String) -> AnyView {
+        let pathPrefix = prefix.isEmpty ? "" : prefix + "."
+        let nestedFields = fields.filter { $0.path.hasPrefix(pathPrefix) }
+        var keys: [String] = []
+        for field in nestedFields {
+            let key = String(field.path.dropFirst(pathPrefix.count).split(separator: ".")[0])
+            if !keys.contains(key) { keys.append(key) }
         }
-        return groups
-    }
-    func fieldRows(_ schema: EditorSchema, group: String) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            ForEach(visibleFields(schema).filter { groupName($0, schema: schema) == group }) { field in
-                VisualField(field: displayField(field, schema: schema), value: Binding(get: {
-                    model.option(field.path)
-                }, set: { model.setOption(field.path, value: $0) }),
-                            allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: fieldEnabled(field.path))
+        return AnyView(VStack(alignment: .leading, spacing: 6) {
+            ForEach(keys, id: \.self) { key in
+                let path = pathPrefix + key
+                if let field = nestedFields.first(where: { $0.path == path }) {
+                    VisualField(field: displayField(field), value: Binding(get: {
+                        model.option(field.path)
+                    }, set: { model.setOption(field.path, value: $0) }),
+                                allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: fieldEnabled(field.path))
+                        .environment(\.formHelpDocument, document(for: field))
+                } else {
+                    GroupBox(key) {
+                        configurationRows(prefix: path).padding(4)
+                    }
+                }
             }
-        }
+        })
     }
-    func displayField(_ field: EditorField, schema: EditorSchema) -> EditorField {
+    func document(for field: EditorField) -> String {
+        documentSchemas.sections.first { schema in
+            schema.fields.contains { $0.path == field.path }
+        }?.document ?? "general.md"
+    }
+    func displayField(_ field: EditorField) -> EditorField {
         var result = field
-        result.title = localPath(field, schema: schema).split(separator: ".").last.map(String.init) ?? field.title
+        result.title = field.path.split(separator: ".").last.map(String.init) ?? field.title
         return result
     }
     func fieldEnabled(_ path: String) -> Bool {
