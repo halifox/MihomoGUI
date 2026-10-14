@@ -184,7 +184,6 @@ struct RuleEditorView: View {
                 }.textFieldStyle(.roundedBorder)
             }
             HStack {
-                Link("路由规则文档", destination: URL(string: "https://wiki.metacubex.one/config/rules/")!)
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存规则") { save() }.buttonStyle(.borderedProminent)

@@ -249,7 +249,6 @@ struct ProxyEditorView: View {
                 }.padding(.trailing, 4)
             }
             HStack {
-                Link("\(type) 配置文档", destination: URL(string: "https://wiki.metacubex.one/config/" + schema.document.replacingOccurrences(of: ".md", with: "/"))!)
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存代理") {
