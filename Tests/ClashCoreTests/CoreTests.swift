@@ -289,6 +289,10 @@ final class CoreTests: XCTestCase {
         try validateFieldValues(["behavior": .string("domain")], schema: [required])
         let ipVersion = documentSchemas.proxies.first { $0.key == "http" }!.fields.first { $0.path == "ip-version" }!
         XCTAssertEqual(ipVersion.defaultHint, "dual")
+        for (path, expected) in [("mode", "rule"), ("find-process-mode", "strict"), ("geodata-loader", "memconservative")] {
+            XCTAssertEqual(documentSchemas.sections.flatMap(\.fields).first { $0.path == path }?.defaultHint, expected)
+        }
+        XCTAssertEqual(groupEditorFields("select").first { $0.path == "empty-fallback" }?.defaultHint, "REJECT")
         let dnsMode = documentSchemas.sections.flatMap(\.fields).first { $0.path == "dns.enhanced-mode" }!
         XCTAssertEqual(dnsMode.defaultHint, "redir-host")
         XCTAssertEqual(ruleProviderEditorFields("http").first { $0.path == "format" }?.defaultHint, "yaml")
@@ -306,7 +310,57 @@ final class CoreTests: XCTestCase {
         XCTAssertTrue(groups.first { $0["name"] as? String == "Test" }?["default-selected"] == nil)
     }
 
+    func testSubscriptionRejectsAliasesAndDeepNesting() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appendingPathComponent("nodes.yaml")
+        try "proxies: &p\n  - name: loop\n    type: ss\n    extra: *p\n".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try readSubscriptionProxies(file))
+        let nested = "proxies:\n  - name: deep\n    type: ss\n    extra: " + String(repeating: "[", count: 70) + "0" + String(repeating: "]", count: 70) + "\n"
+        try nested.write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try readSubscriptionProxies(file))
+        try "proxies:\n  - name: valid\n    type: ss\n    server: localhost\n    port: 443\n".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertEqual(try readSubscriptionProxies(file).count, 1)
+    }
+    func testFileCommitRestoresAllFilesAfterWriteFailure() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let old = Data("old".utf8), new = Data("new".utf8)
+        try old.write(to: directory.appendingPathComponent("settings.json"))
+        var writes = 0
+        XCTAssertThrowsError(try commitFiles([("settings.json", new), ("nodes.json", new), ("providers/test.yaml", new)], directory: directory) { data, url in
+            writes += 1
+            if writes == 3 { throw DeskError("injected failure") }
+            try data.write(to: url, options: .atomic)
+        })
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("settings.json")), old)
+        XCTAssertTrue(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("nodes.json").path))
+        XCTAssertTrue(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("file-commit").path))
+        try commitFiles([("settings.json", new), ("nodes.json", new)], directory: directory)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("settings.json")), new)
+        XCTAssertEqual(try Data(contentsOf: directory.appendingPathComponent("nodes.json")), new)
+    }
+    func testInterruptedFileCommitRecoversOnSettingsLoad() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        let journal = directory.appendingPathComponent("file-commit")
+        try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        var old = Settings(); old.secret = "previous-secret"
+        let data = try JSONEncoder().encode(old)
+        try data.write(to: journal.appendingPathComponent("old-0"))
+        try JSONEncoder().encode(["settings.json", "nodes.json"]).write(to: journal.appendingPathComponent("manifest.json"))
+        try Data().write(to: journal.appendingPathComponent("ready"))
+        try Data("partial write".utf8).write(to: directory.appendingPathComponent("settings.json"))
+        try Data("new cache".utf8).write(to: directory.appendingPathComponent("nodes.json"))
+        XCTAssertEqual(try loadSettings(from: directory).secret, "previous-secret")
+        XCTAssertTrue(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("nodes.json").path))
+    }
     static var allTests = [
+        ("testInterruptedFileCommitRecoversOnSettingsLoad", testInterruptedFileCommitRecoversOnSettingsLoad),
+        ("testSubscriptionRejectsAliasesAndDeepNesting", testSubscriptionRejectsAliasesAndDeepNesting),
+        ("testFileCommitRestoresAllFilesAfterWriteFailure", testFileCommitRestoresAllFilesAfterWriteFailure),
         ("testEmptyChoiceValidationAndOmission", testEmptyChoiceValidationAndOmission),
         ("testConfigIgnoresSubscriptionRulesAndKeepsTableOrder", testConfigIgnoresSubscriptionRulesAndKeepsTableOrder),
         ("testRejectsRuleInjectionAndDeletedSubscription", testRejectsRuleInjectionAndDeletedSubscription),

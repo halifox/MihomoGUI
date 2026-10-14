@@ -36,14 +36,14 @@ open dist/ClashDesk.app
 3. 在“出站代理”填写手动代理，或在“代理订阅”添加订阅并立即拉取。订阅只提供节点，不采用订阅内的 DNS、策略组或路由规则。生成的 mihomo YAML 不包含订阅链接、token 或名称；节点以内部唯一名称内联写入 proxies。
 4. 初次添加代理后 MATCH 指向第一个代理；在“路由规则”调整出口和分流条件。
 5. 点击“安装 / 启动全部”，查看完整只读 YAML 预览，再点击“确认并启动”。确认后才校验并安装服务，随后出现 macOS 管理员授权。
-6. 运行中修改配置，点击“应用运行配置”，同样先预览并确认。改变控制地址或密钥时会改为确认后重启服务，确保 GUI 和采集后台连接到新的接口。
-7. 开发版热更新不会改写 root 启动配置；需要重启后持久化时使用“安装 / 启动全部”。
+6. 运行中修改配置，点击“应用更改”，先预览并确认，再通过管理员授权保存启动文件并重启服务。已有连接会中断；接口就绪检查失败时恢复旧文件和服务。
+7. 安装与应用更改均持久化系统启动配置和已确认接口，服务重启后继续使用最后确认的配置。
 
 取消预览不会安装、启动或更新系统代理。预览和实际运行使用同一份配置快照。关闭窗口 / Cmd-Q 不停止服务；通过“停止”菜单停止代理、统计或全部服务。
 
 ## 配置与兼容
 
-预览、启动文件与热更新配置内容使用标准 YAML；REST API 请求外层仍为 mihomo 规定的 JSON。动态字段会生成正确的嵌套 YAML，单引号、Emoji、正则、URL 和进程路径保留原值。
+预览与启动文件使用标准 YAML；REST API 请求外层仍为 mihomo 规定的 JSON。动态字段会生成正确的嵌套 YAML，单引号、Emoji、正则、URL 和进程路径保留原值。
 
 默认参数沿用已有设置：规则模式、本机 7890、info 日志、统一延迟、TCP 并发、mips / utun1024 / MTU 1500、指定 DNS 和 fallback 等。都可在全局配置页调整。默认控制接口为 `127.0.0.1:19090`，使用已有随机密钥；GUI 和采集后台需要有效的 host:port。未确认的草稿保存在 `settings.json`，已确认运行的接口配置保存在 `runtime.json`，防止编辑地址或密钥时中断采集。
 
@@ -81,18 +81,19 @@ ruby scripts/build-schema.rb /path/to/Meta-Docs-main/docs/config
 bash scripts/test.sh
 bash scripts/integration-test.sh /path/to/mihomo
 python3 scripts/stats-integration-test.py
+bash scripts/services-test.sh
 ```
 
-核心测试覆盖 YAML、规则顺序、旧设置迁移、嵌套配置、协议字段归属、手动 Hysteria2、CIDR / 逻辑验证、域名汇总和已确认配置隔离。集成测试使用临时目录、本地 HTTP CONNECT 假代理和无 TUN 内核，校验真实内核解析、API 鉴权、内存 WebSocket、热更新、规则集和延迟。不启动系统代理。
+核心测试覆盖循环引用 / 过深 YAML 拒绝、提交失败回滚与中断恢复、规则顺序、旧设置迁移、嵌套配置、协议字段归属、手动 Hysteria2、CIDR / 逻辑验证、域名汇总和已确认配置隔离。集成测试使用临时目录、本地 HTTP CONNECT 假代理和无 TUN 内核，校验真实内核解析、API 鉴权、内存 WebSocket、热更新、规则集和延迟。不启动系统代理。服务安装测试在临时目录中替换 launchctl / curl，覆盖成功、写入失败、启动失败、接口超时的恢复，并验证日志容量限制。
 
 统计测试验证 1000 个活跃模拟连接、进程互斥、重启基线及草稿修改不影响采集；此前观测 RSS 约 17.9 MiB，仅为单次测试结果，不是长期或真实负载保证。
 
 ## 当前边界
 
-- 使用 AppleScript 管理员授权安装 launchd 服务，尚未完成正式签名、notarization、SMAppService / XPC helper 和完整安装回滚。
-- 支持 Clash YAML 订阅；Base64 / URI 转换尚未实现。节点表格从本地订阅 YAML 补全服务器和端口；使用 macOS 自带 Ruby / Psych 安全解析，仅提取显示字段，不缓存密码。订阅节点凭据暂不单独编辑。
+- 使用 AppleScript 管理员授权安装 launchd 服务，尚未完成正式签名、notarization、SMAppService / XPC helper。
+- 支持 Clash YAML 订阅；Base64 / URI 转换尚未实现。节点表格从本地订阅 YAML 补全服务器和端口；使用 macOS 自带 Ruby / Psych 安全解析，拒绝 YAML aliases 和过深嵌套；节点摘要不缓存密码。订阅节点凭据暂不单独编辑。
 - GUI 订阅缓存需点击“更新全部订阅”同步；mihomo 不再拉取订阅，只接收内联节点；订阅更新由 GUI 管理，更新后预览并应用配置。
 - 流量为连接快照近似统计，会遗漏短连接、断线 / 重启期间和结束前最后一段流量；时间范围按小时分桶，最多显示 500 个域名，未提供历史分页或速率图表。
 - IPv6 配置已开放，但默认关闭；尚未完成真实 TUN 的 IPv6、其他 VPN 并存、休眠恢复和网络切换验证。
 - Linux UID / DSCP 等依赖其他平台入站的规则未列入 macOS 表单。复杂逻辑规则可以直接输入表达式；最终语法以 mihomo 校验为准。
-- 不记录无限增长的服务 stdout / stderr 日志。配置校验和操作错误显示在 GUI；启动后的完整日志诊断仍待完善。
+- 采集服务将统计错误保存到数据目录的 `services.log`，单文件上限 1 MiB，保留一份轮转文件。系统内核的启动输出由独立日志进程写入系统目录的 `core.log`，同样保留两份、每份最多 1 MiB；安装失败日志保存在 `core-failure.log`。设置页“查看日志”通过管理员授权读取系统日志；启动校验错误显示在 GUI。

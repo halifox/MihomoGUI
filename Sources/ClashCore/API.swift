@@ -48,7 +48,7 @@ public struct CoreAPI {
         guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
             // Do not echo API response bodies: configuration errors can include subscription credentials.
             let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw DeskError("mihomo 请求失败（HTTP \(code)），请检查内核日志")
+            throw DeskError("mihomo 请求失败（HTTP \(code)），请在应用设置中查看服务日志")
         }
         return data
     }

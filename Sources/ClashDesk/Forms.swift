@@ -55,7 +55,7 @@ func optionLabel(_ value: String) -> String {
         "gvisor": "用户态网络栈",
         "lru": "最近最少使用",
         "arc": "自适应缓存",
-        "mips": "每秒百万指令",
+        "mips": "mihomo IP 协议栈",
         "zero": "零值",
         "tcp": "传输控制协议",
         "udp": "用户数据报协议",

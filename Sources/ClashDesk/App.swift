@@ -89,6 +89,13 @@ struct DeskView: View {
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("确定") { model.error = nil }
         } message: { Text(model.error ?? "") }
+        .sheet(isPresented: Binding(get: { model.serviceLogs != nil }, set: { if !$0 { model.serviceLogs = nil } })) {
+            VStack(alignment: .leading) {
+                Text("服务日志").font(.title2)
+                ScrollView { Text(model.serviceLogs ?? "").font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
+                Button("关闭") { model.serviceLogs = nil }.keyboardShortcut(.cancelAction)
+            }.padding(20).frame(width: 760, height: 520)
+        }
         .sheet(item: $model.configPreview) { preview in
             ConfigPreviewView(preview: preview)
         }
@@ -103,7 +110,7 @@ struct ConfigPreviewView: View {
         VStack(alignment: .leading, spacing: 14) {
             Text(preview.action == .preview ? "预览 mihomo 配置" : "确认 mihomo 配置").font(.title2.bold())
             if preview.action != .preview {
-                Text(preview.action == .start ? "确认后才会安装并启动系统代理服务，随后弹出 macOS 管理员授权。" : "确认后才会将下列配置应用到运行中的 mihomo。")
+                Text(preview.action == .start ? "确认后将通过 macOS 管理员授权保存配置并重启系统代理服务，已有连接会中断。" : "确认后才会将下列配置应用到运行中的 mihomo。")
                     .foregroundStyle(.secondary)
             }
             HStack {
@@ -169,6 +176,10 @@ struct StatisticsView: View {
                     Text("最近 24 小时（Last 24 hours）").tag(24); Text("最近 7 天（Last 7 days）").tag(168); Text("最近 30 天（Last 30 days）").tag(720)
                 }.frame(width: 220)
             }.pageActions()
+            if let sampled = model.lastSample, Date().timeIntervalSince(sampled) > 15 {
+                Text("采集已暂停，以下为历史数据。最后采集：" + sampled.formatted(date: .abbreviated, time: .standard))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
                 Table(model.traffic) {
                     TableColumn("域名 / IP") { row in
                         Text(row.domain).textSelection(.enabled).contextMenu { RouteMenu(kind: .domain, value: row.domain) }
@@ -182,7 +193,7 @@ struct StatisticsView: View {
                 }
                 .overlay {
                     if model.traffic.isEmpty {
-                        Text("暂无统计。启动服务后访问网站，数据会自动显示。").foregroundStyle(.secondary).allowsHitTesting(false)
+                        Text(model.statisticsError.map { "统计不可用：" + $0 } ?? "暂无统计。启动服务后访问网站，数据会自动显示。").foregroundStyle(.secondary).allowsHitTesting(false)
                     }
                 }
 

@@ -71,7 +71,8 @@ let docSchemaJSON = #"""
             "rule",
             "global",
             "direct"
-          ]
+          ],
+          "defaultHint": "rule"
         },
         {
           "path": "log-level",
@@ -131,7 +132,8 @@ let docSchemaJSON = #"""
             "always",
             "strict",
             "off"
-          ]
+          ],
+          "defaultHint": "strict"
         },
         {
           "path": "external-controller",
@@ -323,7 +325,8 @@ let docSchemaJSON = #"""
           "choices": [
             "memconservative",
             "standard"
-          ]
+          ],
+          "defaultHint": "memconservative"
         },
         {
           "path": "geo-auto-update",
@@ -9640,6 +9643,7 @@ let docSchemaJSON = #"""
         "strict",
         "off"
       ],
+      "defaultHint": "strict",
       "document": "general.md"
     },
     {
@@ -9654,6 +9658,7 @@ let docSchemaJSON = #"""
         "global",
         "direct"
       ],
+      "defaultHint": "rule",
       "document": "general.md"
     },
     {
@@ -10877,6 +10882,7 @@ let docSchemaJSON = #"""
         "memconservative",
         "standard"
       ],
+      "defaultHint": "memconservative",
       "document": "general.md"
     },
     {

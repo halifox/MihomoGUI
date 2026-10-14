@@ -123,6 +123,13 @@ sections=[]
   desc=desc.transform_keys { |k| k.start_with?(prefix+'.') ? k : prefix+'.'+k }
  end
  fs=fields(values,'',desc)
+ # Explicit defaults stated under Chinese headings in general.md.
+ if prefix == ''
+  {'mode'=>'rule', 'find-process-mode'=>'strict', 'geodata-loader'=>'memconservative'}.each do |path, default|
+   field = fs.find { |item| item['path'] == path }
+   field['defaultHint'] = default if field && field['choices'].include?(default)
+  end
+ end
  # Keep all platform-specific options visible; only documented restrictions disable editing on macOS.
  linux_fields = %w[tproxy-port routing-mark external-controller-routing-mark tun.auto-redirect
   tun.gso tun.gso-max-size tun.iproute2-table-index tun.iproute2-rule-index
