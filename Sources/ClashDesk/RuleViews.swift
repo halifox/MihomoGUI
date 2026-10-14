@@ -125,7 +125,7 @@ struct RuleEditorView: View {
             Text(original == nil ? "添加路由规则" : "编辑路由规则").font(.title2.bold())
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    formRow("type *") {
+                    formRow("type *", help: documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "选择路由规则类型。") {
                         Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) } }.labelsHidden()
                     }
                     if kind.isCIDR {
@@ -144,10 +144,12 @@ struct RuleEditorView: View {
                         }
                     } else if kind.isLogic {
                         formRow("expression-mode") { Toggle("直接编辑逻辑表达式", isOn: $advancedLogic) }
-                        if advancedLogic { formRow("expression *") { TextField("", text: $value) } }
+                        if advancedLogic {
+                            formRow("expression *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写逻辑表达式。") + "\n\n示例：" + kind.hint) { TextField("", text: $value) }
+                        }
                         else {
                             ForEach(conditions.indices, id: \.self) { index in
-                                formRow("condition[\(index + 1)].type") {
+                                formRow("condition[\(index + 1)].type", help: documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "选择条件的规则类型。") {
                                     HStack {
                                         Picker("条件", selection: $conditions[index].kind) {
                                             ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) }
@@ -157,14 +159,14 @@ struct RuleEditorView: View {
                                         }
                                     }
                                 }
-                                formRow("condition[\(index + 1)].value", help: "填写条件的匹配内容。\n\n示例：" + conditions[index].kind.hint) { TextField("", text: $conditions[index].value) }
+                                formRow("condition[\(index + 1)].value", help: (documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "填写条件的匹配内容。") + "\n\n示例：" + conditions[index].kind.hint) { TextField("", text: $conditions[index].value) }
                             }
                             if kind != .not && kind != .subRule {
                                 formRow("conditions") { Button("添加条件") { conditions.append(RuleCondition()) } }
                             }
                         }
                     } else {
-                        formRow("value *", help: "填写当前规则类型的匹配内容。\n\n示例：" + kind.hint) { TextField("", text: $value).help(kind.hint) }
+                        formRow("value *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写当前规则类型的匹配内容。") + "\n\n示例：" + kind.hint) { TextField("", text: $value).help(kind.hint) }
                         if kind == .processPath {
                             formRow("application") { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
                         }

@@ -96,7 +96,7 @@ public struct DocumentSchemas: Codable {
 }
 
 public let documentSchemas: DocumentSchemas = {
-    // Generated, checked-in JSON is immutable; runtime never reads the documentation checkout.
+    // Reviewed field data is checked in; runtime never reads the documentation checkout.
     try! JSONDecoder().decode(DocumentSchemas.self, from: Data(docSchemaJSON.utf8))
 }()
 
@@ -152,6 +152,7 @@ public struct ManualProxy: Codable, Identifiable {
         }
         for field in schema.fields where field.required {
             if type == "hysteria2", field.path == "port", !(fields["ports"]?.text ?? "").isEmpty { continue }
+            if type == "mieru", field.path == "port", !(fields["port-range"]?.text ?? "").isEmpty { continue }
             guard let value = fields[field.path], !value.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
                 throw DeskError("\(type) 缺少必填字段：\(field.path)")
             }
@@ -334,7 +335,7 @@ private let configFieldTitles: [String: String] = [
     "log-level": "日志级别",
     "ipv6": "接受 IPv6 流量",
     "keep-alive-interval": "TCP 保活间隔（秒）",
-    "keep-alive-idle": "TCP 保活最大空闲时间（秒）",
+    "keep-alive-idle": "TCP 保活最大空闲时间",
     "disable-keep-alive": "禁用 TCP 保活",
     "find-process-mode": "进程匹配模式",
     "external-controller": "API 监听地址",
