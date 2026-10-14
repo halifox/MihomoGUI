@@ -3,7 +3,7 @@ import AppKit
 import ClashCore
 
 enum ConfigAction {
-    case start, reload
+    case preview, start, reload
 }
 
 struct ConfigPreview: Identifiable {
@@ -301,6 +301,12 @@ final class DeskModel: ObservableObject {
     func applyLive() {
         prepareConfig(.reload)
     }
+    func previewConfig() {
+        guard !busy, configPreview == nil else { return }
+        do {
+            configPreview = ConfigPreview(settings: settings, config: try generateConfig(settings), action: .preview)
+        } catch { self.error = error.localizedDescription }
+    }
     private func prepareConfig(_ action: ConfigAction) {
         guard configPreview == nil else { return }
         perform {
@@ -319,10 +325,11 @@ final class DeskModel: ObservableObject {
         }
     }
     func confirmConfig(_ preview: ConfigPreview) {
-        guard !busy, configPreview?.id == preview.id else { return }
+        guard !busy, preview.action != .preview, configPreview?.id == preview.id else { return }
         configPreview = nil
         perform {
             switch preview.action {
+            case .preview: return
             case .start:
                 try saveSettings(preview.settings, to: self.directory)
                 self.settings = preview.settings

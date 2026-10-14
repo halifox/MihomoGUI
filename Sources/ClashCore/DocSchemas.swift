@@ -10762,34 +10762,6 @@ let docSchemaJSON = #"""
       ]
     },
     {
-      "path": "proxies",
-      "title": "proxies",
-      "kind": "list",
-      "hint": "[{\"name\":\"proxy\",\"type\":\"ss\"}]",
-      "description": "",
-      "required": false,
-      "elementKind": "object",
-      "children": [
-        {
-          "path": "name",
-          "title": "name",
-          "kind": "string",
-          "hint": "proxy",
-          "description": "",
-          "required": false
-        },
-        {
-          "path": "type",
-          "title": "type",
-          "kind": "string",
-          "hint": "ss",
-          "description": "",
-          "required": false
-        }
-      ],
-      "document": "dns/index.md"
-    },
-    {
       "path": "external-controller-pipe",
       "title": "external-controller-pipe",
       "kind": "string",

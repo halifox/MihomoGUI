@@ -101,13 +101,15 @@ struct ConfigPreviewView: View {
     let preview: ConfigPreview
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text("确认 mihomo 配置").font(.title2.bold())
-            Text(preview.action == .start ? "确认后才会安装并启动系统代理服务，随后弹出 macOS 管理员授权。" : "确认后才会将下列配置应用到运行中的 mihomo。")
-                .foregroundStyle(.secondary)
+            Text(preview.action == .preview ? "预览 mihomo 配置" : "确认 mihomo 配置").font(.title2.bold())
+            if preview.action != .preview {
+                Text(preview.action == .start ? "确认后才会安装并启动系统代理服务，随后弹出 macOS 管理员授权。" : "确认后才会将下列配置应用到运行中的 mihomo。")
+                    .foregroundStyle(.secondary)
+            }
             HStack {
                 Text("config.yaml").font(.headline)
                 Spacer()
-                Text("YAML · 只读预览 · 实际使用此份配置").font(.caption).foregroundStyle(.secondary)
+                Text(preview.action == .preview ? "YAML · 当前设置生成的配置" : "YAML · 只读预览 · 实际使用此份配置").font(.caption).foregroundStyle(.secondary)
             }
             ScrollView([.vertical, .horizontal]) {
                 Text(String(decoding: preview.config, as: UTF8.self))
@@ -117,10 +119,12 @@ struct ConfigPreviewView: View {
                     .padding(12)
             }.background(Color(nsColor: .textBackgroundColor)).border(Color.secondary.opacity(0.3))
             HStack {
-                Button("取消") { model.configPreview = nil }.keyboardShortcut(.cancelAction)
+                Button(preview.action == .preview ? "关闭" : "取消") { model.configPreview = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
-                Button(preview.action == .start ? "确认并启动" : "确认并应用") { model.confirmConfig(preview) }
-                    .buttonStyle(.borderedProminent).disabled(model.busy)
+                if preview.action != .preview {
+                    Button(preview.action == .start ? "确认并启动" : "确认并应用") { model.confirmConfig(preview) }
+                        .buttonStyle(.borderedProminent).disabled(model.busy)
+                }
             }
         }.padding(24).frame(width: 900, height: 650)
     }

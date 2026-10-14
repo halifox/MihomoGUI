@@ -129,6 +129,9 @@ final class CoreTests: XCTestCase {
 
     func testPlatformSpecificGeneralOptions() throws {
         let fields = documentSchemas.sections.flatMap(\.fields)
+        XCTAssertTrue(!documentSchemas.configuration.contains { $0.path == "proxies" })
+        XCTAssertTrue(documentSchemas.configuration.contains { $0.path == "unified-delay" })
+        XCTAssertTrue(fields.contains { $0.path == "unified-delay" })
         XCTAssertEqual(try XCTUnwrap(fields.first { $0.path == "tun.udp-timeout" }).defaultHint, "300")
         XCTAssertEqual(try XCTUnwrap(fields.first { $0.path == "global-ua" }).defaultHint, "clash.meta")
         for path in ["port", "redir-port", "tproxy-port", "dns.fake-ip-range", "interface-name"] {
