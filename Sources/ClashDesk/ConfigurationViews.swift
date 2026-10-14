@@ -156,7 +156,7 @@ struct ApplicationSettingsView: View {
                         }
                     }.textFieldStyle(.roundedBorder).padding(6)
                 }
-            }.controlSize(.small)
+            }.controlSize(.regular)
         }.environment(\.formHelpDocument, "settings")
     }
     var statsStatus: String {

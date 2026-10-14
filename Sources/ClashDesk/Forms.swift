@@ -8,7 +8,7 @@ struct VisualField: View {
     var compact = false
     var inputEnabled = true
     var body: some View {
-        if compact { compactRow.controlSize(.small) }
+        if compact { compactRow.controlSize(.regular) }
         else { legacyRow }
     }
     var compactRow: some View {
@@ -110,12 +110,12 @@ struct ValueList: View {
                     Button {
                         var array = value.array; guard array.indices.contains(index) else { return }
                         array.remove(at: index); value = .array(array)
-                    } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除此项")
+                    } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除此项")
                 }
             }
             Button {
                 var array = value.array; array.append(emptyValue(item)); value = .array(array)
-            } label: { Label("添加一项", systemImage: "plus") }.controlSize(.small)
+            } label: { Label("添加一项", systemImage: "plus") }.controlSize(.regular)
         }
     }
     func element(_ index: Int) -> some View {
@@ -158,7 +158,7 @@ struct ValueMap: View {
                             })) { Text("单值").tag("string"); Text("列表").tag("list") }.frame(width: 180)
                         }
                         Button { var object = value.object; object.removeValue(forKey: name); value = .object(object) }
-                            label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除此项")
+                            label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除此项")
                     }
                     VisualValue(field: itemSpec(name), value: Binding(get: { value.object[name] ?? emptyValue(item) }, set: {
                         var object = value.object; object[name] = $0; value = .object(object)
@@ -207,8 +207,8 @@ struct CustomFieldEditor: View {
 
 // Icon-only controls need a square label so thin symbols cannot collapse the button height.
 func formActionIcon(_ symbol: String) -> some View {
-    Image(systemName: symbol).font(.system(size: 10, weight: .medium))
-        .frame(width: 12, height: 12)
+    Image(systemName: symbol).font(.system(size: 12, weight: .medium))
+        .frame(width: 14, height: 14)
 }
 
 func formRow<Content: View>(_ title: String, help: String = "", @ViewBuilder content: () -> Content) -> some View {

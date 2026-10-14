@@ -107,9 +107,9 @@ struct ResourceEditorView: View {
                                 ForEach(targets.indices, id: \.self) { index in
                                     HStack {
                                         memberPicker(index)
-                                        Button { targets.swapAt(index, index - 1) } label: { formActionIcon("arrow.up") }.buttonStyle(.bordered).controlSize(.small).help("上移").disabled(index == 0)
-                                        Button { targets.swapAt(index, index + 1) } label: { formActionIcon("arrow.down") }.buttonStyle(.bordered).controlSize(.small).help("下移").disabled(index + 1 == targets.count)
-                                        Button { targets.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.small).help("删除成员")
+                                        Button { targets.swapAt(index, index - 1) } label: { formActionIcon("arrow.up") }.buttonStyle(.bordered).controlSize(.regular).help("上移").disabled(index == 0)
+                                        Button { targets.swapAt(index, index + 1) } label: { formActionIcon("arrow.down") }.buttonStyle(.bordered).controlSize(.regular).help("下移").disabled(index + 1 == targets.count)
+                                        Button { targets.remove(at: index) } label: { formActionIcon("minus") }.buttonStyle(.bordered).controlSize(.regular).help("删除成员")
                                     }
                                 }
                                 Button { targets.append(model.allNodes.first.map { "node:" + $0.id } ?? "builtin:REJECT") } label: { Label("添加成员", systemImage: "plus") }
@@ -152,7 +152,7 @@ struct ResourceEditorView: View {
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save() }.buttonStyle(.borderedProminent)
             }
-        }.padding(16).controlSize(.small).frame(width: 720, height: 560)
+        }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
         .environment(\.formHelpDocument, groups ? "proxy-groups/" + type + ".md" : "rule-providers/index.md")
         .onChange(of: type) { _ in
             let allowed = Set(schema.map(\.path) + (groups ? [] : ["proxy"]))
