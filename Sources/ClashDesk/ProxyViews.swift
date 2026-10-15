@@ -69,7 +69,7 @@ struct SubscriptionsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
+                HStack(spacing: 0) {
                     Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }
                         .disabled(model.busy)
                     Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }
@@ -216,7 +216,7 @@ struct OutboundProxiesView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
+                HStack(spacing: 0) {
                     Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.disabled(model.busy)
                     Button { editing = selectedManual } label: { toolbarIcon("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
                     DeleteButton(toolbar: true, message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
