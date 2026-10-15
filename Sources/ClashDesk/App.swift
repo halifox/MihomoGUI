@@ -208,18 +208,7 @@ struct DeskView: View {
         .sheet(item: $model.rulePrefill) { prefill in
             RuleEditorView(prefill: prefill)
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { model.perform { model.serviceLogs = try await readCoreLog(directory: model.directory) } } label: {
-                        toolbarIcon("查看日志", systemImage: "doc.text")
-                    }.disabled(model.busy).help("读取用户日志目录中的 core.log")
-                    Button { model.toggleAllServices() } label: {
-                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
-                    }.disabled(model.busy)
-                }.buttonStyle(.bordered)
-            }
-        }
+
     }
 }
 
@@ -369,40 +358,71 @@ struct ConnectionsView: View {
     @State private var selection: String?
     @State private var sortOrder: [TableSort<Connection>] = []
     @EnvironmentObject var model: DeskModel
+    func address(_ ip: String?, _ port: String?) -> String {
+        guard let ip, !ip.isEmpty else { return "—" }
+        let host = ip.contains(":") ? "[\(ip)]" : ip
+        return port.flatMap { $0.isEmpty ? nil : "\(host):\($0)" } ?? host
+    }
+    func startDate(_ row: Connection) -> Date? {
+        guard let start = row.start else { return nil }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter.date(from: start) ?? ISO8601DateFormatter().date(from: start)
+    }
+    func value(_ row: Connection, _ column: String) -> String {
+        switch column {
+        case "主机": return address(row.domain, row.metadata.destinationPort)
+        case "下载量": return bytes(row.download)
+        case "上传量": return bytes(row.upload)
+        case "下载速度": return bytes(row.downloadSpeed) + "/s"
+        case "上传速度": return bytes(row.uploadSpeed) + "/s"
+        case "链路": return row.chains?.reversed().joined(separator: " / ") ?? "—"
+        case "规则": return row.rule ?? "—"
+        case "进程": return row.process
+        case "连接时间":
+            guard let date = startDate(row) else { return "—" }
+            let formatter = RelativeDateTimeFormatter()
+            formatter.locale = Locale(identifier: "zh_CN")
+            return formatter.localizedString(for: date, relativeTo: Date())
+        case "源地址": return address(row.metadata.sourceIP, row.metadata.sourcePort)
+        case "目标地址": return address(row.metadata.destinationIP, row.metadata.destinationPort)
+        default: return "\(row.metadata.type ?? "—")(\(row.metadata.network ?? "—"))"
+        }
+    }
     func columnSort(_ column: String) -> TableSort<Connection> {
         switch column {
-        case "域名 / IP": return TableSort(column) { $0.domain }
-        case "程序": return TableSort(column) { $0.process }
-        case "协议": return TableSort(column) { $0.metadata.network ?? "—" }
-        case "出口": return TableSort(column) { $0.outbound }
-        case "上传": return TableSort(column) { $0.upload }
-        default: return TableSort(column) { $0.download }
+        case "下载量": return TableSort(column) { $0.download }
+        case "上传量": return TableSort(column) { $0.upload }
+        case "下载速度": return TableSort(column) { $0.downloadSpeed }
+        case "上传速度": return TableSort(column) { $0.uploadSpeed }
+        case "连接时间": return TableSort(column) { startDate($0) ?? .distantPast }
+        default: return TableSort(column) { value($0, column) }
         }
     }
     var body: some View {
         let rows = model.connections
         VStack(alignment: .leading, spacing: 0) {
             Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("域名 / IP", sortUsing: columnSort("域名 / IP")) { connection in
-                    Text(connection.domain).textSelection(.enabled)
-                }.width(min: 40, ideal: tableColumnWidth("域名 / IP", rows.map(\.domain)), max: nil)
-                TableColumn("程序", sortUsing: columnSort("程序")) { connection in
-                    Text(connection.process).help(connection.process)
-                }.width(min: 40, ideal: tableColumnWidth("程序", rows.map(\.process)), max: nil)
-                TableColumn("协议", sortUsing: columnSort("协议")) { connection in Text(connection.metadata.network ?? "—") }.width(min: 40, ideal: tableColumnWidth("协议", rows.map { $0.metadata.network ?? "—" }), max: nil)
-                TableColumn("出口", sortUsing: columnSort("出口")) { connection in Text(connection.outbound) }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(\.outbound)), max: nil)
-                TableColumn("上传", sortUsing: columnSort("上传")) { connection in Text(bytes(connection.upload)) }.width(min: 40, ideal: tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true), max: nil)
-                TableColumn("下载", sortUsing: columnSort("下载")) { connection in Text(bytes(connection.download)) }.width(min: 40, ideal: tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true), max: nil)
-
+                TableColumnBuilder<Connection, TableSort<Connection>>.buildBlock(
+                TableColumn("主机", sortUsing: columnSort("主机")) { row in Text(value(row, "主机")).help(value(row, "主机")) }.width(min: 40, ideal: tableColumnWidth("主机", rows.map { value($0, "主机") }), max: nil),
+                TableColumn("下载量", sortUsing: columnSort("下载量")) { row in Text(value(row, "下载量")).help(value(row, "下载量")) }.width(min: 40, ideal: tableColumnWidth("下载量", rows.map { value($0, "下载量") }), max: nil),
+                TableColumn("上传量", sortUsing: columnSort("上传量")) { row in Text(value(row, "上传量")).help(value(row, "上传量")) }.width(min: 40, ideal: tableColumnWidth("上传量", rows.map { value($0, "上传量") }), max: nil),
+                TableColumn("下载速度", sortUsing: columnSort("下载速度")) { row in Text(value(row, "下载速度")).help(value(row, "下载速度")) }.width(min: 40, ideal: tableColumnWidth("下载速度", rows.map { value($0, "下载速度") }), max: nil),
+                TableColumn("上传速度", sortUsing: columnSort("上传速度")) { row in Text(value(row, "上传速度")).help(value(row, "上传速度")) }.width(min: 40, ideal: tableColumnWidth("上传速度", rows.map { value($0, "上传速度") }), max: nil),
+                TableColumn("链路", sortUsing: columnSort("链路")) { row in Text(value(row, "链路")).help(value(row, "链路")) }.width(min: 40, ideal: tableColumnWidth("链路", rows.map { value($0, "链路") }), max: nil)
+                )
+                TableColumnBuilder<Connection, TableSort<Connection>>.buildBlock(
+                TableColumn("规则", sortUsing: columnSort("规则")) { row in Text(value(row, "规则")).help(value(row, "规则")) }.width(min: 40, ideal: tableColumnWidth("规则", rows.map { value($0, "规则") }), max: nil),
+                TableColumn("进程", sortUsing: columnSort("进程")) { row in Text(value(row, "进程")).help(value(row, "进程")) }.width(min: 40, ideal: tableColumnWidth("进程", rows.map { value($0, "进程") }), max: nil),
+                TableColumn("连接时间", sortUsing: columnSort("连接时间")) { row in Text(value(row, "连接时间")).help(value(row, "连接时间")) }.width(min: 40, ideal: tableColumnWidth("连接时间", rows.map { value($0, "连接时间") }), max: nil),
+                TableColumn("源地址", sortUsing: columnSort("源地址")) { row in Text(value(row, "源地址")).help(value(row, "源地址")) }.width(min: 40, ideal: tableColumnWidth("源地址", rows.map { value($0, "源地址") }), max: nil),
+                TableColumn("目标地址", sortUsing: columnSort("目标地址")) { row in Text(value(row, "目标地址")).help(value(row, "目标地址")) }.width(min: 40, ideal: tableColumnWidth("目标地址", rows.map { value($0, "目标地址") }), max: nil),
+                TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(value(row, "类型")).help(value(row, "类型")) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { value($0, "类型") }), max: nil)
+                )
             }
-            .background(TableColumnAutoFit(widths: [
-                tableColumnWidth("域名 / IP", rows.map(\.domain)),
-                tableColumnWidth("程序", rows.map(\.process)),
-                tableColumnWidth("协议", rows.map { $0.metadata.network ?? "—" }),
-                tableColumnWidth("出口", rows.map(\.outbound)),
-                tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true),
-                tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true)
-            ]))
+            .background(TableColumnAutoFit(widths: ["主机", "下载量", "上传量", "下载速度", "上传速度", "链路", "规则", "进程", "连接时间", "源地址", "目标地址", "类型"].map { column in
+                tableColumnWidth(column, rows.map { value($0, column) })
+            }))
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

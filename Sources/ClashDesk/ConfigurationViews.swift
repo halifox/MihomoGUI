@@ -117,6 +117,22 @@ struct ApplicationSettingsView: View {
                 }.padding(.trailing, 4)
             }
         }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button { model.perform { model.serviceLogs = try await readCoreLog(directory: model.directory) } } label: {
+                        toolbarIcon("查看日志", systemImage: "doc.text")
+                    }.frame(width: 28, height: 28).disabled(model.busy).help("读取用户日志目录中的 core.log")
+                    Button { model.toggleAllServices() } label: {
+                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                    }.frame(width: 28, height: 28).disabled(model.busy)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+        }
         .padding(20).controlSize(.regular).environment(\.formHelpDocument, "settings")
     }
     var statsStatus: String {

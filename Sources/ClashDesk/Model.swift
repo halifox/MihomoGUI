@@ -7,6 +7,7 @@ final class DeskModel: ObservableObject {
     @Published var settings = Settings() { didSet { scheduleLiveUpdate() } }
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
+    private var connectionsDate: Date?
     @Published var traffic: [DomainTrafficRow] = []
     @Published var statisticsError: String?
     @Published var testingNodes: Set<String> = []
@@ -107,9 +108,22 @@ final class DeskModel: ObservableObject {
     var activeController: String { runtimeSettings.options?["external-controller"]?.text ?? "127.0.0.1:19090" }
     func refresh() async {
         do {
-            let live = try await api.connections()
+            var live = try await api.connections()
+            let now = Date()
+            if let previousDate = connectionsDate {
+                let elapsed = now.timeIntervalSince(previousDate)
+                let previous = Dictionary(connections.map { ($0.id, $0) }, uniquingKeysWith: { _, last in last })
+                if elapsed > 0 {
+                    for index in live.indices {
+                        guard let old = previous[live[index].id] else { continue }
+                        live[index].downloadSpeed = Int64(Double(max(0, live[index].download - old.download)) / elapsed)
+                        live[index].uploadSpeed = Int64(Double(max(0, live[index].upload - old.upload)) / elapsed)
+                    }
+                }
+            }
+            connectionsDate = now
             connections = live; coreRunning = true
-        } catch { coreRunning = false; connections = [] }
+        } catch { coreRunning = false; connections = []; connectionsDate = nil }
         do {
             let folder = directory; let range = hours; let grouping = trafficGrouping
             let result = try await Task.detached {
