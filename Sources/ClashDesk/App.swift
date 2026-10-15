@@ -181,7 +181,7 @@ struct DeskView: View {
                     case .subscriptions: SubscriptionsView()
                     case .outbound: OutboundProxiesView()
                     case .groups: ResourcesView(groups: true)
-                    case .ruleSets: ResourcesView(groups: false)
+                    case .ruleSets: ResourcesView(groups: false).disabled(model.busy || model.configurationLocked)
                     case .rules: RulesView()
                     case .connections: ConnectionsView()
                     case .traffic: StatisticsView()
@@ -200,7 +200,7 @@ struct DeskView: View {
         } message: { Text(model.error ?? "") }
         .sheet(isPresented: Binding(get: { model.serviceLogs != nil }, set: { if !$0 { model.serviceLogs = nil } })) {
             VStack(alignment: .leading) {
-                Text("服务日志").font(.title2)
+                Text("内核日志 · core.log").font(.title2)
                 ScrollView { Text(model.serviceLogs ?? "").font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
                 Button("关闭") { model.serviceLogs = nil }.keyboardShortcut(.cancelAction)
             }.padding(20).frame(width: 760, height: 520)
@@ -208,48 +208,18 @@ struct DeskView: View {
         .sheet(item: $model.rulePrefill) { prefill in
             RuleEditorView(prefill: prefill)
         }
-        .sheet(item: $model.configPreview) { preview in
-            ConfigPreviewView(preview: preview)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button { model.perform { model.serviceLogs = try await readCoreLog() } } label: {
+                        toolbarIcon("查看日志", systemImage: "doc.text")
+                    }.disabled(model.busy).help("读取 core.log，需要管理员授权")
+                    Button { model.toggleAllServices() } label: {
+                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                    }.disabled(model.busy)
+                }.buttonStyle(.bordered)
+            }
         }
-    }
-
-}
-
-struct ConfigPreviewView: View {
-    @EnvironmentObject var model: DeskModel
-    let preview: ConfigPreview
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(preview.action == .preview ? "预览 mihomo 配置" : "确认 mihomo 配置").font(.title2.bold())
-            if preview.action != .preview {
-                Text(preview.action == .start ? "确认后将通过 macOS 管理员授权保存配置并重启系统代理服务，已有连接会中断。" : "确认后才会将下列配置应用到运行中的 mihomo。")
-                    .foregroundStyle(.secondary)
-            }
-            HStack {
-                Text("config.yaml").font(.headline)
-                Spacer()
-                Text(preview.action == .preview ? "YAML · 当前设置生成的配置" : "YAML · 只读预览 · 实际使用此份配置").font(.caption).foregroundStyle(.secondary)
-            }
-            GeometryReader { geometry in
-                ScrollView([.vertical, .horizontal]) {
-                    Text(String(decoding: preview.config, as: UTF8.self))
-                        .font(.system(size: 12, design: .monospaced))
-                        .multilineTextAlignment(.leading)
-                        .fixedSize(horizontal: true, vertical: true)
-                        .textSelection(.enabled)
-                        .padding(12)
-                        .frame(minWidth: geometry.size.width, alignment: .topLeading)
-                }
-            }.background(Color(nsColor: .textBackgroundColor)).border(Color.secondary.opacity(0.3))
-            HStack {
-                Button(preview.action == .preview ? "关闭" : "取消") { model.configPreview = nil }.keyboardShortcut(.cancelAction)
-                Spacer()
-                if preview.action != .preview {
-                    Button(preview.action == .start ? "确认并启动" : "确认并应用") { model.confirmConfig(preview) }
-                        .buttonStyle(.borderedProminent).disabled(model.busy)
-                }
-            }
-        }.padding(20).frame(width: 760, height: 520)
     }
 }
 

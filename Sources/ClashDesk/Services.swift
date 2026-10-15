@@ -273,12 +273,22 @@ func servicePID(domain: String, label: String) async -> Int? {
     return Int(output[range])
 }
 
-func readServiceLogs(directory: URL) async throws -> String {
-    let userLog = directory.appendingPathComponent("services.log")
-    let userText = (try? String(contentsOf: userLog, encoding: .utf8)) ?? "暂无统计服务日志"
-    let command = "for file in " + shellQuote(rootDirectory + "/core.log") + " " + shellQuote(rootDirectory + "/core-failure.log")
-        + "; do if [ -f \"$file\" ]; then echo \"$file\"; /usr/bin/tail -n 60 \"$file\"; fi; done"
+func readCoreLog() async throws -> String {
+    let path = shellQuote(rootDirectory + "/core.log")
+    let command = "if [ -f " + path + " ]; then /usr/bin/tail -n 500 " + path + "; else echo '暂无内核日志'; fi"
     let script = "on run argv\n do shell script (item 1 of argv) with administrator privileges\nend run"
-    let coreText = try await runCommand("/usr/bin/osascript", ["-e", script, command])
-    return coreText + "\n\n统计服务：\n" + String(userText.suffix(16_384))
+    return try await runCommand("/usr/bin/osascript", ["-e", script, command])
+}
+
+func persistCoreConfiguration(_ config: Data) async throws {
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-config-" + UUID().uuidString)
+    try config.write(to: file, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    defer { try? FileManager.default.removeItem(at: file) }
+    let target = rootDirectory + "/config.yaml"
+    let staged = target + "." + UUID().uuidString
+    let command = "set -e; /usr/bin/install -o root -g wheel -m 600 " + shellQuote(file.path) + " " + shellQuote(staged)
+        + "; /bin/mv -f " + shellQuote(staged) + " " + shellQuote(target)
+    let script = "on run argv\n do shell script (item 1 of argv) with administrator privileges\nend run"
+    _ = try await runCommand("/usr/bin/osascript", ["-e", script, command])
 }

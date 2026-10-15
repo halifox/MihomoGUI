@@ -2,20 +2,9 @@ import SwiftUI
 import AppKit
 import ClashCore
 
-enum ConfigAction {
-    case preview, start, reload
-}
-
-struct ConfigPreview: Identifiable {
-    let id = UUID()
-    let settings: ClashCore.Settings
-    let config: Data
-    let action: ConfigAction
-}
-
 @MainActor
 final class DeskModel: ObservableObject {
-    @Published var settings = Settings()
+    @Published var settings = Settings() { didSet { scheduleLiveUpdate() } }
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
     @Published var traffic: [DomainTrafficRow] = []
@@ -24,7 +13,6 @@ final class DeskModel: ObservableObject {
     @Published var isTestingDelays = false
     private var delayTask: Task<Void, Never>?
     @Published var serviceLogs: String?
-    @Published var configPreview: ConfigPreview?
     @Published var rulePrefill: RouteRule?
     @Published var coreRunning = false
     @Published var lastSample: Date?
@@ -43,6 +31,9 @@ final class DeskModel: ObservableObject {
     private var monitor: Task<Void, Never>?
     private var configurationSaveTask: Task<Void, Never>?
     private var configurationSavePending = false
+    private var liveUpdateTask: Task<Void, Never>?
+    private var liveUpdatePending = false
+    var configurationLocked: Bool { coreRunning || corePID != nil }
 
     init() {
         directory = (try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk")
@@ -148,6 +139,7 @@ final class DeskModel: ObservableObject {
     }
     func option(_ path: String) -> ConfigValue? { settings.options?[path] ?? baseOption(path) }
     func setOption(_ path: String, value: ConfigValue?) {
+        guard !configurationLocked, !busy else { return }
         var options = settings.options ?? [:]; options[path] = value; settings.options = options
         scheduleConfigurationSave()
     }
@@ -361,45 +353,55 @@ final class DeskModel: ObservableObject {
     }
     func cancelDelayTests() { delayTask?.cancel() }
     func startAll() {
-        prepareConfig(.start)
-    }
-    func applyLive() {
-        prepareConfig(.reload)
-    }
-    func previewConfig() {
-        guard !busy, configPreview == nil else { return }
-        do {
-            configPreview = ConfigPreview(settings: settings, config: try generateConfig(settings), action: .preview)
-        } catch { self.error = error.localizedDescription }
-    }
-    private func prepareConfig(_ action: ConfigAction) {
-        guard configPreview == nil else { return }
         perform {
-            if action == .start, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
+            if self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
             let snapshot = self.settings
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
             _ = try controllerEndpoint(snapshot)
-            self.configPreview = ConfigPreview(settings: snapshot, config: try generateConfig(snapshot), action: .start)
+            try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
+            self.runtimeSettings = snapshot
+            try await startStatistics(directory: self.directory)
+            self.message = "配置已校验并启动。"
         }
     }
-    func confirmConfig(_ preview: ConfigPreview) {
-        guard !busy, preview.action != .preview, configPreview?.id == preview.id else { return }
-        configPreview = nil
-        perform {
-            switch preview.action {
-            case .preview: return
-            case .start, .reload:
-                try await installAndStartCore(settings: preview.settings, config: preview.config, directory: self.directory)
-                self.runtimeSettings = preview.settings
-                // Preserve drafts if saving them fails; the confirmed endpoint is already committed.
-                try saveSettings(preview.settings, to: self.directory)
-                self.settings = preview.settings
-                try await startStatistics(directory: self.directory)
-                self.message = "已保存并启动确认的配置，服务重启后继续使用此配置。"
+    private func scheduleLiveUpdate() {
+        guard configurationLocked else { return }
+        liveUpdatePending = true
+        guard liveUpdateTask == nil else { return }
+        liveUpdateTask = Task { [weak self] in
+            guard let self else { return }
+            defer { self.liveUpdateTask = nil }
+            while self.liveUpdatePending {
+                try? await Task.sleep(nanoseconds: 500_000_000)
+                if self.busy { continue }
+                self.liveUpdatePending = false
+                guard self.configurationLocked, self.hasUnappliedChanges else { continue }
+                let snapshot = self.settings
+                self.busy = true
+                do {
+                    let config = try generateConfig(snapshot)
+                    let previous = try generateConfig(self.runtimeSettings)
+                    try await self.api.reload(config)
+                    do {
+                        try await persistCoreConfiguration(config)
+                    } catch {
+                        let persistenceError = error
+                        do { try await self.api.reload(previous) }
+                        catch { self.busy = false; self.error = "保存运行配置失败，回滚也失败：\(error.localizedDescription)"; return }
+                        throw persistenceError
+                    }
+                    self.runtimeSettings = snapshot
+                    try saveRuntimeSettings(snapshot, to: self.directory)
+                    self.message = "修改已自动应用。"
+                } catch {
+                    self.error = "修改已保存在本地，但自动应用失败：\(error.localizedDescription)"
+                }
+                self.busy = false
             }
         }
     }
     func chooseCore() {
+        guard !configurationLocked, !busy else { return }
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
         panel.message = "选择你信任的官方 macOS mihomo 二进制（之后将以管理员权限运行）"
         if panel.runModal() == .OK, let url = panel.url {
@@ -418,7 +420,7 @@ final class DeskModel: ObservableObject {
     }
     func deleteRule(_ id: String) {
         settings.rules.removeAll { $0.id == id }
-        do { try save(); message = "规则已删除，请应用配置。" } catch { self.error = error.localizedDescription }
+        do { try save(); message = "规则已删除，运行时将自动应用。" } catch { self.error = error.localizedDescription }
     }
     func deleteSubscription(_ subscription: Subscription) {
         if settings.defaultNode?.provider == subscription.provider || settings.rules.contains(where: { $0.node?.provider == subscription.provider }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains(where: { referencedNode($0)?.provider == subscription.provider }) }) {
@@ -476,7 +478,7 @@ final class DeskModel: ObservableObject {
         candidate.manualProxies = proxies
         if candidate.defaultNode == nil, candidate.defaultDirect != true, candidate.defaultPolicy == nil, candidate.defaultProxyGroup == nil { candidate.defaultNode = proxies.first?.node ?? nodes.first }
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
-        message = "代理已保存，请预览并应用配置。"
+        message = "代理已保存，运行时将自动应用。"
     }
     func deleteManualProxy(_ proxy: ManualProxy) {
         if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
@@ -486,7 +488,7 @@ final class DeskModel: ObservableObject {
             error = "该代理仍用于规则集下载，请先修改下载出口。"; return
         }
         settings.manualProxies?.removeAll { $0.id == proxy.id }
-        do { try save(); message = "代理已删除，请应用配置。" } catch { self.error = error.localizedDescription }
+        do { try save(); message = "代理已删除，运行时将自动应用。" } catch { self.error = error.localizedDescription }
     }
     func targetID(node: Node?, builtin: String?, group: String? = nil) -> String { group.map { "group:" + $0 } ?? node.map { "node:" + $0.id } ?? "builtin:" + (builtin ?? "DIRECT") }
     func setDefaultTarget(_ target: String) {
@@ -507,7 +509,7 @@ final class DeskModel: ObservableObject {
         if let index = candidate.rules.firstIndex(where: { $0.id == rule.id }) { candidate.rules[index] = rule }
         else { candidate.rules.append(rule) }
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
-        message = "路由规则已保存，请预览并应用配置。"
+        message = "路由规则已保存，运行时将自动应用。"
     }
     func setRuleTarget(_ rule: RouteRule, target: String) {
         do {
@@ -532,7 +534,7 @@ final class DeskModel: ObservableObject {
         do {
             try saveSettings(candidate, to: directory)
             settings = candidate
-            message = "路由规则顺序已保存，请预览并应用配置。"
+            message = "路由规则顺序已保存，运行时将自动应用。"
             return true
         } catch {
             self.error = error.localizedDescription
@@ -576,6 +578,7 @@ extension DeskModel {
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
     }
     func saveRuleProvider(name: String, type: String, fields: [String: ConfigValue], oldName: String?) throws {
+        guard !configurationLocked else { throw DeskError("Stop the core before editing rule providers") }
         guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集名称无效") }
         var candidate = settings
         var providers = candidate.options?["rule-providers"]?.object ?? [:]
@@ -598,6 +601,7 @@ extension DeskModel {
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
     }
     func deleteResource(_ row: ResourceRow, groups: Bool) {
+        guard groups || !configurationLocked else { return }
         do {
             var candidate = settings
             let subRules = candidate.options?["sub-rules"]?.object.values.flatMap(\.array).map(\.text) ?? []

@@ -10,7 +10,7 @@ struct GeneralConfigurationView: View {
                     ConfigurationRows(fields: documentSchemas.configuration).padding(6)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }.padding(.trailing, 4)
-            }.disabled(model.busy)
+            }.disabled(model.busy || model.configurationLocked)
 
         }.padding(20)
     }
@@ -78,8 +78,6 @@ struct ApplicationSettingsView: View {
                         HStack {
                             Text("运行概览")
                             Spacer()
-                            Button("查看日志") { model.perform { model.serviceLogs = try await readServiceLogs(directory: model.directory) } }
-                                .disabled(model.busy).help("读取系统内核日志需要管理员授权")
                             if model.busy { ProgressView().controlSize(.small) }
                             Button { model.perform { await model.refreshDiagnostics() } } label: { Image(systemName: "arrow.clockwise") }
                                 .buttonStyle(.borderless).help("刷新运行信息").disabled(model.busy)
@@ -92,7 +90,7 @@ struct ApplicationSettingsView: View {
                                     .font(.system(.body, design: .monospaced)).lineLimit(1).truncationMode(.middle)
                                     .textSelection(.enabled).help(model.settings.corePath)
                                 Spacer(minLength: 0)
-                                Button("选择文件") { model.chooseCore() }.disabled(model.busy)
+                                Button("选择文件") { model.chooseCore() }.disabled(model.busy || model.configurationLocked)
                             }
                         }.padding(6)
                     }
@@ -101,7 +99,7 @@ struct ApplicationSettingsView: View {
                             formRow("unified-delay") {
                                 Toggle("", isOn: Binding(get: {
                                     model.option("unified-delay") != .boolean(false)
-                                }, set: { model.setOption("unified-delay", value: .boolean($0)) })).disabled(model.busy)
+                                }, set: { model.setOption("unified-delay", value: .boolean($0)) })).disabled(model.busy || model.configurationLocked)
                             }
                             formRow("测试地址") {
                                 TextField("HTTP / HTTPS URL", text: Binding(get: {
@@ -119,21 +117,7 @@ struct ApplicationSettingsView: View {
                 }.padding(.trailing, 4)
             }
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { model.previewConfig() } label: { toolbarIcon("预览配置", systemImage: "doc.text.magnifyingglass") }.frame(width: 28, height: 28).disabled(model.busy)
-                    Button { model.toggleAllServices() } label: {
-                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
-                    }.frame(width: 28, height: 28).controlSize(.regular).disabled(model.busy)
-                    Button { model.applyLive() } label: { toolbarIcon("应用更改", systemImage: "checkmark") }.frame(width: 28, height: 28).disabled(model.busy || !model.coreRunning)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-        }.padding(20).controlSize(.regular).environment(\.formHelpDocument, "settings")
+        .padding(20).controlSize(.regular).environment(\.formHelpDocument, "settings")
     }
     var statsStatus: String {
         guard model.statsPID != nil else { return "已停止" }
