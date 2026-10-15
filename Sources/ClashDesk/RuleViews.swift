@@ -9,14 +9,14 @@ struct PolicyPicker: View {
     @Binding var selection: String
     var body: some View {
         Picker("出口", selection: $selection) {
-            Label(optionLabel("DIRECT"), systemImage: "arrow.up.right").tag("builtin:DIRECT")
-            Label(optionLabel("REJECT"), systemImage: "hand.raised").tag("builtin:REJECT")
-            Label(optionLabel("REJECT-DROP"), systemImage: "hand.raised.slash").tag("builtin:REJECT-DROP")
+            Text(optionLabel("DIRECT")).tag("builtin:DIRECT")
+            Text(optionLabel("REJECT")).tag("builtin:REJECT")
+            Text(optionLabel("REJECT-DROP")).tag("builtin:REJECT-DROP")
             if selection.hasPrefix("node:"), !model.allNodes.contains(where: { "node:" + $0.id == selection }) {
-                Label("已失效：" + selection.dropFirst(5), systemImage: "exclamationmark.triangle").tag(selection)
+                Text("已失效：" + selection.dropFirst(5)).tag(selection)
             }
-            ForEach(model.settings.proxyGroups ?? []) { Label("代理组 / " + $0.name, systemImage: "square.stack.3d.up").tag("group:" + $0.name) }
-            ForEach(model.allNodes) { node in Label(model.nodeLabel(node), systemImage: "network").tag("node:" + node.id) }
+            ForEach(model.settings.proxyGroups ?? []) { Text("代理组 / " + $0.name).tag("group:" + $0.name) }
+            ForEach(model.allNodes) { node in Text(model.nodeLabelWithDelay(node)).tag("node:" + node.id) }
         }.labelsHidden()
     }
 }

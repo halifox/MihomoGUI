@@ -464,6 +464,13 @@ final class DeskModel: ObservableObject {
         let name = settings.subscriptions.first { $0.provider == node.provider }?.name ?? "未知订阅"
         return name + " / " + node.name
     }
+    func nodeLabelWithDelay(_ node: Node) -> String {
+        let delay: String
+        if testingNodes.contains(node.id) { delay = "测试中…" }
+        else if node.delayFailed == true { delay = "超时" }
+        else { delay = node.delayMilliseconds.map { "\($0) ms" } ?? "未测试" }
+        return nodeLabel(node) + " / " + delay
+    }
     func manualProxy(for node: Node) -> ManualProxy? {
         guard node.provider == "manual" else { return nil }
         return settings.manualProxies?.first { $0.name == node.name }

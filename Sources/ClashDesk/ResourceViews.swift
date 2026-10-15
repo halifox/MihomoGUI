@@ -119,7 +119,9 @@ struct ResourcesView: View {
         return memberLabel(target)
     }
     func memberLabel(_ target: String) -> String {
-        if let node = model.allNodes.first(where: { "node:" + $0.id == target }) { return model.nodeLabel(node) }
+        if let node = model.allNodes.first(where: { "node:" + $0.id == target }) {
+            return model.nodeLabelWithDelay(node)
+        }
         if target.hasPrefix("group:") { return "代理组 / " + target.dropFirst(6) }
         if target.hasPrefix("builtin:") { return optionLabel(String(target.dropFirst(8))) }
         return "已失效：" + target
