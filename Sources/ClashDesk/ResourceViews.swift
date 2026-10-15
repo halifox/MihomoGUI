@@ -43,9 +43,14 @@ struct ResourcesView: View {
                     TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
                     TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
                     TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
-                        Text(selectedMemberText(row))
+                        memberPicker(row)
                     }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
                 }
+                .background(TableColumnAutoFit(widths: [
+                    tableColumnWidth("名称", rows.map(\.name)),
+                    tableColumnWidth("类型", rows.map(\.type)),
+                    tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48)
+                ]))
             } else {
                 Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                     TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
@@ -54,6 +59,12 @@ struct ResourcesView: View {
                     TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
                         .width(min: 40, ideal: tableColumnWidth("来源 / 内容", rows.map(source)), max: nil)
                 }
+                .background(TableColumnAutoFit(widths: [
+                    tableColumnWidth("名称", rows.map(\.name)),
+                    tableColumnWidth("类型", rows.map(\.type)),
+                    tableColumnWidth("行为", rows.map(detail)),
+                    tableColumnWidth("来源 / 内容", rows.map(source))
+                ]))
             }
 
         }
@@ -65,26 +76,30 @@ struct ResourcesView: View {
                     if let selected { model.deleteResource(selected, groups: groups) }
                 }.disabled(model.busy || selected == nil)
             }
-            ToolbarItemGroup(placement: .primaryAction) {
-                if groups {
-                    Menu { if let selected { memberActions(selected) } } label: { Label("选择节点", systemImage: "network") }
-                        .disabled(model.busy || selected?.group?.type != "select")
-                }
-            }
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: groups) }
         .sheet(item: $editing) { ResourceEditorView(groups: groups, original: $0) }
     }
-    @ViewBuilder func memberActions(_ row: ResourceRow) -> some View {
-        if let group = row.group {
-            ForEach(group.targets, id: \.self) { target in
-                Button {
-                    var updated = group
-                    updated.fields["default-selected"] = .string(target)
-                    do { try model.saveProxyGroup(updated) }
-                    catch { model.error = error.localizedDescription }
-                } label: { Label(memberLabel(target), systemImage: "network") }
+    @ViewBuilder func memberPicker(_ row: ResourceRow) -> some View {
+        if let group = row.group, group.type == "select" {
+            Picker("选择节点", selection: Binding(get: {
+                let current = group.fields["default-selected"]?.text ?? ""
+                return current.isEmpty ? group.targets.first ?? "" : current
+            }, set: { target in
+                var updated = group
+                updated.fields["default-selected"] = .string(target)
+                do { try model.saveProxyGroup(updated) }
+                catch { model.error = error.localizedDescription }
+            })) {
+                if group.targets.isEmpty { Text("空（Empty）").tag("") }
+                ForEach(group.targets.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }, id: \.self) { target in
+                    Text(memberLabel(target)).tag(target)
+                }
             }
+            .labelsHidden()
+            .disabled(model.busy || group.targets.isEmpty)
+        } else {
+            Text(selectedMemberText(row))
         }
     }
     func detail(_ row: ResourceRow) -> String {

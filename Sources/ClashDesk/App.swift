@@ -54,6 +54,68 @@ func tableColumnWidth(_ title: String, _ values: [String], numeric: Bool = false
     return ceil(max(header, content)) + padding
 }
 
+// Use the same full-data measurements for initial sizing and divider double-clicks.
+struct TableColumnAutoFit: NSViewRepresentable {
+    var widths: [CGFloat]
+    func makeNSView(context: Context) -> TableColumnAutoFitView { TableColumnAutoFitView() }
+    func updateNSView(_ view: TableColumnAutoFitView, context: Context) { view.widths = widths }
+    static func dismantleNSView(_ view: TableColumnAutoFitView, coordinator: ()) { view.stopMonitoring() }
+}
+
+final class TableColumnAutoFitView: NSView {
+    var widths: [CGFloat] = []
+    private var monitor: Any?
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }
+    override func viewDidMoveToWindow() {
+        super.viewDidMoveToWindow()
+        stopMonitoring()
+        guard window != nil else { return }
+        monitor = NSEvent.addLocalMonitorForEvents(matching: .leftMouseDown) { [weak self] event in
+            guard let self else { return event }
+            return self.handleMouseDown(event)
+        }
+    }
+    // Header decorations can receive hit tests instead of NSTableHeaderView itself.
+    // Resolve the actual table from our shared SwiftUI container instead.
+    func tableView(in view: NSView) -> NSTableView? {
+        if let table = view as? NSTableView { return table }
+        for child in view.subviews {
+            if let table = tableView(in: child) { return table }
+        }
+        return nil
+    }
+    func handleMouseDown(_ event: NSEvent) -> NSEvent? {
+        guard event.clickCount == 2, let window, event.window === window else { return event }
+        return fitColumn(at: event.locationInWindow) ? nil : event
+    }
+    func fitColumn(at location: NSPoint) -> Bool {
+        var ancestor = superview
+        while let container = ancestor {
+            if let table = tableView(in: container), let header = table.headerView,
+               table.tableColumns.count == widths.count {
+                let point = header.convert(location, from: nil)
+                guard header.visibleRect.contains(point) else { return false }
+                for index in table.tableColumns.indices {
+                    let rect = header.headerRect(ofColumn: index)
+                    let edge = table.userInterfaceLayoutDirection == .rightToLeft ? rect.minX : rect.maxX
+                    guard abs(point.x - edge) <= 4 else { continue }
+                    let column = table.tableColumns[index]
+                    column.width = min(column.maxWidth, max(column.minWidth, widths[index]))
+                    return true
+                }
+                return false
+            }
+            ancestor = container.superview
+        }
+        return false
+    }
+    func stopMonitoring() {
+        if let monitor { NSEvent.removeMonitor(monitor) }
+        monitor = nil
+    }
+    deinit { stopMonitoring() }
+}
+
 // Compare underlying values so byte counts, dates and delays sort numerically.
 struct TableSort<Row>: SortComparator {
     var order: SortOrder = .forward
@@ -281,6 +343,15 @@ struct StatisticsView: View {
                     TableColumn("下载", sortUsing: columnSort("下载")) { row in Text(bytes(row.download)).monospacedDigit() }.width(min: 40, ideal: tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true), max: nil)
                     TableColumn("总流量", sortUsing: columnSort("总流量")) { row in Text(bytes(row.upload + row.download)).monospacedDigit() }.width(min: 40, ideal: tableColumnWidth("总流量", rows.map { bytes($0.upload + $0.download) }, numeric: true), max: nil)
                 }
+                .background(TableColumnAutoFit(widths: [
+                    tableColumnWidth(model.trafficGrouping.title, rows.map(\.domain)),
+                    tableColumnWidth("程序数", rows.map { String($0.processCount) }, numeric: true),
+                    tableColumnWidth("出口数", rows.map { String($0.outboundCount) }, numeric: true),
+                    tableColumnWidth("当前连接数", rows.map { String(counts[$0.domain] ?? 0) }, numeric: true),
+                    tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true),
+                    tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true),
+                    tableColumnWidth("总流量", rows.map { bytes($0.upload + $0.download) }, numeric: true)
+                ]))
                 .overlay {
                     if rows.isEmpty {
                         Text(model.statisticsError.map { "统计不可用：" + $0 } ?? "暂无统计。启动服务后访问网站，数据会自动显示。").foregroundStyle(.secondary).allowsHitTesting(false)
@@ -344,6 +415,14 @@ struct ConnectionsView: View {
                 TableColumn("下载", sortUsing: columnSort("下载")) { connection in Text(bytes(connection.download)) }.width(min: 40, ideal: tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true), max: nil)
 
             }
+            .background(TableColumnAutoFit(widths: [
+                tableColumnWidth("域名 / IP", rows.map(\.domain)),
+                tableColumnWidth("程序", rows.map(\.process)),
+                tableColumnWidth("协议", rows.map { $0.metadata.network ?? "—" }),
+                tableColumnWidth("出口", rows.map(\.outbound)),
+                tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true),
+                tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true)
+            ]))
         }
         .toolbar {
             ToolbarItemGroup(placement: .primaryAction) {

@@ -55,6 +55,16 @@ struct SubscriptionsView: View {
                     Text(columnText(subscription, "上次更新时间")).monospacedDigit()
                 }.width(min: 40, ideal: contentWidth("上次更新时间"), max: nil)
             }
+            .background(TableColumnAutoFit(widths: [
+                contentWidth("名称"),
+                contentWidth("上传流量"),
+                contentWidth("下载流量"),
+                contentWidth("剩余流量"),
+                contentWidth("总流量"),
+                contentWidth("到期时间"),
+                contentWidth("节点数"),
+                contentWidth("上次更新时间")
+            ]))
 
         }
         .toolbar {
@@ -191,6 +201,17 @@ struct OutboundProxiesView: View {
                     NodeDelayCell(model: model, nodeID: node.id)
                 }.width(min: 40, ideal: tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"]), max: nil)
             }
+            .background(TableColumnAutoFit(widths: [
+                tableColumnWidth("名称", rows.map(\.name)),
+                tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }),
+                tableColumnWidth("UDP", rows.map { node in
+                    (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
+                }),
+                tableColumnWidth("来源", rows.map { node in
+                    node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
+                }),
+                tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"])
+            ]))
 
         }
         .toolbar {

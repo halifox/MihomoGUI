@@ -73,9 +73,17 @@ struct RulesView: View {
                     Text(optionsText(row))
                 }.width(min: 40, ideal: tableColumnWidth("附加选项", rows.map(optionsText)), max: nil)
                 TableColumn("出口", sortUsing: columnSort("出口")) { row in
-                    Text(targetText(row))
-                }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText)), max: nil)
+                    targetPicker(row)
+                        .disabled(model.busy)
+                }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText), padding: 48), max: nil)
             }
+            .background(TableColumnAutoFit(widths: [
+                tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true),
+                tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true),
+                tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }),
+                tableColumnWidth("附加选项", rows.map(optionsText)),
+                tableColumnWidth("出口", rows.map(targetText), padding: 48)
+            ]))
             .help("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
         }
         .toolbar {
@@ -95,18 +103,23 @@ struct RulesView: View {
                 DeleteButton(message: "确定删除所选路由规则吗？此操作无法撤销。") {
                     if let selection { model.deleteRule(selection); self.selection = nil }
                 }.disabled(selectedIndex == nil || model.busy)
-                Menu {
-                    if let row = rows.first(where: { $0.id == selection }) { targetActions(row) }
-                } label: { Label("选择出口", systemImage: "arrow.triangle.branch") }.disabled(model.busy || selection == nil)
             }
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
         .sheet(item: $editing) { RuleEditorView(rule: $0) }
     }
-    @ViewBuilder func targetActions(_ row: RuleTableItem) -> some View {
+    @ViewBuilder func targetPicker(_ row: RuleTableItem) -> some View {
         if let rule = row.rule {
             if rule.kind == .subRule {
-                Button { editing = rule } label: { Label("编辑子规则", systemImage: "pencil") }
+                Picker("子规则", selection: Binding(get: { rule.subRuleTarget ?? "" }, set: { target in
+                    var updated = rule
+                    updated.subRuleTarget = target
+                    do { try model.saveRule(updated) }
+                    catch { model.error = error.localizedDescription }
+                })) {
+                    Text("未选择").tag("")
+                    ForEach(model.settings.options?["sub-rules"]?.object.keys.sorted() ?? [], id: \.self) { Text("子规则：" + $0).tag($0) }
+                }.labelsHidden()
             } else {
                 PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: rule.node, builtin: rule.builtin, group: rule.proxyGroup) }, set: { model.setRuleTarget(rule, target: $0) }))
             }
