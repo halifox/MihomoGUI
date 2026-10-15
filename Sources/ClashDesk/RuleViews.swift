@@ -1,8 +1,9 @@
 import SwiftUI
 import ClashCore
+import AppKit
 
 private let matchID = "default-match"
-struct RuleTableItem: Identifiable { let id: String; let rule: RouteRule? }
+struct RuleTableItem: Identifiable { let id: String; let number: Int; let rule: RouteRule? }
 
 struct PolicyPicker: View {
     @ObservedObject var model: DeskModel
@@ -31,7 +32,8 @@ struct RulesView: View {
         model.settings.rules.firstIndex { $0.id == selection }
     }
     var rows: [RuleTableItem] {
-        return model.settings.rules.map { RuleTableItem(id: $0.id, rule: $0) } + [RuleTableItem(id: matchID, rule: nil)]
+        return model.settings.rules.enumerated().map { RuleTableItem(id: $0.element.id, number: $0.offset + 1, rule: $0.element) }
+            + [RuleTableItem(id: matchID, number: model.settings.rules.count + 1, rule: nil)]
     }
     func targetText(_ row: RuleTableItem) -> String {
         if let rule = row.rule, rule.kind == .subRule { return "子规则：" + (rule.subRuleTarget ?? "未选择") }
@@ -45,6 +47,7 @@ struct RulesView: View {
     }
     func columnSort(_ column: String) -> TableSort<RuleTableItem> {
         switch column {
+        case "序号": return TableSort(column) { $0.number }
         case "类型": return TableSort(column) { $0.rule?.kind.rawValue ?? "MATCH" }
         case "匹配条件": return TableSort(column) { $0.rule?.value ?? "所有未匹配的连接" }
         case "附加选项": return TableSort(column) { [$0.rule?.noResolve == true ? "no-resolve" : nil, $0.rule?.sourceIP == true ? "src" : nil].compactMap { $0 }.joined(separator: ", ") }
@@ -74,16 +77,15 @@ struct RulesView: View {
                     if let row = rows.first(where: { $0.id == selection }) { targetActions(row) }
                 } label: { Label("选择出口", systemImage: "arrow.triangle.branch") }.disabled(model.busy || selection == nil)
             }.pageActions()
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
-                TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true), max: nil)
-                TableColumn("匹配条件", sortUsing: columnSort("匹配条件")) { row in Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }), max: nil)
-                TableColumn("附加选项", sortUsing: columnSort("附加选项")) { row in
-                    Text([row.rule?.noResolve == true ? "no-resolve" : nil, row.rule?.sourceIP == true ? "src" : nil].compactMap { $0 }.joined(separator: ", "))
-                }.width(min: 40, ideal: tableColumnWidth("附加选项", rows.map { [ $0.rule?.noResolve == true ? "no-resolve" : nil, $0.rule?.sourceIP == true ? "src" : nil ].compactMap { $0 }.joined(separator: ", ") }), max: nil)
-                TableColumn("出口", sortUsing: columnSort("出口")) { row in
-                    Text(targetText(row))
-                }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText), padding: 48), max: nil)
+            RuleTable(rows: rows, selection: $selection, sortOrder: $sortOrder, busy: model.busy,
+                      targetText: targetText, columnSort: columnSort) { id, targetID in
+                guard model.moveRule(id, before: targetID) else { return false }
+                selection = id
+                sortOrder = []
+                return true
             }
+            Text("长按并拖动行可调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
         .sheet(item: $editing) { RuleEditorView(rule: $0) }
@@ -100,6 +102,152 @@ struct RulesView: View {
         }
     }
 
+}
+
+// AppKit owns the whole-row drag, insertion indicator and drop acceptance.
+private struct RuleTable: NSViewRepresentable {
+    let rows: [RuleTableItem]
+    @Binding var selection: String?
+    @Binding var sortOrder: [TableSort<RuleTableItem>]
+    let busy: Bool
+    let targetText: (RuleTableItem) -> String
+    let columnSort: (String) -> TableSort<RuleTableItem>
+    let move: (String, String?) -> Bool
+    static let columns = ["序号", "类型", "匹配条件", "附加选项", "出口"]
+    static let dragType = NSPasteboard.PasteboardType("local.clashdesk.route-rule")
+
+    func values(_ row: RuleTableItem) -> [String] {
+        [String(row.number), row.rule?.kind.rawValue ?? "MATCH", row.rule?.value ?? "所有未匹配的连接",
+         [row.rule?.noResolve == true ? "no-resolve" : nil, row.rule?.sourceIP == true ? "src" : nil].compactMap { $0 }.joined(separator: ", "),
+         targetText(row)]
+    }
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSScrollView {
+        let table = NSTableView()
+        table.delegate = context.coordinator
+        table.dataSource = context.coordinator
+        table.rowHeight = 24
+        table.allowsMultipleSelection = false
+        table.allowsEmptySelection = true
+        table.columnAutoresizingStyle = .noColumnAutoresizing
+        table.usesAlternatingRowBackgroundColors = true
+        table.registerForDraggedTypes([Self.dragType])
+        table.setDraggingSourceOperationMask(.move, forLocal: true)
+        for title in Self.columns {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(title))
+            column.title = title
+            column.minWidth = 40
+            column.resizingMask = .userResizingMask
+            column.sortDescriptorPrototype = NSSortDescriptor(key: title, ascending: true)
+            table.addTableColumn(column)
+        }
+        let scroll = NSScrollView()
+        scroll.hasVerticalScroller = true
+        scroll.hasHorizontalScroller = true
+        scroll.autohidesScrollers = true
+        scroll.borderType = .bezelBorder
+        scroll.documentView = table
+        return scroll
+    }
+    func updateNSView(_ scroll: NSScrollView, context: Context) {
+        guard let table = scroll.documentView as? NSTableView else { return }
+        let coordinator = context.coordinator
+        coordinator.parent = self
+        let displayed = rows.sorted(using: sortOrder)
+        let values = displayed.map(self.values)
+        coordinator.updating = true
+        defer { coordinator.updating = false }
+        if displayed.map(\.id) != coordinator.rows.map(\.id) || values != coordinator.cells {
+            coordinator.rows = displayed
+            coordinator.cells = values
+            table.reloadData()
+        }
+        for (index, column) in table.tableColumns.enumerated() where !coordinator.resizedColumns.contains(column.identifier) {
+            column.width = tableColumnWidth(column.title, values.map { $0[index] }, numeric: index == 0, monospaced: index == 1)
+        }
+        let descriptors = sortOrder.map { NSSortDescriptor(key: $0.column, ascending: $0.order == .forward) }
+        if table.sortDescriptors != descriptors { table.sortDescriptors = descriptors }
+        let selectedRow = displayed.firstIndex { $0.id == selection }
+        let indexes = selectedRow.map { IndexSet(integer: $0) } ?? IndexSet()
+        if table.selectedRowIndexes != indexes { table.selectRowIndexes(indexes, byExtendingSelection: false) }
+    }
+
+    final class Coordinator: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+        var parent: RuleTable
+        var rows: [RuleTableItem] = []
+        var cells: [[String]] = []
+        var updating = false
+        var resizedColumns: Set<NSUserInterfaceItemIdentifier> = []
+        init(_ parent: RuleTable) { self.parent = parent }
+        func numberOfRows(in tableView: NSTableView) -> Int { rows.count }
+        func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+            guard let column = tableColumn, let index = RuleTable.columns.firstIndex(of: column.title), cells.indices.contains(row) else { return nil }
+            let identifier = column.identifier
+            let cell = (tableView.makeView(withIdentifier: identifier, owner: nil) as? NSTextField) ?? NSTextField(labelWithString: "")
+            cell.identifier = identifier
+            cell.stringValue = cells[row][index]
+            cell.toolTip = cell.stringValue
+            cell.lineBreakMode = .byTruncatingTail
+            cell.font = index == 0 ? .monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
+                : index == 1 ? .monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular) : .systemFont(ofSize: NSFont.systemFontSize)
+            return cell
+        }
+        func tableViewSelectionDidChange(_ notification: Notification) {
+            guard !updating, let table = notification.object as? NSTableView else { return }
+            parent.selection = rows.indices.contains(table.selectedRow) ? rows[table.selectedRow].id : nil
+        }
+        func tableView(_ tableView: NSTableView, sortDescriptorsDidChange oldDescriptors: [NSSortDescriptor]) {
+            guard !updating else { return }
+            parent.sortOrder = tableView.sortDescriptors.compactMap { descriptor in
+                guard let key = descriptor.key else { return nil }
+                var sort = parent.columnSort(key)
+                sort.order = descriptor.ascending ? .forward : .reverse
+                return sort
+            }
+        }
+        func tableViewColumnDidResize(_ notification: Notification) {
+            guard !updating, let column = notification.userInfo?["NSTableColumn"] as? NSTableColumn else { return }
+            resizedColumns.insert(column.identifier)
+        }
+        func tableView(_ tableView: NSTableView, pasteboardWriterForRow row: Int) -> NSPasteboardWriting? {
+            guard !parent.busy, rows.indices.contains(row), rows[row].rule != nil else { return nil }
+            let item = NSPasteboardItem()
+            item.setString(rows[row].id, forType: RuleTable.dragType)
+            return item
+        }
+        func tableView(_ tableView: NSTableView, validateDrop info: NSDraggingInfo, proposedRow row: Int, proposedDropOperation operation: NSTableView.DropOperation) -> NSDragOperation {
+            guard !parent.busy, let source = info.draggingSource as? NSTableView, source === tableView,
+                  let id = info.draggingPasteboard.string(forType: RuleTable.dragType),
+                  rows.contains(where: { $0.id == id && $0.rule != nil }) else { return [] }
+            tableView.setDropRow(max(0, min(row, rows.count)), dropOperation: .above)
+            return .move
+        }
+        func tableView(_ tableView: NSTableView, acceptDrop info: NSDraggingInfo, row: Int, dropOperation: NSTableView.DropOperation) -> Bool {
+            guard !parent.busy, let source = info.draggingSource as? NSTableView, source === tableView,
+                  let id = info.draggingPasteboard.string(forType: RuleTable.dragType) else { return false }
+            let target = rows.indices.contains(row) ? rows[row].rule?.id : nil
+            return parent.move(id, target)
+        }
+        func tableView(_ tableView: NSTableView, draggingSession session: NSDraggingSession, willBeginAt screenPoint: NSPoint, forRowIndexes rowIndexes: IndexSet) {
+            session.draggingFormation = .none
+            session.enumerateDraggingItems(options: [], for: tableView, classes: [NSPasteboardItem.self], searchOptions: [:]) { item, _, _ in
+                guard let row = rowIndexes.first else { return }
+                let rect = tableView.rect(ofRow: row)
+                guard let bitmap = tableView.bitmapImageRepForCachingDisplay(in: rect) else { return }
+                tableView.cacheDisplay(in: rect, to: bitmap)
+                let image = NSImage(size: rect.size)
+                image.addRepresentation(bitmap)
+                // Keep AppKit's original drag frame and mouse anchor. Row coordinates
+                // must not replace the session's frame when the table is flipped/scrolled.
+                item.imageComponentsProvider = {
+                    let component = NSDraggingImageComponent(key: .icon)
+                    component.contents = image
+                    component.frame = NSRect(origin: .zero, size: image.size)
+                    return [component]
+                }
+            }
+        }
+    }
 }
 
 struct RuleCondition: Identifiable {

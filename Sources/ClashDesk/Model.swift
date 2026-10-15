@@ -520,6 +520,25 @@ final class DeskModel: ObservableObject {
             try saveRule(changed)
         } catch { self.error = error.localizedDescription }
     }
+    @discardableResult
+    func moveRule(_ id: String, before targetID: String?) -> Bool {
+        guard !busy, let source = settings.rules.firstIndex(where: { $0.id == id }) else { return false }
+        if targetID == id { return true }
+        if let targetID, !settings.rules.contains(where: { $0.id == targetID }) { return false }
+        var candidate = settings
+        let rule = candidate.rules.remove(at: source)
+        let destination = targetID.flatMap { target in candidate.rules.firstIndex { $0.id == target } } ?? candidate.rules.count
+        candidate.rules.insert(rule, at: destination)
+        do {
+            try saveSettings(candidate, to: directory)
+            settings = candidate
+            message = "路由规则顺序已保存，请预览并应用配置。"
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
     func moveRule(_ id: String, offset: Int) {
         guard let index = settings.rules.firstIndex(where: { $0.id == id }), settings.rules.indices.contains(index + offset) else { return }
         settings.rules.swapAt(index, index + offset)
