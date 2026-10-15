@@ -11,15 +11,14 @@ struct ResourceRow: Identifiable {
 }
 
 struct ResourcesView: View {
+    @State private var sortOrder: [TableSort<ResourceRow>] = []
     @EnvironmentObject var model: DeskModel
-    @Environment(\.tableDataReady) private var tableDataReady
     let groups: Bool
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: ResourceRow?
     var title: String { groups ? "代理分组" : "规则集合" }
     var rows: [ResourceRow] {
-        guard tableDataReady else { return [] }
         if groups { return (model.settings.proxyGroups ?? []).map { ResourceRow(id: $0.id, name: $0.name, type: $0.type, fields: $0.fields, group: $0) } }
         return (model.settings.options?["rule-providers"]?.object ?? [:]).keys.sorted().map { name in
             let fields = model.settings.options?["rule-providers"]?.object[name]?.object ?? [:]
@@ -27,6 +26,15 @@ struct ResourcesView: View {
         }
     }
     var selected: ResourceRow? { rows.first { $0.id == selection } }
+    func columnSort(_ column: String) -> TableSort<ResourceRow> {
+        switch column {
+        case "名称": return TableSort(column) { $0.name }
+        case "类型": return TableSort(column) { $0.type }
+        case "选择节点": return TableSort(column, value: selectedMemberText)
+        case "行为": return TableSort(column, value: detail)
+        default: return TableSort(column, value: source)
+        }
+    }
     var body: some View {
         let rows = rows
         VStack(alignment: .leading, spacing: 16) {
@@ -38,42 +46,44 @@ struct ResourcesView: View {
                 DeleteButton(message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
                     if let selected { model.deleteResource(selected, groups: groups) }
                 }.disabled(model.busy || selected == nil)
+                if groups {
+                    Menu { if let selected { memberActions(selected) } } label: { Label("选择节点", systemImage: "network") }
+                        .disabled(model.busy || selected?.group?.type != "select")
+                }
             }.pageActions()
             if groups {
-                Table(rows, selection: $selection) {
-                    TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
-                    TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
-                    TableColumn("选择节点") { row in
-                        if let group = row.group, group.type == "select" {
-                            Picker("选择节点", selection: Binding(get: {
-                                let selected = group.fields["default-selected"]?.text ?? ""
-                                return selected.isEmpty ? group.targets.first ?? "" : selected
-                            }, set: { target in
-                                var updated = group
-                                updated.fields["default-selected"] = .string(target)
-                                do { try model.saveProxyGroup(updated) }
-                                catch { model.error = error.localizedDescription }
-                            })) {
-                                if group.targets.isEmpty { Text("空（Empty）").tag("") }
-                                ForEach(group.targets, id: \.self) { target in
-                                    Text(memberLabel(target)).tag(target)
-                                }
-                            }.labelsHidden().disabled(model.busy)
-                        } else { Text("—") }
-                    }.width(tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48))
+                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+                    TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
+                    TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
+                    TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
+                        Text(selectedMemberText(row))
+                    }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
                 }
             } else {
-                Table(rows, selection: $selection) {
-                    TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
-                    TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
-                    TableColumn("行为") { row in Text(detail(row)) }.width(tableColumnWidth("行为", rows.map(detail)))
-                    TableColumn("来源 / 内容") { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
-                        .width(tableColumnWidth("来源 / 内容", rows.map(source)))
+                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+                    TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
+                    TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
+                    TableColumn("行为", sortUsing: columnSort("行为")) { row in Text(detail(row)) }.width(min: 40, ideal: tableColumnWidth("行为", rows.map(detail)), max: nil)
+                    TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
+                        .width(min: 40, ideal: tableColumnWidth("来源 / 内容", rows.map(source)), max: nil)
                 }
             }
+
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: groups) }
         .sheet(item: $editing) { ResourceEditorView(groups: groups, original: $0) }
+    }
+    @ViewBuilder func memberActions(_ row: ResourceRow) -> some View {
+        if let group = row.group {
+            ForEach(group.targets, id: \.self) { target in
+                Button {
+                    var updated = group
+                    updated.fields["default-selected"] = .string(target)
+                    do { try model.saveProxyGroup(updated) }
+                    catch { model.error = error.localizedDescription }
+                } label: { Label(memberLabel(target), systemImage: "network") }
+            }
+        }
     }
     func detail(_ row: ResourceRow) -> String {
         if let group = row.group { return "\(group.targets.count)" + (group.fields["include-all-proxies"] == .boolean(true) ? " + 全部节点" : "") }

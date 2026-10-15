@@ -9,21 +9,21 @@ struct PolicyPicker: View {
     @Binding var selection: String
     var body: some View {
         Picker("出口", selection: $selection) {
-            Text(optionLabel("DIRECT")).tag("builtin:DIRECT")
-            Text(optionLabel("REJECT")).tag("builtin:REJECT")
-            Text(optionLabel("REJECT-DROP")).tag("builtin:REJECT-DROP")
+            Label(optionLabel("DIRECT"), systemImage: "arrow.up.right").tag("builtin:DIRECT")
+            Label(optionLabel("REJECT"), systemImage: "hand.raised").tag("builtin:REJECT")
+            Label(optionLabel("REJECT-DROP"), systemImage: "hand.raised.slash").tag("builtin:REJECT-DROP")
             if selection.hasPrefix("node:"), !model.allNodes.contains(where: { "node:" + $0.id == selection }) {
-                Text("已失效：" + selection.dropFirst(5)).tag(selection)
+                Label("已失效：" + selection.dropFirst(5), systemImage: "exclamationmark.triangle").tag(selection)
             }
-            ForEach(model.settings.proxyGroups ?? []) { Text("代理组 / " + $0.name).tag("group:" + $0.name) }
-            ForEach(model.allNodes) { node in Text(model.nodeLabel(node)).tag("node:" + node.id) }
+            ForEach(model.settings.proxyGroups ?? []) { Label("代理组 / " + $0.name, systemImage: "square.stack.3d.up").tag("group:" + $0.name) }
+            ForEach(model.allNodes) { node in Label(model.nodeLabel(node), systemImage: "network").tag("node:" + node.id) }
         }.labelsHidden()
     }
 }
 
 struct RulesView: View {
+    @State private var sortOrder: [TableSort<RuleTableItem>] = []
     @EnvironmentObject var model: DeskModel
-    @Environment(\.tableDataReady) private var tableDataReady
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: RouteRule?
@@ -31,7 +31,6 @@ struct RulesView: View {
         model.settings.rules.firstIndex { $0.id == selection }
     }
     var rows: [RuleTableItem] {
-        guard tableDataReady else { return [] }
         return model.settings.rules.map { RuleTableItem(id: $0.id, rule: $0) } + [RuleTableItem(id: matchID, rule: nil)]
     }
     func targetText(_ row: RuleTableItem) -> String {
@@ -43,6 +42,14 @@ struct RulesView: View {
         }
         let builtin = row.rule == nil ? model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT") : row.rule?.builtin ?? "DIRECT"
         return optionLabel(builtin)
+    }
+    func columnSort(_ column: String) -> TableSort<RuleTableItem> {
+        switch column {
+        case "类型": return TableSort(column) { $0.rule?.kind.rawValue ?? "MATCH" }
+        case "匹配条件": return TableSort(column) { $0.rule?.value ?? "所有未匹配的连接" }
+        case "附加选项": return TableSort(column) { [$0.rule?.noResolve == true ? "no-resolve" : nil, $0.rule?.sourceIP == true ? "src" : nil].compactMap { $0 }.joined(separator: ", ") }
+        default: return TableSort(column, value: targetText)
+        }
     }
     var body: some View {
         let rows = rows
@@ -63,30 +70,36 @@ struct RulesView: View {
                 DeleteButton(message: "确定删除所选路由规则吗？此操作无法撤销。") {
                     if let selection { model.deleteRule(selection); self.selection = nil }
                 }.disabled(selectedIndex == nil || model.busy)
+                Menu {
+                    if let row = rows.first(where: { $0.id == selection }) { targetActions(row) }
+                } label: { Label("选择出口", systemImage: "arrow.triangle.branch") }.disabled(model.busy || selection == nil)
             }.pageActions()
-            Table(rows, selection: $selection) {
-                TableColumn("类型") { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true))
-                TableColumn("匹配条件") { row in Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled) }.width(tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }))
-                TableColumn("附加选项") { row in
+            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+                TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.rule?.kind.rawValue ?? "MATCH").font(.system(.body, design: .monospaced)) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true), max: nil)
+                TableColumn("匹配条件", sortUsing: columnSort("匹配条件")) { row in Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }), max: nil)
+                TableColumn("附加选项", sortUsing: columnSort("附加选项")) { row in
                     Text([row.rule?.noResolve == true ? "no-resolve" : nil, row.rule?.sourceIP == true ? "src" : nil].compactMap { $0 }.joined(separator: ", "))
-                }.width(tableColumnWidth("附加选项", rows.map { [ $0.rule?.noResolve == true ? "no-resolve" : nil, $0.rule?.sourceIP == true ? "src" : nil ].compactMap { $0 }.joined(separator: ", ") }))
-                TableColumn("出口") { row in
-                    if let rule = row.rule {
-                        if rule.kind == .subRule { Text("子规则：" + (rule.subRuleTarget ?? "未选择")) }
-                        else {
-                            PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: rule.node, builtin: rule.builtin, group: rule.proxyGroup) }, set: { model.setRuleTarget(rule, target: $0) }))
-                                .disabled(model.busy)
-                        }
-                    } else {
-                        PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: model.settings.defaultNode, builtin: model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT"), group: model.settings.defaultProxyGroup) }, set: { model.setDefaultTarget($0) }))
-                            .disabled(model.busy)
-                    }
-                }.width(tableColumnWidth("出口", rows.map(targetText), padding: 48))
+                }.width(min: 40, ideal: tableColumnWidth("附加选项", rows.map { [ $0.rule?.noResolve == true ? "no-resolve" : nil, $0.rule?.sourceIP == true ? "src" : nil ].compactMap { $0 }.joined(separator: ", ") }), max: nil)
+                TableColumn("出口", sortUsing: columnSort("出口")) { row in
+                    Text(targetText(row))
+                }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText), padding: 48), max: nil)
             }
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
         .sheet(item: $editing) { RuleEditorView(rule: $0) }
     }
+    @ViewBuilder func targetActions(_ row: RuleTableItem) -> some View {
+        if let rule = row.rule {
+            if rule.kind == .subRule {
+                Button { editing = rule } label: { Label("编辑子规则", systemImage: "pencil") }
+            } else {
+                PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: rule.node, builtin: rule.builtin, group: rule.proxyGroup) }, set: { model.setRuleTarget(rule, target: $0) }))
+            }
+        } else {
+            PolicyPicker(model: model, selection: Binding(get: { model.targetID(node: model.settings.defaultNode, builtin: model.settings.defaultPolicy ?? (model.settings.defaultDirect == true ? "DIRECT" : "REJECT"), group: model.settings.defaultProxyGroup) }, set: { model.setDefaultTarget($0) }))
+        }
+    }
+
 }
 
 struct RuleCondition: Identifiable {

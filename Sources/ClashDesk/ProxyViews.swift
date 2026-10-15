@@ -3,13 +3,31 @@ import AppKit
 import ClashCore
 
 struct SubscriptionsView: View {
+    @State private var sortOrder: [TableSort<Subscription>] = []
     @EnvironmentObject var model: DeskModel
-    @Environment(\.tableDataReady) private var tableDataReady
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: Subscription?
     var selected: Subscription? { model.settings.subscriptions.first { $0.id == selection } }
+    func columnSort(_ column: String) -> TableSort<Subscription> {
+        let counts = Dictionary(model.nodes.map { ($0.provider, 1) }, uniquingKeysWith: +)
+        switch column {
+        case "上传流量": return TableSort(column) { $0.usage?.upload ?? -1 }
+        case "下载流量": return TableSort(column) { $0.usage?.download ?? -1 }
+        case "剩余流量": return TableSort(column) { $0.usage?.remaining ?? -1 }
+        case "总流量": return TableSort(column) { $0.usage?.total ?? -1 }
+        case "到期时间": return TableSort(column) { $0.usage?.expiresAt ?? .distantPast }
+        case "节点数": return TableSort(column) { counts[$0.provider] ?? 0 }
+        case "上次更新时间": return TableSort(column) { $0.lastUpdatedAt ?? .distantPast }
+        default: return TableSort(column) { $0.name }
+        }
+    }
     var body: some View {
+        let currentSort = sortOrder.map { descriptor in
+            var comparator = columnSort(descriptor.column)
+            comparator.order = descriptor.order
+            return comparator
+        }
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("代理订阅").font(.title2.bold())
@@ -25,31 +43,31 @@ struct SubscriptionsView: View {
                 Button { model.refreshSubscriptions() } label: { Label("全部更新", systemImage: "arrow.triangle.2.circlepath") }
                     .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
             }.pageActions()
-            Table(tableDataReady ? model.settings.subscriptions : [], selection: $selection) {
-                TableColumn("名称") { subscription in
+            Table(model.settings.subscriptions.sorted(using: currentSort), selection: $selection, sortOrder: $sortOrder) {
+                TableColumn("名称", sortUsing: columnSort("名称")) { subscription in
                     Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
-                }.width(contentWidth("名称"))
-                TableColumn("上传流量") { subscription in
+                }.width(min: 40, ideal: contentWidth("名称"), max: nil)
+                TableColumn("上传流量", sortUsing: columnSort("上传流量")) { subscription in
                     Text(columnText(subscription, "上传流量")).monospacedDigit()
-                }.width(contentWidth("上传流量"))
-                TableColumn("下载流量") { subscription in
+                }.width(min: 40, ideal: contentWidth("上传流量"), max: nil)
+                TableColumn("下载流量", sortUsing: columnSort("下载流量")) { subscription in
                     Text(columnText(subscription, "下载流量")).monospacedDigit()
-                }.width(contentWidth("下载流量"))
-                TableColumn("剩余流量") { subscription in
+                }.width(min: 40, ideal: contentWidth("下载流量"), max: nil)
+                TableColumn("剩余流量", sortUsing: columnSort("剩余流量")) { subscription in
                     Text(columnText(subscription, "剩余流量")).monospacedDigit()
-                }.width(contentWidth("剩余流量"))
-                TableColumn("总流量") { subscription in
+                }.width(min: 40, ideal: contentWidth("剩余流量"), max: nil)
+                TableColumn("总流量", sortUsing: columnSort("总流量")) { subscription in
                     Text(columnText(subscription, "总流量")).monospacedDigit()
-                }.width(contentWidth("总流量"))
-                TableColumn("到期时间") { subscription in
+                }.width(min: 40, ideal: contentWidth("总流量"), max: nil)
+                TableColumn("到期时间", sortUsing: columnSort("到期时间")) { subscription in
                     Text(columnText(subscription, "到期时间")).monospacedDigit()
-                }.width(contentWidth("到期时间"))
-                TableColumn("节点数") { subscription in
+                }.width(min: 40, ideal: contentWidth("到期时间"), max: nil)
+                TableColumn("节点数", sortUsing: columnSort("节点数")) { subscription in
                     Text(columnText(subscription, "节点数")).monospacedDigit()
-                }.width(contentWidth("节点数"))
-                TableColumn("上次更新时间") { subscription in
+                }.width(min: 40, ideal: contentWidth("节点数"), max: nil)
+                TableColumn("上次更新时间", sortUsing: columnSort("上次更新时间")) { subscription in
                     Text(columnText(subscription, "上次更新时间")).monospacedDigit()
-                }.width(contentWidth("上次更新时间"))
+                }.width(min: 40, ideal: contentWidth("上次更新时间"), max: nil)
             }
 
         }
@@ -74,7 +92,7 @@ struct SubscriptionsView: View {
         }
     }
     func contentWidth(_ column: String) -> CGFloat {
-        tableColumnWidth(column, (tableDataReady ? model.settings.subscriptions : []).map { columnText($0, column) },
+        tableColumnWidth(column, (model.settings.subscriptions).map { columnText($0, column) },
                          numeric: column != "名称")
     }
 
@@ -122,8 +140,8 @@ struct SubscriptionEditorView: View {
 }
 
 struct OutboundProxiesView: View {
+    @State private var sortOrder: [TableSort<Node>] = []
     @EnvironmentObject var model: DeskModel
-    @Environment(\.tableDataReady) private var tableDataReady
     @State private var adding = false
     @State private var editing: ManualProxy?
     @State private var selection: String?
@@ -141,8 +159,17 @@ struct OutboundProxiesView: View {
         guard let node = model.allNodes.first(where: { $0.id == selection }) else { return nil }
         return model.manualProxy(for: node)
     }
+    func columnSort(_ column: String) -> TableSort<Node> {
+        switch column {
+        case "名称": return TableSort(column) { $0.name }
+        case "类型": return TableSort(column) { $0.protocolName ?? "—" }
+        case "UDP": return TableSort(column) { row in (row.provider == "manual" ? model.manualUDP[row.name] : row.supportsUDP).map { $0 ? 1 : 0 } ?? -1 }
+        case "来源": return TableSort(column) { row in row.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == row.provider }?.name ?? "—" }
+        default: return TableSort(column) { $0.delayMilliseconds ?? -1 }
+        }
+    }
     var body: some View {
-        let rows = tableDataReady ? model.allNodes : []
+        let rows = model.allNodes
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("出站代理").font(.title2.bold())
@@ -162,25 +189,24 @@ struct OutboundProxiesView: View {
                           systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
                 }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
             }.pageActions()
-            Table(rows, selection: $selection) {
-                TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
-                TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }))
-                TableColumn("UDP") { node in
+            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+                TableColumn("名称", sortUsing: columnSort("名称")) { node in Text(node.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
+                TableColumn("类型", sortUsing: columnSort("类型")) { node in Text(node.protocolName ?? "—") }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }), max: nil)
+                TableColumn("UDP", sortUsing: columnSort("UDP")) { node in
                     let supported = node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP
                     Text(supported.map { $0 ? "支持" : "不支持" } ?? "未知")
-                }.width(tableColumnWidth("UDP", rows.map { node in
+                }.width(min: 40, ideal: tableColumnWidth("UDP", rows.map { node in
                     (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
-                }))
-                TableColumn("来源") { node in
+                }), max: nil)
+                TableColumn("来源", sortUsing: columnSort("来源")) { node in
                     Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
-                }.width(tableColumnWidth("来源", rows.map { node in
+                }.width(min: 40, ideal: tableColumnWidth("来源", rows.map { node in
                     node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
-                }))
-                TableColumn("延迟") { node in
+                }), max: nil)
+                TableColumn("延迟", sortUsing: columnSort("延迟")) { node in
                     NodeDelayCell(model: model, nodeID: node.id)
-                }.width(tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"]))
+                }.width(min: 40, ideal: tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "失败 / 超时"]), max: nil)
             }
-
 
         }
         .task(id: udpKey) { await model.refreshManualUDP() }
@@ -194,13 +220,11 @@ struct NodeDelayCell: View {
     let nodeID: String
     var node: Node? { model.allNodes.first { $0.id == nodeID } }
     var body: some View {
-        Button {
-            if let node { model.testDelay(node) }
-        } label: {
+        Group {
             if model.testingNodes.contains(nodeID) { Text("测试中…") }
             else if node?.delayFailed == true { Text("失败 / 超时").foregroundStyle(.red) }
             else { Text(node?.delayMilliseconds.map { "\($0) ms" } ?? "") }
-        }.buttonStyle(.borderless).disabled(model.busy || node == nil).help("点击测试延迟")
+        }
     }
 }
 
