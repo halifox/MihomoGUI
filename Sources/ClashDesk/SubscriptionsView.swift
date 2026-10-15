@@ -129,8 +129,8 @@ struct SubscriptionEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
-            formRow("name *") { TextField("订阅名称", text: $name) }
-            formRow("url *") { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
+            formRow("name *", labelWidth: 100) { TextField("订阅名称", text: $name) }
+            formRow("url *", labelWidth: 100) { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
             if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
                 Spacer()

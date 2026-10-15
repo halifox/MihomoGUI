@@ -8,9 +8,9 @@ func formActionIcon(_ symbol: String) -> some View {
         .frame(width: 14, height: 14)
 }
 
-func formRow<Content: View>(_ title: String, help: String = "", @ViewBuilder content: () -> Content) -> some View {
+func formRow<Content: View>(_ title: String, help: String = "", labelWidth: CGFloat = 200, @ViewBuilder content: () -> Content) -> some View {
     HStack(alignment: .center, spacing: 12) {
-        FieldKeyLabel(title: title, key: title.replacingOccurrences(of: " *", with: ""), description: help).frame(width: 200, alignment: .leading)
+        FieldKeyLabel(title: title, key: title.replacingOccurrences(of: " *", with: ""), description: help).frame(width: labelWidth, alignment: .leading)
         content().frame(maxWidth: .infinity, alignment: .leading)
     }.padding(.vertical, 3)
 }

@@ -115,6 +115,7 @@ struct ProxyEditorView: View {
     @State private var type: String
     @State private var fields: [String: ConfigValue]
     @State private var error: String?
+    @State private var addingField = false
     init(proxy: ManualProxy? = nil) {
         original = proxy
         let type = proxy?.type ?? "hysteria2"
@@ -140,15 +141,33 @@ struct ProxyEditorView: View {
                     ForEach(schema.fields) { field in
                         VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
                     }
-                    DisclosureGroup("额外字段") {
+                    if fields.keys.contains(where: { !knownFields.contains($0) }) {
+                        Text("额外字段").font(.headline).padding(.top, 8)
                         ForEach(fields.keys.filter { !knownFields.contains($0) }.sorted(), id: \.self) { path in
-                            VisualField(field: customSpec(path), value: Binding(get: { fields[path] }, set: { fields[path] = $0 }), compact: true)
+                            HStack(alignment: .top) {
+                                VisualField(field: customSpec(path), value: Binding(get: { fields[path] }, set: { fields[path] = $0 }), compact: true)
+                                Button(role: .destructive) { fields.removeValue(forKey: path) } label: {
+                                    Image(systemName: "trash")
+                                }
+                                .help("删除字段 \(path)")
+                                .accessibilityLabel("删除字段 \(path)")
+                                .padding(.top, 3)
+                            }
                         }
-                        CustomFieldEditor(fields: $fields)
                     }
                 }.padding(.trailing, 4)
             }
             HStack {
+                Button { addingField = true } label: {
+                    Label("添加额外字段", systemImage: "plus")
+                }
+                .popover(isPresented: $addingField, arrowEdge: .top) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("添加额外字段").font(.headline)
+                        CustomFieldEditor(fields: $fields, reservedPaths: knownFields) { addingField = false }
+                        Button("取消") { addingField = false }
+                    }.padding(16).frame(width: 460)
+                }
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存代理") {

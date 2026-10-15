@@ -4,8 +4,11 @@ import ClashCore
 
 struct CustomFieldEditor: View {
     @Binding var fields: [String: ConfigValue]
+    var reservedPaths: Set<String> = []
+    var onAdd: () -> Void = {}
     @State private var path = ""
     @State private var kind = "string"
+    var fieldPath: String { path.trimmingCharacters(in: .whitespacesAndNewlines) }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             formRow("字段路径", help: "额外配置字段的路径。嵌套字段使用点号分隔，例如 realm-opts.realm-id。") { TextField("", text: $path) }
@@ -18,8 +21,9 @@ struct CustomFieldEditor: View {
             HStack {
                 Spacer()
                 Button("添加字段") {
-                    fields[path] = emptyValue(EditorField(path, kind: kind, elementKind: "string")); path = ""
-                }.disabled(path.isEmpty || fields[path] != nil)
+                    fields[fieldPath] = emptyValue(EditorField(fieldPath, kind: kind, elementKind: "string")); path = ""
+                    onAdd()
+                }.disabled(fieldPath.isEmpty || fields[fieldPath] != nil || reservedPaths.contains(fieldPath))
             }
         }
     }
