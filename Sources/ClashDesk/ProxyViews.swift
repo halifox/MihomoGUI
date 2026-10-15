@@ -29,7 +29,7 @@ struct SubscriptionsView: View {
             return comparator
         }
         VStack(alignment: .leading, spacing: 0) {
-            Table(model.settings.subscriptions.sorted(using: currentSort), selection: $selection, sortOrder: $sortOrder) {
+            Table(model.settings.subscriptions.sorted(using: currentSort), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                 TableColumn("名称", sortUsing: columnSort("名称")) { subscription in
                     Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
                 }.width(min: 40, ideal: contentWidth("名称"), max: nil)
@@ -173,7 +173,7 @@ struct OutboundProxiesView: View {
     var body: some View {
         let rows = model.allNodes
         VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                 TableColumn("名称", sortUsing: columnSort("名称")) { node in Text(node.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
                 TableColumn("类型", sortUsing: columnSort("类型")) { node in Text(node.protocolName ?? "—") }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }), max: nil)
                 TableColumn("UDP", sortUsing: columnSort("UDP")) { node in

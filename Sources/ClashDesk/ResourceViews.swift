@@ -39,7 +39,7 @@ struct ResourcesView: View {
         let rows = rows
         VStack(alignment: .leading, spacing: 0) {
             if groups {
-                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                     TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
                     TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
                     TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
@@ -47,7 +47,7 @@ struct ResourcesView: View {
                     }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
                 }
             } else {
-                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                     TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
                     TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
                     TableColumn("行为", sortUsing: columnSort("行为")) { row in Text(detail(row)) }.width(min: 40, ideal: tableColumnWidth("行为", rows.map(detail)), max: nil)

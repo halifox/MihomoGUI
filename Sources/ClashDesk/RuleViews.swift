@@ -59,7 +59,7 @@ struct RulesView: View {
     var body: some View {
         let rows = rows
         VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                 TableColumn("序号", sortUsing: columnSort("序号")) { row in
                     Text(String(row.number)).monospacedDigit()
                 }.width(min: 40, ideal: tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true), max: nil)

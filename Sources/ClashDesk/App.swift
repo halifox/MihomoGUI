@@ -74,6 +74,26 @@ struct TableSort<Row>: SortComparator {
     func hash(into hasher: inout Hasher) { hasher.combine(column); hasher.combine(order) }
 }
 
+// Keep a single active column and cycle ascending → descending → original row order.
+func tableSortBinding<Row>(_ state: Binding<[TableSort<Row>]>) -> Binding<[TableSort<Row>]> {
+    Binding(get: { state.wrappedValue }, set: { proposed in
+        guard var next = proposed.first else {
+            state.wrappedValue = []
+            return
+        }
+        if let current = state.wrappedValue.first, current.column == next.column {
+            if current.order == .reverse {
+                state.wrappedValue = []
+                return
+            }
+            next.order = .reverse
+        } else {
+            next.order = .forward
+        }
+        state.wrappedValue = [next]
+    })
+}
+
 enum DeskPage: Int, CaseIterable, Identifiable {
     case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic, settings
     var id: Int { rawValue }
@@ -250,7 +270,7 @@ struct StatisticsView: View {
                 Text("采集已暂停，以下为历史数据。最后采集：" + sampled.formatted(date: .abbreviated, time: .standard))
                     .font(.caption).foregroundStyle(.secondary).padding(8)
             }
-                Table(rows.sorted(using: currentSort), selection: $selection, sortOrder: $sortOrder) {
+                Table(rows.sorted(using: currentSort), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                     TableColumn(model.trafficGrouping.title, sortUsing: columnSort(model.trafficGrouping.title)) { row in
                         Text(row.domain)
                     }.width(min: 40, ideal: tableColumnWidth(model.trafficGrouping.title, rows.map(\.domain)), max: nil)
@@ -311,7 +331,7 @@ struct ConnectionsView: View {
     var body: some View {
         let rows = model.connections
         VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
+            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
                 TableColumn("域名 / IP", sortUsing: columnSort("域名 / IP")) { connection in
                     Text(connection.domain).textSelection(.enabled)
                 }.width(min: 40, ideal: tableColumnWidth("域名 / IP", rows.map(\.domain)), max: nil)
