@@ -361,7 +361,7 @@ struct StatisticsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: -4) {
+                HStack(spacing: 4) {
                     Menu {
                         if let row = rows.first(where: { selection.contains($0.id) }) { trafficRoutes(row) }
                     } label: { toolbarIcon("添加路由规则", systemImage: "plus.circle") }
@@ -435,7 +435,7 @@ struct ConnectionsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: -4) {
+                HStack(spacing: 4) {
                     Button(role: .destructive) {
                         if let selection { model.perform { try await model.api.closeConnection(selection) } }
                     } label: { toolbarIcon("断开", systemImage: "xmark.circle").foregroundStyle(.red) }.frame(width: 28, height: 28).tint(.red).disabled(model.busy || !rows.contains { $0.id == selection })

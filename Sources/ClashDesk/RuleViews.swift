@@ -88,7 +88,7 @@ struct RulesView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: -4) {
+                HStack(spacing: 4) {
                     Button { adding = true } label: { toolbarIcon("添加规则", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
                     Button {
                         if let selectedIndex { editing = model.settings.rules[selectedIndex] }

@@ -121,7 +121,7 @@ struct ApplicationSettingsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: -4) {
+                HStack(spacing: 4) {
                     Button { model.previewConfig() } label: { toolbarIcon("预览配置", systemImage: "doc.text.magnifyingglass") }.frame(width: 28, height: 28).disabled(model.busy)
                     Button { model.toggleAllServices() } label: {
                         toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
