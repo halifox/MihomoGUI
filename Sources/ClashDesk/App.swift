@@ -211,9 +211,9 @@ struct DeskView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
-                    Button { model.perform { model.serviceLogs = try await readCoreLog() } } label: {
+                    Button { model.perform { model.serviceLogs = try await readCoreLog(directory: model.directory) } } label: {
                         toolbarIcon("查看日志", systemImage: "doc.text")
-                    }.disabled(model.busy).help("读取 core.log，需要管理员授权")
+                    }.disabled(model.busy).help("读取用户日志目录中的 core.log")
                     Button { model.toggleAllServices() } label: {
                         toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
                     }.disabled(model.busy)

@@ -28,6 +28,20 @@ struct StatsMain {
         do {
             let args = CommandLine.arguments
             if let index = args.firstIndex(of: "--log-stream"), args.indices.contains(index + 1) {
+                // Drop root before touching a user-controlled directory or rotating its files.
+                if let userIndex = args.firstIndex(of: "--log-user") {
+                    guard args.indices.contains(userIndex + 2),
+                          let uid = uid_t(args[userIndex + 1]), uid != 0,
+                          let gid = gid_t(args[userIndex + 2]) else { throw DeskError("无效的日志用户") }
+                    if geteuid() == 0 {
+                        guard setgroups(0, nil) == 0, setgid(gid) == 0, setuid(uid) == 0 else {
+                            throw DeskError("无法切换日志用户")
+                        }
+                    }
+                    guard getuid() == uid, geteuid() == uid, getgid() == gid, getegid() == gid else {
+                        throw DeskError("日志用户身份不匹配")
+                    }
+                }
                 let logURL = URL(fileURLWithPath: args[index + 1])
                 while let data = try FileHandle.standardInput.read(upToCount: 8192), !data.isEmpty {
                     appendLog(String(decoding: data, as: UTF8.self), to: logURL)

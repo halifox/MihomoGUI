@@ -134,8 +134,11 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     guard FileManager.default.isExecutableFile(atPath: statisticsExecutable().path) else { throw DeskError("找不到内核日志采集程序，请重新构建应用") }
     try FileManager.default.copyItem(at: statisticsExecutable(), to: logger)
     let installedLogger = installedCore + "-logger"
+    let logs = directory.appendingPathComponent("logs", isDirectory: true)
+    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let coreCommand = shellQuote(installedCore) + " -d " + shellQuote(rootDirectory) + " -f " + shellQuote(rootDirectory + "/config.yaml")
-        + " 2>&1 | " + shellQuote(installedLogger) + " --log-stream " + shellQuote(rootDirectory + "/core.log")
+        + " 2>&1 | " + shellQuote(installedLogger) + " --log-stream " + shellQuote(logs.appendingPathComponent("core.log").path)
+        + " --log-user \(getuid()) \(getgid())"
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
     try writePlist([
         "Label": coreLabel,
@@ -273,11 +276,12 @@ func servicePID(domain: String, label: String) async -> Int? {
     return Int(output[range])
 }
 
-func readCoreLog() async throws -> String {
-    let path = shellQuote(rootDirectory + "/core.log")
-    let command = "if [ -f " + path + " ]; then /usr/bin/tail -n 500 " + path + "; else echo '暂无内核日志'; fi"
-    let script = "on run argv\n do shell script (item 1 of argv) with administrator privileges\nend run"
-    return try await runCommand("/usr/bin/osascript", ["-e", script, command])
+func readCoreLog(directory: URL) async throws -> String {
+    let log = directory.appendingPathComponent("logs/core.log")
+    guard FileManager.default.fileExists(atPath: log.path) else {
+        return "暂无内核日志。更新应用后，请停止并重新启动内核，以启用用户日志。"
+    }
+    return try await runCommand("/usr/bin/tail", ["-n", "500", log.path])
 }
 
 func persistCoreConfiguration(_ config: Data) async throws {

@@ -7,6 +7,17 @@ struct ServiceTests {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent("clash-services-test-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: folder) }
+        let userLogs = folder.appendingPathComponent("logs")
+        try FileManager.default.createDirectory(at: userLogs, withIntermediateDirectories: true)
+        let lines = (1...600).map { "line-\($0)" }.joined(separator: "\n") + "\n"
+        try lines.write(to: userLogs.appendingPathComponent("core.log"), atomically: true, encoding: .utf8)
+        let displayed = try await readCoreLog(directory: folder)
+        guard displayed.hasPrefix("line-101\n"), displayed.contains("line-600"), !displayed.contains("line-100\n") else {
+            throw DeskError("User log did not return the last 500 lines")
+        }
+        let absent = try await readCoreLog(directory: folder.appendingPathComponent("missing"))
+        guard absent.contains("暂无内核日志") else { throw DeskError("Missing log handling failed") }
+        print("PASS: user logs read directly and missing logs explain service migration")
         for mode in ["success", "bootstrap-failure", "health-failure", "write-failure"] {
             let base = folder.appendingPathComponent(mode)
             let stage = base.appendingPathComponent("stage")
