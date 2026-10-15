@@ -68,19 +68,19 @@ struct SubscriptionsView: View {
 
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { adding = true } label: { Label("添加", systemImage: "plus") }
-                    .disabled(model.busy)
-                Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }
-                    .disabled(model.busy || selected == nil)
-                DeleteButton(message: "确定删除订阅“\(selected?.name ?? "")”及其节点吗？此操作无法撤销。") { if let selected { model.deleteSubscription(selected) } }
-                    .disabled(model.busy || selected == nil)
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { if let selected { model.refreshSubscription(selected) } } label: { Label("更新", systemImage: "arrow.clockwise") }
-                    .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
-                Button { model.refreshSubscriptions() } label: { Label("全部更新", systemImage: "arrow.triangle.2.circlepath") }
-                    .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }
+                        .disabled(model.busy)
+                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }
+                        .disabled(model.busy || selected == nil)
+                    DeleteButton(toolbar: true, message: "确定删除订阅“\(selected?.name ?? "")”及其节点吗？此操作无法撤销。") { if let selected { model.deleteSubscription(selected) } }
+                        .disabled(model.busy || selected == nil)
+                    Button { if let selected { model.refreshSubscription(selected) } } label: { toolbarIcon("更新", systemImage: "arrow.clockwise") }
+                        .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
+                    Button { model.refreshSubscriptions() } label: { toolbarIcon("全部更新", systemImage: "arrow.triangle.2.circlepath") }
+                        .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
+                }
             }
         }
         .sheet(isPresented: $adding) { SubscriptionEditorView() }
@@ -215,23 +215,23 @@ struct OutboundProxiesView: View {
 
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
-                Button { editing = selectedManual } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
-                DeleteButton(message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
-                } label: { Label("延迟", systemImage: "speedometer") }
-                    .disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
-                Button {
-                    if model.isTestingDelays { model.cancelDelayTests() }
-                    else { model.testAllDelays() }
-                } label: {
-                    Label(model.isTestingDelays ? "取消测延迟" : "全部延迟",
-                          systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
-                }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.disabled(model.busy)
+                    Button { editing = selectedManual } label: { toolbarIcon("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
+                    DeleteButton(toolbar: true, message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
+                    Button {
+                        if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
+                    } label: { toolbarIcon("延迟", systemImage: "speedometer") }
+                        .disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
+                    Button {
+                        if model.isTestingDelays { model.cancelDelayTests() }
+                        else { model.testAllDelays() }
+                    } label: {
+                        toolbarIcon(model.isTestingDelays ? "取消测延迟" : "全部延迟",
+                              systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
+                    }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
+                }
             }
         }
         .task(id: udpKey) { await model.refreshManualUDP() }

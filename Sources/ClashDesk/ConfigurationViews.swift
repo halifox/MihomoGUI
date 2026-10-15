@@ -120,12 +120,14 @@ struct ApplicationSettingsView: View {
             }
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { model.previewConfig() } label: { Label("预览配置", systemImage: "doc.text.magnifyingglass") }.disabled(model.busy)
-                Button { model.toggleAllServices() } label: {
-                    Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
-                }.controlSize(.regular).disabled(model.busy)
-                Button { model.applyLive() } label: { Label("应用更改", systemImage: "checkmark") }.disabled(model.busy || !model.coreRunning)
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button { model.previewConfig() } label: { toolbarIcon("预览配置", systemImage: "doc.text.magnifyingglass") }.disabled(model.busy)
+                    Button { model.toggleAllServices() } label: {
+                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                    }.controlSize(.regular).disabled(model.busy)
+                    Button { model.applyLive() } label: { toolbarIcon("应用更改", systemImage: "checkmark") }.disabled(model.busy || !model.coreRunning)
+                }
             }
         }.padding(20).controlSize(.regular).environment(\.formHelpDocument, "settings")
     }

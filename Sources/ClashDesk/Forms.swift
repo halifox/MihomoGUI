@@ -493,7 +493,16 @@ struct FieldHelpButton: View {
     }
 }
 
+func toolbarIcon(_ title: String, systemImage: String) -> some View {
+    Image(systemName: systemImage)
+        .font(.system(size: 14, weight: .regular))
+        .frame(width: 20, height: 20)
+        .accessibilityLabel(title)
+        .help(title)
+}
+
 struct DeleteButton: View {
+    var toolbar = false
     var title = "删除"
     var message = "确定删除此项吗？此操作无法撤销。"
     let action: () -> Void
@@ -501,7 +510,11 @@ struct DeleteButton: View {
 
     var body: some View {
         Button(role: .destructive) { confirming = true } label: {
-            Label(title, systemImage: "trash")
+            if toolbar {
+                toolbarIcon(title, systemImage: "trash")
+            } else {
+                Label(title, systemImage: "trash")
+            }
         }
         .labelStyle(.iconOnly)
         .help(title)

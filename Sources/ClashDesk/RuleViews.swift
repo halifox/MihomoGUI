@@ -87,22 +87,22 @@ struct RulesView: View {
             .help("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button { adding = true } label: { Label("添加规则", systemImage: "plus") }.disabled(model.busy)
-                Button {
-                    if let selectedIndex { editing = model.settings.rules[selectedIndex] }
-                } label: { Label("编辑", systemImage: "pencil") }.disabled(selectedIndex == nil || model.busy)
-            }
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button {
-                    if let selection { model.moveRule(selection, offset: -1) }
-                } label: { Label("上移", systemImage: "arrow.up") }.disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
-                Button {
-                    if let selection { model.moveRule(selection, offset: 1) }
-                } label: { Label("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
-                DeleteButton(message: "确定删除所选路由规则吗？此操作无法撤销。") {
-                    if let selection { model.deleteRule(selection); self.selection = nil }
-                }.disabled(selectedIndex == nil || model.busy)
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button { adding = true } label: { toolbarIcon("添加规则", systemImage: "plus") }.disabled(model.busy)
+                    Button {
+                        if let selectedIndex { editing = model.settings.rules[selectedIndex] }
+                    } label: { toolbarIcon("编辑", systemImage: "pencil") }.disabled(selectedIndex == nil || model.busy)
+                    Button {
+                        if let selection { model.moveRule(selection, offset: -1) }
+                    } label: { toolbarIcon("上移", systemImage: "arrow.up") }.disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
+                    Button {
+                        if let selection { model.moveRule(selection, offset: 1) }
+                    } label: { toolbarIcon("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
+                    DeleteButton(toolbar: true, message: "确定删除所选路由规则吗？此操作无法撤销。") {
+                        if let selection { model.deleteRule(selection); self.selection = nil }
+                    }.disabled(selectedIndex == nil || model.busy)
+                }
             }
         }
         .sheet(isPresented: $adding) { RuleEditorView() }

@@ -360,16 +360,18 @@ struct StatisticsView: View {
 
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Menu {
-                    if let row = rows.first(where: { selection.contains($0.id) }) { trafficRoutes(row) }
-                } label: { Label("添加路由规则", systemImage: "plus.circle") }.disabled(selection.count != 1 || model.busy)
-                Picker("统计方式", selection: $model.trafficGrouping) {
-                    ForEach(TrafficGrouping.allCases) { grouping in Text(grouping.title).tag(grouping) }
-                }.labelsHidden().frame(width: 110).help("统计方式")
-                Picker("时间范围", selection: $model.hours) {
-                    Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
-                }.labelsHidden().frame(width: 125).help("时间范围")
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Menu {
+                        if let row = rows.first(where: { selection.contains($0.id) }) { trafficRoutes(row) }
+                    } label: { toolbarIcon("添加路由规则", systemImage: "plus.circle") }.disabled(selection.count != 1 || model.busy)
+                    Picker("统计方式", selection: $model.trafficGrouping) {
+                        ForEach(TrafficGrouping.allCases) { grouping in Text(grouping.title).tag(grouping) }
+                    }.labelsHidden().frame(width: 110).help("统计方式")
+                    Picker("时间范围", selection: $model.hours) {
+                        Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
+                    }.labelsHidden().frame(width: 125).help("时间范围")
+                }
             }
         }
         .task(id: "\(model.trafficGrouping.rawValue)-\(model.hours)") { await model.refresh() }
@@ -425,13 +427,15 @@ struct ConnectionsView: View {
             ]))
         }
         .toolbar {
-            ToolbarItemGroup(placement: .primaryAction) {
-                Button(role: .destructive) {
-                    if let selection { model.perform { try await model.api.closeConnection(selection) } }
-                } label: { Label("断开", systemImage: "xmark.circle").foregroundStyle(.red) }.tint(.red).disabled(model.busy || !rows.contains { $0.id == selection })
-                Menu {
-                    if let row = rows.first(where: { $0.id == selection }) { connectionRoutes(row) }
-                } label: { Label("添加路由规则", systemImage: "plus.circle") }.disabled(model.busy || !rows.contains { $0.id == selection })
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button(role: .destructive) {
+                        if let selection { model.perform { try await model.api.closeConnection(selection) } }
+                    } label: { toolbarIcon("断开", systemImage: "xmark.circle").foregroundStyle(.red) }.tint(.red).disabled(model.busy || !rows.contains { $0.id == selection })
+                    Menu {
+                        if let row = rows.first(where: { $0.id == selection }) { connectionRoutes(row) }
+                    } label: { toolbarIcon("添加路由规则", systemImage: "plus.circle") }.disabled(model.busy || !rows.contains { $0.id == selection })
+                }
             }
         }
     }
