@@ -6,6 +6,7 @@ struct ValueList: View {
     let field: EditorField
     @Binding var value: ConfigValue
     var compact = false
+    var addTitle = "添加一项"
     var item: EditorField {
         EditorField("item", kind: field.elementKind ?? "string", children: field.children)
     }
@@ -16,15 +17,17 @@ struct ValueList: View {
                     if item.kind == "object" {
                         DisclosureGroup("第 \(index + 1) 项") { element(index) }
                     } else { element(index) }
-                    DeleteButton(message: "确定删除第 \(index + 1) 项吗？此操作无法撤销。") {
+                    Button(role: .destructive) {
                         var array = value.array; guard array.indices.contains(index) else { return }
                         array.remove(at: index); value = .array(array)
-                    }
+                    } label: { formActionIcon("trash") }
+                        .help("删除第 \(index + 1) 项")
+                        .accessibilityLabel("删除第 \(index + 1) 项")
                 }
             }
             Button {
                 var array = value.array; array.append(emptyValue(item)); value = .array(array)
-            } label: { Label("添加一项", systemImage: "plus") }.controlSize(.regular)
+            } label: { Label(addTitle, systemImage: "plus") }.controlSize(.regular)
         }
     }
     func element(_ index: Int) -> some View {

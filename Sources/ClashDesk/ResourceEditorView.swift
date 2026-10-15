@@ -20,6 +20,7 @@ struct ResourceEditorView: View {
     @State private var fields: [String: ConfigValue]
     @State private var targets: [String]
     @State private var error: String?
+    @State private var invalidMap = false
     init(groups: Bool, original: ResourceRow? = nil) {
         self.groups = groups; self.original = original
         _name = State(initialValue: original?.name ?? "")
@@ -107,9 +108,10 @@ struct ResourceEditorView: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存") { save() }.buttonStyle(.borderedProminent)
+                Button("保存") { save() }.buttonStyle(.borderedProminent).disabled(invalidMap)
             }
         }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
+        .onPreferenceChange(InvalidMapPreference.self) { invalidMap = $0 }
         .environment(\.formHelpDocument, groups ? "proxy-groups/" + type + ".md" : "rule-providers/index.md")
         .onChange(of: type) { _ in
             let allowed = Set(schema.map(\.path) + (groups ? [] : ["proxy"]))

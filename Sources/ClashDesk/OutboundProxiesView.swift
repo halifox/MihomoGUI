@@ -116,6 +116,7 @@ struct ProxyEditorView: View {
     @State private var fields: [String: ConfigValue]
     @State private var error: String?
     @State private var addingField = false
+    @State private var invalidMap = false
     init(proxy: ManualProxy? = nil) {
         original = proxy
         let type = proxy?.type ?? "hysteria2"
@@ -137,7 +138,7 @@ struct ProxyEditorView: View {
                 }.labelsHidden()
             }
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
+                VStack(alignment: .leading, spacing: 2) {
                     ForEach(schema.fields) { field in
                         VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
                     }
@@ -177,9 +178,10 @@ struct ProxyEditorView: View {
                         try model.saveManualProxy(proxy)
                         dismiss()
                     } catch { self.error = error.localizedDescription }
-                }.buttonStyle(.borderedProminent)
+                }.buttonStyle(.borderedProminent).disabled(invalidMap)
             }
         }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
+        .onPreferenceChange(InvalidMapPreference.self) { invalidMap = $0 }
         .environment(\.formHelpDocument, schema.document)
         .onChange(of: type) { _ in
             let common = fields.filter { ["name", "server", "port"].contains($0.key) }
