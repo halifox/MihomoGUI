@@ -44,14 +44,15 @@ func bytes(_ value: Int64) -> String {
 }
 
 func tableColumnWidth(_ title: String, _ values: [String], numeric: Bool = false, monospaced: Bool = false,
-                      padding: CGFloat = 28) -> CGFloat {
+                      padding: CGFloat = 0) -> CGFloat {
     let font = monospaced ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         : numeric ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         : NSFont.systemFont(ofSize: NSFont.systemFontSize)
     let header = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)]).width
     let content = values.lazy.flatMap { $0.components(separatedBy: .newlines) }
         .map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
-    return ceil(max(header, content)) + padding
+    // Keep room for the header's sort indicator without padding every cell as much.
+    return ceil(max(header + 24, content + padding))
 }
 
 // Use the same full-data measurements for initial sizing and divider double-clicks.
