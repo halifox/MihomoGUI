@@ -7,6 +7,7 @@ public struct Connection: Decodable, Identifiable {
     public let download: Int64
     public let chains: [String]?
     public let rule: String?
+    public let rulePayload: String?
     public struct Metadata: Decodable {
         public let host: String?
         public let destinationIP: String?
@@ -51,6 +52,19 @@ public struct CoreAPI {
             throw DeskError("mihomo 请求失败（HTTP \(code)），请在应用设置中查看服务日志")
         }
         return data
+    }
+    public struct LiveGroup: Decodable {
+        public var type: String?
+        public var now: String?
+        public var all: [String]?
+    }
+    public func liveGroups() async throws -> [String: LiveGroup] {
+        struct Response: Decodable { let proxies: [String: LiveGroup] }
+        return try JSONDecoder().decode(Response.self, from: await request("/proxies")).proxies.filter { $0.value.all != nil }
+    }
+    public func selectGroup(_ group: String, member: String) async throws {
+        let name = group.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
+        _ = try await request("/proxies/" + name, method: "PUT", body: JSONSerialization.data(withJSONObject: ["name": member]))
     }
     public func connections() async throws -> [Connection] {
         let data = try await request("/connections")

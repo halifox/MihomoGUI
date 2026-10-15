@@ -89,6 +89,18 @@ struct DeskView: View {
     @State private var page: DeskPage? = .general
     var body: some View {
         VStack(spacing: 0) {
+            HStack {
+                Circle().fill(model.coreRunning ? Color.green : Color.secondary).frame(width: 7, height: 7)
+                Text(model.coreRunning ? "内核在线" : "内核离线")
+                Text(model.draftStatus).foregroundStyle(model.hasUnappliedChanges ? Color.orange : Color.secondary)
+                Spacer()
+                if model.busy { ProgressView().controlSize(.small) }
+                Button("查看差异") { model.previewConfig() }.disabled(model.busy)
+                Button(model.coreRunning ? "应用更改" : "启动服务") {
+                    if model.coreRunning { model.applyLive() } else { model.startAll() }
+                }.disabled(model.busy || (model.coreRunning && !model.hasUnappliedChanges))
+            }.pageActions().padding(.horizontal, 20).padding(.vertical, 10)
+            Divider()
             NavigationSplitView {
                 List(DeskPage.allCases, selection: $page) { page in
                     Label(page.title, systemImage: page.icon).tag(page)
@@ -110,6 +122,9 @@ struct DeskView: View {
                     .modifier(DeferredTableData())
                     .id(page ?? .general)
             }
+            Divider()
+            Text(model.message).font(.caption).foregroundStyle(.secondary).lineLimit(1).help(model.message)
+                .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 20).padding(.vertical, 6)
 
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.flushConfigurationSave() }
@@ -127,6 +142,8 @@ struct DeskView: View {
         .sheet(item: $model.rulePrefill) { prefill in
             RuleEditorView(prefill: prefill)
         }
+        .sheet(item: $model.configurationImport) { ConfigurationImportView(value: $0) }
+        .sheet(item: $model.subscriptionUpdate) { SubscriptionChangesView(changes: $0) }
         .sheet(item: $model.configPreview) { preview in
             ConfigPreviewView(preview: preview)
         }
@@ -137,6 +154,7 @@ struct DeskView: View {
 struct ConfigPreviewView: View {
     @EnvironmentObject var model: DeskModel
     let preview: ConfigPreview
+    @State private var showYAML = false
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             Text(preview.action == .preview ? "预览 mihomo 配置" : "确认 mihomo 配置").font(.title2.bold())
@@ -149,6 +167,9 @@ struct ConfigPreviewView: View {
                 Spacer()
                 Text(preview.action == .preview ? "YAML · 当前设置生成的配置" : "YAML · 只读预览 · 实际使用此份配置").font(.caption).foregroundStyle(.secondary)
             }
+            ScrollView { Text(model.configurationChanges(preview.settings)).font(.body).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: showYAML ? 130 : .infinity)
+            Toggle("显示完整 YAML（包含节点凭据）", isOn: $showYAML)
+            if showYAML {
             GeometryReader { geometry in
                 ScrollView([.vertical, .horizontal]) {
                     Text(String(decoding: preview.config, as: UTF8.self))
@@ -160,6 +181,7 @@ struct ConfigPreviewView: View {
                         .frame(minWidth: geometry.size.width, alignment: .topLeading)
                 }
             }.background(Color(nsColor: .textBackgroundColor)).border(Color.secondary.opacity(0.3))
+            } else { Spacer() }
             HStack {
                 Button(preview.action == .preview ? "关闭" : "取消") { model.configPreview = nil }.keyboardShortcut(.cancelAction)
                 Spacer()
@@ -280,6 +302,7 @@ struct StatisticsView: View {
 struct ConnectionsView: View {
     @EnvironmentObject var model: DeskModel
     @Environment(\.tableDataReady) private var tableDataReady
+    @State private var detail: Connection?
     var body: some View {
         let rows = tableDataReady ? model.connections : []
         VStack(alignment: .leading, spacing: 12) {
@@ -300,10 +323,13 @@ struct ConnectionsView: View {
                 TableColumn("上传") { connection in Text(bytes(connection.upload)) }.width(tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true))
                 TableColumn("下载") { connection in Text(bytes(connection.download)) }.width(tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true))
                 TableColumn("操作") { connection in
-                    Button("断开") { model.perform { try await model.api.closeConnection(connection.id) } }
+                    HStack {
+                        Button("详情") { detail = connection }
+                        Button("断开") { model.perform { try await model.api.closeConnection(connection.id) } }
+                    }
                         .disabled(model.busy)
                 }.width(tableColumnWidth("操作", rows.isEmpty ? [] : ["断开"], padding: 42))
             }
-        }
+        }.sheet(item: $detail) { ConnectionDetailView(connection: $0) }
     }
 }

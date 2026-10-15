@@ -456,7 +456,108 @@ final class CoreTests: XCTestCase {
         XCTAssertEqual(try configured.configuration()["alterId"] as? Int, 0)
     }
 
+    func testDynamicSubscriptionMembersAndFiltering() throws {
+        var settings = Settings()
+        let source = Subscription(name: "Airport", url: "https://example.com/sub")
+        settings.subscriptions = [source]
+        settings.subscriptionProxies = [source.id: [
+            .object(["name": .string("JP One"), "type": .string("ss"), "server": .string("example.com"), "port": .integer(443), "cipher": .string("aes-128-gcm"), "password": .string("secret")]),
+            .object(["name": .string("US One"), "type": .string("ss"), "server": .string("example.com"), "port": .integer(443), "cipher": .string("aes-128-gcm"), "password": .string("secret")])]]
+        let group = ProxyGroup(name: "Japan", fields: ["clashdesk-sources": .array([.string(source.provider)]), "clashdesk-filter": .string("^JP")])
+        settings.proxyGroups = [group]; settings.defaultProxyGroup = "Japan"
+        XCTAssertEqual(effectiveGroupTargets(group, settings: settings), ["node:" + source.provider + "/JP One"])
+        let config = try configurationObject(settings)
+        let groups = config["proxy-groups"] as! [[String: Any]]
+        let generated = groups.first { $0["name"] as? String == "Japan" }!
+        XCTAssertEqual(generated["proxies"] as? [String], ["CD.Proxy.0.0"])
+        XCTAssertTrue(generated["clashdesk-sources"] == nil)
+        settings.subscriptionProxies?[source.id]?.removeFirst()
+        XCTAssertEqual(effectiveGroupTargets(group, settings: settings), [])
+        let emptyConfig = try configurationObject(settings)
+        let emptyGroup = (emptyConfig["proxy-groups"] as! [[String: Any]]).first { $0["name"] as? String == "Japan" }!
+        XCTAssertEqual(emptyGroup["proxies"] as? [String], ["REJECT"])
+        _ = try generateConfig(settings)
+        settings.proxyGroups?[0].fields["clashdesk-filter"] = .string("[")
+        XCTAssertThrowsError(try generateConfig(settings))
+    }
+    func testConfigurationImportAndPrivateDifference() throws {
+        let object: [String: Any] = [
+            "proxies": [["name": "Node", "type": "ss", "server": "example.com", "port": 443, "cipher": "aes-128-gcm", "password": "private-value"]],
+            "proxy-groups": [["name": "Choose", "type": "select", "proxies": ["Node", "DIRECT"]]],
+            "dns": ["enable": true, "nameserver": ["1.1.1.1"]],
+            "rules": ["DOMAIN,example.com,Choose", "MATCH,Choose"]]
+        var imported = try importConfiguration(object, corePath: "")
+        XCTAssertEqual(imported.options?["dns.enable"], .boolean(true))
+        XCTAssertEqual(imported.proxyGroups?.first?.targets.first, "node:manual/Node")
+        XCTAssertEqual(imported.rules.first?.proxyGroup, "Choose")
+        XCTAssertEqual(imported.defaultProxyGroup, "Choose")
+        let previous = imported
+        imported.options?["secret"] = .string("never-show-this")
+        imported.options?["dns.enable"] = .boolean(false)
+        let diff = try configurationDifference(imported, applied: previous).joined(separator: "\n")
+        XCTAssertTrue(diff.contains("dns.enable"))
+        XCTAssertTrue(!diff.contains("never-show-this")); XCTAssertTrue(!diff.contains("private-value"))
+        var invalid = object; invalid["proxy-providers"] = ["Remote": ["type": "http"]]
+        XCTAssertThrowsError(try importConfiguration(invalid, corePath: ""))
+        invalid = object; invalid["rules"] = ["MATCH,Choose", "DOMAIN,example.com,DIRECT"]
+        XCTAssertThrowsError(try importConfiguration(invalid, corePath: ""))
+    }
+    func testNodeURIAndBase64Import() throws {
+        let uri = "trojan://password@example.com:443?sni=example.com#Test"
+        let nodes = try importNodeLinks(uri)
+        XCTAssertEqual(nodes.first?.name, "Test")
+        XCTAssertEqual(nodes.first?.fields["password"], .string("password"))
+        XCTAssertEqual(try importNodeLinks(Data(uri.utf8).base64EncodedString()).first?.name, "Test")
+        XCTAssertThrowsError(try importNodeLinks(uri + "\n" + uri))
+        XCTAssertThrowsError(try importNodeLinks("trojan://password@example.com:443?unknown=1#Test"))
+        XCTAssertThrowsError(try importNodeLinks("vless://bad-uuid@example.com:443#Invalid"))
+        let vless = try importNodeLinks("vless://00000000-0000-0000-0000-000000000001@example.com:443?security=tls&sni=target.example#VLESS")
+        XCTAssertEqual(vless.first?.fields["servername"], .string("target.example"))
+        XCTAssertThrowsError(try importNodeLinks("trojan://password@example.com:443?path=%2F#Invalid"))
+    }
+
+    func testReferenceRepairUpdatesEveryLocationAndRejectsCycles() throws {
+        var settings = Settings()
+        let source = Subscription(name: "Source", url: "https://example.com/sub")
+        settings.subscriptions = [source]
+        let missing = Node(provider: source.provider, name: "Gone")
+        let old = "node:" + missing.id
+        settings.defaultNode = missing
+        settings.rules = [RouteRule(kind: .domain, value: "example.com", node: missing)]
+        settings.proxyGroups = [ProxyGroup(name: "Select", targets: [old, "builtin:REJECT"], fields: ["default-selected": .string(old)])]
+        settings.options = ["rule-providers": .object(["Download": .object(["type": .string("http"), "behavior": .string("domain"), "url": .string("https://example.com/rules"), "proxy": .string(old)])])]
+        let fixed = try replacingNodeReferences(settings, old: old, target: "builtin:REJECT", nodes: [])
+        XCTAssertTrue(fixed.defaultNode == nil)
+        XCTAssertEqual(fixed.defaultPolicy, "REJECT")
+        XCTAssertEqual(fixed.rules.first?.builtin, "REJECT")
+        XCTAssertEqual(fixed.proxyGroups?.first?.targets, ["builtin:REJECT"])
+        XCTAssertEqual(fixed.proxyGroups?.first?.fields["default-selected"], .string("builtin:REJECT"))
+        XCTAssertEqual(fixed.options?["rule-providers"]?.object["Download"]?.object["proxy"], .string("builtin:REJECT"))
+        XCTAssertEqual(settings.defaultNode, missing)
+        XCTAssertThrowsError(try replacingNodeReferences(settings, old: old, target: "group:Select", nodes: []))
+        XCTAssertThrowsError(try replacingNodeReferences(settings, old: old, target: "node:manual/Unknown", nodes: []))
+    }
+    func testYAMLImportRejectsAliasesAndPreservesLogicalRules() throws {
+        let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".yaml")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try "dns: &dns {enable: true}\nother: *dns\n".write(to: file, atomically: true, encoding: .utf8)
+        XCTAssertThrowsError(try readConfigurationYAML(file))
+        try "rules:\n  - 'AND,((DOMAIN,example.com),(NETWORK,tcp)),REJECT'\n  - 'MATCH,DIRECT'\n".write(to: file, atomically: true, encoding: .utf8)
+        let imported = try importConfiguration(readConfigurationYAML(file), corePath: "")
+        XCTAssertEqual(imported.rules.first?.value, "((DOMAIN,example.com),(NETWORK,tcp))")
+        XCTAssertEqual(imported.rules.first?.builtin, "REJECT")
+        XCTAssertEqual(imported.defaultPolicy, "DIRECT")
+        XCTAssertEqual(imported.options?["dns.enable"], .boolean(false))
+        XCTAssertEqual(imported.tun, false)
+        _ = try generateConfig(imported)
+    }
+
     static var allTests = [
+        ("testReferenceRepairUpdatesEveryLocationAndRejectsCycles", testReferenceRepairUpdatesEveryLocationAndRejectsCycles),
+        ("testYAMLImportRejectsAliasesAndPreservesLogicalRules", testYAMLImportRejectsAliasesAndPreservesLogicalRules),
+        ("testDynamicSubscriptionMembersAndFiltering", testDynamicSubscriptionMembersAndFiltering),
+        ("testConfigurationImportAndPrivateDifference", testConfigurationImportAndPrivateDifference),
+        ("testNodeURIAndBase64Import", testNodeURIAndBase64Import),
         ("testReviewedHelpKeepsFullPathsAndSources", testReviewedHelpKeepsFullPathsAndSources),
         ("testReviewedProtocolOptionsAndRequirements", testReviewedProtocolOptionsAndRequirements),
         ("testInterruptedFileCommitRecoversOnSettingsLoad", testInterruptedFileCommitRecoversOnSettingsLoad),

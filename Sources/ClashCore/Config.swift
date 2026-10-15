@@ -229,9 +229,11 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         return String(target.dropFirst(8))
     }
     for group in settings.proxyGroups ?? [] {
-        var object = group.fields.filter { $0.value != .string("") }.mapValues(\.native)
+        var object = group.fields.filter { $0.value != .string("") && !$0.key.hasPrefix("clashdesk-") }.mapValues(\.native)
         object["name"] = group.name; object["type"] = group.type
-        object["proxies"] = group.targets.map(resolve)
+        let targets = effectiveGroupTargets(group, settings: settings).map(resolve)
+        object["proxies"] = targets.isEmpty && group.fields["include-all-proxies"] != .boolean(true)
+            ? [group.fields["empty-fallback"]?.text ?? "REJECT"] : targets
         if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = resolve(selected) }
         if object["empty-fallback"] == nil { object["empty-fallback"] = "REJECT" }
         groups.append(object)

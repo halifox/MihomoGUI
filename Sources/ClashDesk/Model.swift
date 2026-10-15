@@ -24,8 +24,13 @@ final class DeskModel: ObservableObject {
     @Published var isTestingDelays = false
     private var delayTask: Task<Void, Never>?
     @Published var serviceLogs: String?
+    @Published var configurationImport: ConfigurationImport?
+    @Published var diagnosticReport: String?
+    var lastSubscriptionUpdate: SubscriptionChanges?
+    @Published var subscriptionUpdate: SubscriptionChanges?
     @Published var configPreview: ConfigPreview?
     @Published var rulePrefill: RouteRule?
+    @Published var liveGroups: [String: CoreAPI.LiveGroup] = [:]
     @Published var coreRunning = false
     @Published var lastSample: Date?
     @Published var busy = false
@@ -37,12 +42,12 @@ final class DeskModel: ObservableObject {
     @Published var coreVersion: String?
     @Published var corePID: Int?
     @Published var statsPID: Int?
-    private var runtimeSettings = ClashCore.Settings()
+    @Published private var runtimeSettings = ClashCore.Settings()
     private var diagnosticsDate = Date.distantPast
     let directory: URL
     private var monitor: Task<Void, Never>?
     private var configurationSaveTask: Task<Void, Never>?
-    private var configurationSavePending = false
+    @Published private var configurationSavePending = false
 
     init() {
         directory = (try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk")
@@ -102,7 +107,52 @@ final class DeskModel: ObservableObject {
     var api: CoreAPI { (try? CoreAPI(settings: runtimeSettings)) ?? CoreAPI(secret: runtimeSettings.secret) }
     var allNodes: [Node] { (settings.manualProxies ?? []).map(\.node) + nodes }
     var servicesActive: Bool { coreRunning || corePID != nil || statsPID != nil }
+    var draftStatus: String { configurationSavePending ? "草稿保存中…" : hasUnappliedChanges ? "草稿已保存 · 未应用" : "配置已同步" }
     var hasUnappliedChanges: Bool { runtimeConfigurationChanged(settings, applied: runtimeSettings) }
+    func matchedDraftRule(_ connection: Connection) -> RouteRule? {
+        guard let payload = connection.rulePayload, let kind = connection.rule?.lowercased().replacingOccurrences(of: "-", with: "") else { return nil }
+        guard let applied = runtimeSettings.rules.first(where: {
+            $0.value == payload && $0.kind.rawValue.lowercased().replacingOccurrences(of: "-", with: "") == kind
+        }) else { return nil }
+        return settings.rules.first { $0.id == applied.id && $0.value == applied.value && $0.kind == applied.kind }
+    }
+    func runtimeMemberLabel(_ name: String) -> String {
+        for (index, source) in runtimeSettings.subscriptions.enumerated() {
+            for (position, entry) in (runtimeSettings.subscriptionProxies?[source.id] ?? []).enumerated() {
+                if name == "CD.Proxy.\(index).\(position)" { return source.name + " / " + (entry.object["name"]?.text ?? name) }
+            }
+        }
+        return name
+    }
+    func setLiveMember(_ group: String, member: String) {
+        perform {
+            try await self.api.selectGroup(group, member: member)
+            self.liveGroups = try await self.api.liveGroups()
+            self.message = "已切换运行节点；启动默认值未修改。"
+        }
+    }
+    func saveLiveMemberAsDefault(_ group: ProxyGroup) {
+        guard let name = liveGroups[group.name]?.now else { return }
+        do {
+            let applied = try configurationObject(runtimeSettings)
+            let runtimeGroup = (applied["proxy-groups"] as? [[String: Any]])?.first { $0["name"] as? String == group.name }
+            let members = runtimeGroup?["proxies"] as? [String] ?? []
+            guard let oldGroup = runtimeSettings.proxyGroups?.first(where: { $0.id == group.id }),
+                  let position = members.firstIndex(of: name), effectiveGroupTargets(oldGroup, settings: runtimeSettings).indices.contains(position),
+                  effectiveGroupTargets(group, settings: settings).contains(effectiveGroupTargets(oldGroup, settings: runtimeSettings)[position]) else { throw DeskError("当前成员不在草稿的显式成员中，请在编辑窗口设置默认成员。") }
+            var changed = group; let target = effectiveGroupTargets(oldGroup, settings: runtimeSettings)[position]
+            if !changed.targets.contains(target) { changed.targets.append(target) }
+            changed.fields["default-selected"] = .string(target)
+            try saveProxyGroup(changed)
+            message = "已保存启动默认成员，请应用更改。"
+        } catch { self.error = error.localizedDescription }
+    }
+    func configurationChanges(_ candidate: ClashCore.Settings) -> String {
+        do {
+            let changes = try configurationDifference(candidate, applied: runtimeSettings)
+            return changes.isEmpty ? "与上次确认的配置一致。" : "相对上次确认配置：\n" + changes.joined(separator: "\n")
+        } catch { return "无法比较配置：" + error.localizedDescription }
+    }
     func toggleAllServices() {
         if !servicesActive { startAll(); return }
         perform {
@@ -118,7 +168,8 @@ final class DeskModel: ObservableObject {
         do {
             let live = try await api.connections()
             connections = live; coreRunning = true
-        } catch { coreRunning = false; connections = [] }
+            liveGroups = (try? await api.liveGroups()) ?? [:]
+        } catch { coreRunning = false; connections = []; liveGroups = [:] }
         do {
             let folder = directory; let range = hours; let grouping = trafficGrouping
             let result = try await Task.detached {
@@ -264,12 +315,23 @@ final class DeskModel: ObservableObject {
             try commitFiles(files, directory: folder)
         }.value
     }
+    func showSubscriptionChanges(from previous: ClashCore.Settings) {
+        let changes = subscriptionChanges(from: previous, to: settings)
+        lastSubscriptionUpdate = changes; subscriptionUpdate = changes
+    }
     func refreshSubscription(_ subscription: Subscription) {
-        perform { try await self.saveSubscription(subscription) }
+        perform {
+            let previous = self.settings
+            try await self.saveSubscription(subscription)
+            self.showSubscriptionChanges(from: previous)
+        }
     }
     func refreshSubscriptions() {
         let candidate = settings
-        perform { try await self.importSubscriptions(candidate) }
+        perform {
+            try await self.importSubscriptions(candidate)
+            self.showSubscriptionChanges(from: candidate)
+        }
     }
     @Published var manualUDP: [String: Bool] = [:]
     func refreshManualUDP() async {
@@ -295,6 +357,7 @@ final class DeskModel: ObservableObject {
         } catch { /* Unsupported or invalid core configuration remains unknown. */ }
     }
     func testDelay(_ node: Node) { testDelays([node]) }
+    func testNodes(_ targets: [Node]) { testDelays(targets) }
     func testAllDelays() {
         guard !busy, !allNodes.isEmpty else { return }
         for index in nodes.indices {
@@ -421,6 +484,7 @@ final class DeskModel: ObservableObject {
         do { try save(); message = "规则已删除，请应用配置。" } catch { self.error = error.localizedDescription }
     }
     func deleteSubscription(_ subscription: Subscription) {
+        if (settings.proxyGroups ?? []).contains(where: { $0.fields["clashdesk-sources"]?.array.contains(.string(subscription.provider)) == true }) { error = "该订阅仍用于动态代理组，请先调整成员来源。"; return }
         if settings.defaultNode?.provider == subscription.provider || settings.rules.contains(where: { $0.node?.provider == subscription.provider }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains(where: { referencedNode($0)?.provider == subscription.provider }) }) {
             error = "该订阅仍被规则引用，请先调整相关出口。"; return
         }

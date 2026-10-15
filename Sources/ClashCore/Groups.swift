@@ -64,8 +64,11 @@ public func validateProxyGroups(_ settings: Settings) throws {
               !["DIRECT", "REJECT", "REJECT-DROP", "GLOBAL", "PASS", "COMPATIBLE"].contains(group.name),
               !manualNames.contains(group.name) else { throw DeskError("代理组名称无效或与代理名称重复") }
         guard ["select", "url-test", "fallback", "load-balance"].contains(group.type) else { throw DeskError("不支持的代理组类型") }
-        try validateFieldValues(group.fields, schema: groupEditorFields(group.type))
-        guard !group.targets.isEmpty || group.fields["include-all-proxies"] == .boolean(true) else { throw DeskError("代理组至少需要一个成员") }
+        try validateFieldValues(group.fields.filter { !$0.key.hasPrefix("clashdesk-") }, schema: groupEditorFields(group.type))
+        if let pattern = group.fields["clashdesk-filter"]?.text, !pattern.isEmpty { _ = try NSRegularExpression(pattern: pattern) }
+        let sources = group.fields["clashdesk-sources"]?.array.map(\.text) ?? []
+        guard sources.allSatisfy({ source in settings.subscriptions.contains { $0.provider == source } }) else { throw DeskError("动态成员引用了不存在的订阅") }
+        guard !group.targets.isEmpty || !(group.fields["clashdesk-sources"]?.array.isEmpty ?? true) || group.fields["include-all-proxies"] == .boolean(true) else { throw DeskError("代理组至少需要一个成员") }
         guard Set(group.targets).count == group.targets.count else { throw DeskError("代理组成员不能重复") }
         for target in group.targets {
             if target.hasPrefix("group:") {
@@ -96,4 +99,21 @@ public func validateProxyGroups(_ settings: Settings) throws {
     for name in names { try visit(name) }
     if let name = settings.defaultProxyGroup, !names.contains(name) { throw DeskError("MATCH 引用了不存在的代理组") }
     for rule in settings.rules { if let name = rule.proxyGroup, !names.contains(name) { throw DeskError("路由规则引用了不存在的代理组") } }
+}
+
+// App-owned source selection is expanded into proxies when generating YAML.
+public func effectiveGroupTargets(_ group: ProxyGroup, settings: Settings) -> [String] {
+    let sources = Set(group.fields["clashdesk-sources"]?.array.map(\.text) ?? [])
+    let pattern = group.fields["clashdesk-filter"]?.text ?? ""
+    let regex = pattern.isEmpty ? nil : try? NSRegularExpression(pattern: pattern)
+    var targets = group.targets
+    for source in settings.subscriptions where sources.contains(source.provider) {
+        for entry in settings.subscriptionProxies?[source.id] ?? [] {
+            let name = entry.object["name"]?.text ?? ""
+            if !pattern.isEmpty && regex?.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)) == nil { continue }
+            let target = "node:" + source.provider + "/" + name
+            if !targets.contains(target) { targets.append(target) }
+        }
+    }
+    return targets
 }

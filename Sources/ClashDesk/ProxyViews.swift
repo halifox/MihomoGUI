@@ -51,7 +51,13 @@ struct SubscriptionsView: View {
                     Text(columnText(subscription, "上次更新时间")).monospacedDigit()
                 }.width(contentWidth("上次更新时间"))
             }
-
+            HStack {
+                Text("订阅节点更新后，请检查差异并应用更改。").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Button("更新结果 / 修复引用") {
+                    model.subscriptionUpdate = model.lastSubscriptionUpdate ?? SubscriptionChanges(added: [], removed: [], changed: [])
+                }.disabled(model.lastSubscriptionUpdate == nil && model.missingNodeReferences.isEmpty)
+            }
         }
         .sheet(isPresented: $adding) { SubscriptionEditorView() }
         .sheet(item: $editing) { SubscriptionEditorView(subscription: $0) }
@@ -108,7 +114,15 @@ struct SubscriptionEditorView: View {
                     model.busy = true; error = nil
                     Task {
                         defer { model.busy = false }
-                        do { try await model.saveSubscription(subscription); dismiss() }
+                        do {
+                            let previous = model.settings
+                            try await model.saveSubscription(subscription)
+                            dismiss()
+                            Task { @MainActor in
+                                try? await Task.sleep(nanoseconds: 250_000_000)
+                                model.showSubscriptionChanges(from: previous)
+                            }
+                        }
                         catch { self.error = error.localizedDescription }
                     }
                 }.buttonStyle(.borderedProminent)
@@ -124,9 +138,26 @@ struct SubscriptionEditorView: View {
 struct OutboundProxiesView: View {
     @EnvironmentObject var model: DeskModel
     @Environment(\.tableDataReady) private var tableDataReady
+    @State private var importingLinks = false
     @State private var adding = false
     @State private var editing: ManualProxy?
-    @State private var selection: String?
+    @State private var selection: Set<String> = []
+    @State private var query = ""
+    @State private var source = "all"
+    @State private var protocolFilter = "all"
+    @State private var ordering = "name"
+    var filteredNodes: [Node] {
+        model.allNodes.filter { node in
+            (source == "all" || node.provider == source) && (protocolFilter == "all" || node.protocolName == protocolFilter) &&
+            (query.isEmpty || (node.name + " " + (node.server ?? "") + " " + model.nodeLabel(node)).localizedCaseInsensitiveContains(query))
+        }.sorted { a, b in
+            if ordering == "delay" {
+                let x = a.delayMilliseconds ?? Int.max, y = b.delayMilliseconds ?? Int.max
+                if x != y { return x < y }
+            }
+            return a.name == b.name ? a.id < b.id : a.name.localizedStandardCompare(b.name) == .orderedAscending
+        }
+    }
     var udpKey: Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
         var data = Data(model.settings.corePath.utf8)
@@ -138,30 +169,47 @@ struct OutboundProxiesView: View {
         return data
     }
     var selectedManual: ManualProxy? {
-        guard let node = model.allNodes.first(where: { $0.id == selection }) else { return nil }
+        guard let node = model.allNodes.first(where: { selection.count == 1 && selection.contains($0.id) }) else { return nil }
         return model.manualProxy(for: node)
     }
     var body: some View {
-        let rows = tableDataReady ? model.allNodes : []
+        let rows = tableDataReady ? filteredNodes : []
         VStack(alignment: .leading, spacing: 16) {
             HStack {
                 Text("出站代理").font(.title2.bold())
                 Spacer()
-                Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
+                Menu {
+                    Button("手动代理") { adding = true }
+                    Button("导入节点链接 / Base64") { importingLinks = true }
+                } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
                 Button { editing = selectedManual } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
                 DeleteButton(message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
                 Button {
-                    if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
+                    model.testNodes(model.allNodes.filter { selection.contains($0.id) })
                 } label: { Label("延迟", systemImage: "speedometer") }
-                    .disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
+                    .disabled(model.busy || selection.isEmpty || model.settings.corePath.isEmpty)
                 Button {
                     if model.isTestingDelays { model.cancelDelayTests() }
-                    else { model.testAllDelays() }
+                    else { model.testNodes(filteredNodes) }
                 } label: {
-                    Label(model.isTestingDelays ? "取消测延迟" : "全部延迟",
+                    Label(model.isTestingDelays ? "取消测延迟" : "结果测速",
                           systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
                 }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
             }.pageActions()
+            TextField("搜索名称、来源或服务器", text: $query).textFieldStyle(.roundedBorder)
+            HStack {
+                Picker("来源", selection: $source) {
+                    Text("全部来源").tag("all")
+                    Text("手动添加").tag("manual")
+                    ForEach(model.settings.subscriptions) { Text($0.name).tag($0.provider) }
+                }
+                Picker("协议", selection: $protocolFilter) {
+                    Text("全部协议").tag("all")
+                    ForEach(Array(Set(model.allNodes.compactMap(\.protocolName))).sorted(), id: \.self) { Text($0).tag($0) }
+                }
+                Picker("排序", selection: $ordering) { Text("名称").tag("name"); Text("延迟").tag("delay") }
+                Text("\(rows.count) 个节点 / 已选 \(selection.count)").foregroundStyle(.secondary)
+            }.controlSize(.regular)
             Table(rows, selection: $selection) {
                 TableColumn("名称") { node in Text(node.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
                 TableColumn("类型") { node in Text(node.protocolName ?? "—") }.width(tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }))
@@ -184,6 +232,7 @@ struct OutboundProxiesView: View {
 
         }
         .task(id: udpKey) { await model.refreshManualUDP() }
+        .sheet(isPresented: $importingLinks) { NodeLinksView() }
         .sheet(isPresented: $adding) { ProxyEditorView() }
         .sheet(item: $editing) { ProxyEditorView(proxy: $0) }
     }

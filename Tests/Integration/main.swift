@@ -1,4 +1,5 @@
 import Foundation
+import Darwin
 import ClashCore
 
 @main
@@ -47,6 +48,10 @@ struct Integration {
         }
         guard previewDelay >= 20 else { throw DeskError("离线内核节点延迟测试异常") }
         print("PASS: unprivileged node import, subscription order, local cache and latency without TUN")
+        settings.proxyGroups = [
+            ProxyGroup(name: "动态日本", fields: ["clashdesk-sources": .array([.string(subscription.provider)]), "clashdesk-filter": .string("Fixture")]),
+            ProxyGroup(name: "EmptyDynamic", fields: ["clashdesk-sources": .array([.string(subscription.provider)]), "clashdesk-filter": .string("^NeverMatches$")])
+        ]
         try await prepareGeoAssets(corePath: core, directory: directory)
         let fullConfig = directory.appendingPathComponent("defaults.yaml")
         try generateConfig(settings).write(to: fullConfig)
@@ -77,7 +82,8 @@ struct Integration {
         guard validation.terminationStatus == 0 else { throw DeskError("mihomo 不接受生成的配置") }
         print("PASS: real mihomo config validation")
         let running = try process(["-d", directory.path, "-f", configURL.path])
-        defer { if running.isRunning { running.terminate(); running.waitUntilExit() } }
+        // Avoid blocking the Swift executor in Foundation task teardown. This is an isolated test core.
+        defer { if running.isRunning { kill(running.processIdentifier, SIGKILL) } }
         let api = CoreAPI(secret: settings.secret, port: 19191)
         var ready = false
         for _ in 0..<30 {
@@ -103,6 +109,15 @@ struct Integration {
         _ = try await api.version()
         print("PASS: debug memory WebSocket and version API")
         print("PASS: real mihomo provider, exact node group and connections API")
+        let liveGroups = try await api.liveGroups()
+        guard liveGroups["动态日本"]?.all == ["CD.Proxy.0.0"], liveGroups["EmptyDynamic"]?.all == ["REJECT"] else { throw DeskError("动态成员或空组拒绝策略没有加载") }
+        try await api.selectGroup("动态日本", member: "CD.Proxy.0.0")
+        print("PASS: dynamic subscription groups, empty fallback and Unicode selector API")
+        guard liveGroups["CD.Node.0"]?.all == ["CD.Proxy.0.0"] else { throw DeskError("运行分组成员读取失败") }
+        try await api.selectGroup("CD.Node.0", member: "CD.Proxy.0.0")
+        let switched = try await api.liveGroups()
+        guard switched["CD.Node.0"]?.now == "CD.Proxy.0.0", running.isRunning else { throw DeskError("运行节点切换失败") }
+        print("PASS: live selector switch without restarting core")
         try await api.reload(yamlData(config))
         print("PASS: real mihomo live config reload")
         let unauthorized = CoreAPI(secret: "incorrect", port: 19191)
@@ -176,6 +191,13 @@ struct Integration {
         guard manualRules.first?["payload"] as? String == "192.0.2.0/24", manualRules.count == 7 else { throw DeskError("CIDR、逻辑规则或规则集合没有正确加载") }
         let groupInfo = try JSONSerialization.jsonObject(with: await manualAPI.request("/proxies/Choose")) as! [String: Any]
         guard groupInfo["now"] as? String == manualHTTP.name else { throw DeskError("代理组默认成员没有加载") }
+        try await manualAPI.selectGroup("Choose", member: "REJECT")
+        let rejected = try await manualAPI.liveGroups()
+        guard rejected["Choose"]?.now == "REJECT" else { throw DeskError("切换到其他运行成员失败") }
+        try await manualAPI.selectGroup("Choose", member: "Manual,HTTP")
+        let restored = try await manualAPI.liveGroups()
+        guard restored["Choose"]?.now == "Manual,HTTP" else { throw DeskError("恢复运行成员失败") }
+        print("PASS: live switch between different selector members")
         for name in ["Auto", "Backup", "Balance"] { _ = try await manualAPI.request("/proxies/" + name) }
         let ruleProviders = try JSONSerialization.jsonObject(with: await manualAPI.request("/providers/rules")) as! [String: Any]
         guard (ruleProviders["providers"] as? [String: Any])?.count == 3 else { throw DeskError("三种规则集合没有加载") }

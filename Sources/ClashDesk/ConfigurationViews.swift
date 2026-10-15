@@ -98,6 +98,7 @@ struct ApplicationSettingsView: View {
                                 .buttonStyle(.borderless).help("刷新运行信息").disabled(model.busy)
                         }
                     }
+                    ConfigurationTransferView()
                     GroupBox("内核文件") {
                         formRow("core-path", help: "选择可执行的 macOS mihomo 二进制文件，用于代理运行、订阅解析和延迟测试。") {
                             HStack {

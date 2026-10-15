@@ -43,7 +43,17 @@ struct ResourcesView: View {
                 Table(rows, selection: $selection) {
                     TableColumn("名称") { row in Text(row.name).textSelection(.enabled) }.width(tableColumnWidth("名称", rows.map(\.name)))
                     TableColumn("类型") { row in Text(row.type) }.width(tableColumnWidth("类型", rows.map(\.type)))
-                    TableColumn("选择节点") { row in
+                    TableColumn("当前使用（即时切换）") { row in
+                        if let group = row.group, group.type == "select", let live = model.liveGroups[group.name], live.type == "Selector" {
+                            HStack {
+                                Picker("当前使用", selection: Binding(get: { live.now ?? "" }, set: { model.setLiveMember(group.name, member: $0) })) {
+                                    ForEach(live.all ?? [], id: \.self) { Text(model.runtimeMemberLabel($0)).tag($0) }
+                                }.labelsHidden().disabled(model.busy)
+                                Button("设为默认") { model.saveLiveMemberAsDefault(group) }.disabled(model.busy)
+                            }
+                        } else { Text(row.group.flatMap { model.liveGroups[$0.name]?.now }.map(model.runtimeMemberLabel) ?? "—") }
+                    }.width(min: 220, ideal: 280)
+                    TableColumn("启动默认") { row in
                         if let group = row.group, group.type == "select" {
                             Picker("选择节点", selection: Binding(get: {
                                 let selected = group.fields["default-selected"]?.text ?? ""
@@ -60,7 +70,7 @@ struct ResourcesView: View {
                                 }
                             }.labelsHidden().disabled(model.busy)
                         } else { Text("—") }
-                    }.width(tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48))
+                    }.width(tableColumnWidth("启动默认", rows.map(selectedMemberText), padding: 48))
                 }
             } else {
                 Table(rows, selection: $selection) {
@@ -108,6 +118,8 @@ struct ResourceEditorView: View {
     @State private var fields: [String: ConfigValue]
     @State private var targets: [String]
     @State private var error: String?
+    @State private var memberSearch = ""
+    @State private var pickedMembers: Set<String> = []
     init(groups: Bool, original: ResourceRow? = nil) {
         self.groups = groups; self.original = original
         _name = State(initialValue: original?.name ?? "")
@@ -141,6 +153,39 @@ struct ResourceEditorView: View {
                             }.labelsHidden()
                             Spacer(minLength: 0)
                         }.padding(.vertical, 3)
+                        GroupBox("批量添加节点") {
+                            VStack(alignment: .leading) {
+                                TextField("搜索节点名称或订阅来源", text: $memberSearch).textFieldStyle(.roundedBorder)
+                                ScrollView {
+                                    VStack(alignment: .leading) {
+                                        ForEach(model.allNodes.filter { memberSearch.isEmpty || model.nodeLabel($0).localizedCaseInsensitiveContains(memberSearch) }) { node in
+                                            Toggle(model.nodeLabel(node), isOn: Binding(get: { pickedMembers.contains("node:" + node.id) }, set: { enabled in
+                                                if enabled { pickedMembers.insert("node:" + node.id) } else { pickedMembers.remove("node:" + node.id) }
+                                            }))
+                                        }
+                                    }
+                                }.frame(height: 130)
+                                Button("添加已选 \(pickedMembers.count) 个节点") {
+                                    targets += model.allNodes.map { "node:" + $0.id }.filter { pickedMembers.contains($0) && !targets.contains($0) }
+                                    pickedMembers = []
+                                }.disabled(pickedMembers.isEmpty)
+                            }
+                        }
+                        GroupBox("动态订阅成员") {
+                            VStack(alignment: .leading) {
+                                ForEach(model.settings.subscriptions) { source in
+                                    Toggle(source.name, isOn: Binding(get: { fields["clashdesk-sources"]?.array.contains(.string(source.provider)) == true }, set: { enabled in
+                                        var sources = fields["clashdesk-sources"]?.array ?? []
+                                        sources.removeAll { $0 == .string(source.provider) }
+                                        if enabled { sources.append(.string(source.provider)) }
+                                        fields["clashdesk-sources"] = .array(sources)
+                                    }))
+                                }
+                                TextField("节点名称正则过滤（留空包含全部）", text: Binding(get: { fields["clashdesk-filter"]?.text ?? "" }, set: { fields["clashdesk-filter"] = .string($0) })).textFieldStyle(.roundedBorder)
+                                Text("展开后共 \(effectiveGroupTargets(ProxyGroup(name: name, type: type, targets: targets, fields: fields), settings: model.settings).count) 个成员；随订阅更新。")
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
                         HStack(alignment: .top, spacing: 12) {
                             FieldKeyLabel(title: "proxies", key: "proxies", description: "引入节点或其他代理组作为成员。成员顺序可通过上下移按钮调整；fallback 会按顺序选择可用成员。").frame(width: 200, alignment: .leading)
                             VStack(alignment: .leading, spacing: 4) {
@@ -200,7 +245,7 @@ struct ResourceEditorView: View {
         }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
         .environment(\.formHelpDocument, groups ? "proxy-groups/" + type + ".md" : "rule-providers/index.md")
         .onChange(of: type) { _ in
-            let allowed = Set(schema.map(\.path) + (groups ? [] : ["proxy"]))
+            let allowed = Set(schema.map(\.path) + (groups ? ["clashdesk-sources", "clashdesk-filter"] : ["proxy"]))
             fields = fields.filter { allowed.contains($0.key) }
             if groups && type != "select" {
                 if fields["url"] == nil { fields["url"] = .string("https://www.gstatic.com/generate_204") }
