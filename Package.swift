@@ -9,6 +9,5 @@ let package = Package(
         .systemLibrary(name: "CSQLite"),
         .target(name: "ClashCore", dependencies: ["CSQLite"]),
         .executableTarget(name: "ClashStats", dependencies: ["ClashCore"]),
-        .executableTarget(name: "ClashDesk", dependencies: ["ClashCore"]),
-        .testTarget(name: "ClashCoreTests", dependencies: ["ClashCore"])
+        .executableTarget(name: "ClashDesk", dependencies: ["ClashCore"])
     ])

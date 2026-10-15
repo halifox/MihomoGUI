@@ -10,129 +10,6 @@ struct ResourceRow: Identifiable {
     var group: ProxyGroup?
 }
 
-struct ResourcesView: View {
-    @State private var sortOrder: [TableSort<ResourceRow>] = []
-    @EnvironmentObject var model: DeskModel
-    let groups: Bool
-    @State private var selection: String?
-    @State private var adding = false
-    @State private var editing: ResourceRow?
-    var title: String { groups ? "代理分组" : "规则集合" }
-    var rows: [ResourceRow] {
-        if groups { return (model.settings.proxyGroups ?? []).map { ResourceRow(id: $0.id, name: $0.name, type: $0.type, fields: $0.fields, group: $0) } }
-        return (model.settings.options?["rule-providers"]?.object ?? [:]).keys.sorted().map { name in
-            let fields = model.settings.options?["rule-providers"]?.object[name]?.object ?? [:]
-            return ResourceRow(id: name, name: name, type: fields["type"]?.text ?? "", fields: fields)
-        }
-    }
-    var selected: ResourceRow? { rows.first { $0.id == selection } }
-    func columnSort(_ column: String) -> TableSort<ResourceRow> {
-        switch column {
-        case "名称": return TableSort(column) { $0.name }
-        case "类型": return TableSort(column) { $0.type }
-        case "选择节点": return TableSort(column, value: selectedMemberText)
-        case "行为": return TableSort(column, value: detail)
-        default: return TableSort(column, value: source)
-        }
-    }
-    var body: some View {
-        let rows = rows
-        VStack(alignment: .leading, spacing: 0) {
-            if groups {
-                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                    TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
-                    TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
-                    TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
-                        memberPicker(row)
-                    }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
-                }
-                .background(TableColumnAutoFit(widths: [
-                    tableColumnWidth("名称", rows.map(\.name)),
-                    tableColumnWidth("类型", rows.map(\.type)),
-                    tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48)
-                ]))
-            } else {
-                Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                    TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
-                    TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
-                    TableColumn("行为", sortUsing: columnSort("行为")) { row in Text(detail(row)) }.width(min: 40, ideal: tableColumnWidth("行为", rows.map(detail)), max: nil)
-                    TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
-                        .width(min: 40, ideal: tableColumnWidth("来源 / 内容", rows.map(source)), max: nil)
-                }
-                .background(TableColumnAutoFit(widths: [
-                    tableColumnWidth("名称", rows.map(\.name)),
-                    tableColumnWidth("类型", rows.map(\.type)),
-                    tableColumnWidth("行为", rows.map(detail)),
-                    tableColumnWidth("来源 / 内容", rows.map(source))
-                ]))
-            }
-
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
-                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(model.busy || selected == nil)
-                    DeleteButton(toolbar: true, message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
-                        if let selected { model.deleteResource(selected, groups: groups) }
-                    }.disabled(model.busy || selected == nil)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-        }
-        .sheet(isPresented: $adding) { ResourceEditorView(groups: groups) }
-        .sheet(item: $editing) { ResourceEditorView(groups: groups, original: $0) }
-    }
-    @ViewBuilder func memberPicker(_ row: ResourceRow) -> some View {
-        if let group = row.group, group.type == "select" {
-            Picker("选择节点", selection: Binding(get: {
-                let current = group.fields["default-selected"]?.text ?? ""
-                return current.isEmpty ? group.targets.first ?? "" : current
-            }, set: { target in
-                var updated = group
-                updated.fields["default-selected"] = .string(target)
-                do { try model.saveProxyGroup(updated) }
-                catch { model.error = error.localizedDescription }
-            })) {
-                if group.targets.isEmpty { Text("空（Empty）").tag("") }
-                ForEach(group.targets.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }, id: \.self) { target in
-                    Text(memberLabel(target)).tag(target)
-                }
-            }
-            .labelsHidden()
-            .disabled(model.busy || group.targets.isEmpty)
-        } else {
-            Text(selectedMemberText(row))
-        }
-    }
-    func detail(_ row: ResourceRow) -> String {
-        if let group = row.group { return "\(group.targets.count)" + (group.fields["include-all-proxies"] == .boolean(true) ? " + 全部节点" : "") }
-        return (row.fields["behavior"]?.text ?? "—") + " / " + (row.fields["format"]?.text ?? "yaml")
-    }
-    func selectedMemberText(_ row: ResourceRow) -> String {
-        guard let group = row.group, group.type == "select" else { return "—" }
-        let selected = group.fields["default-selected"]?.text ?? ""
-        guard let target = selected.isEmpty ? group.targets.first : selected else { return "空（Empty）" }
-        return memberLabel(target)
-    }
-    func memberLabel(_ target: String) -> String {
-        if let node = model.allNodes.first(where: { "node:" + $0.id == target }) {
-            return model.nodeLabelWithDelay(node)
-        }
-        if target.hasPrefix("group:") { return "代理组 / " + target.dropFirst(6) }
-        if target.hasPrefix("builtin:") { return optionLabel(String(target.dropFirst(8))) }
-        return "已失效：" + target
-    }
-    func source(_ row: ResourceRow) -> String {
-        if groups { return row.fields["url"]?.text ?? "—" }
-        if row.type == "inline" { return "\(row.fields["payload"]?.array.count ?? 0) 条规则" }
-        return row.fields[row.type == "http" ? "url" : "path"]?.text ?? "—"
-    }
-}
-
 struct ResourceEditorView: View {
     @EnvironmentObject var model: DeskModel
     @Environment(\.dismiss) private var dismiss
@@ -277,5 +154,95 @@ struct ResourceEditorView: View {
             } else { try model.saveRuleProvider(name: name, type: type, fields: fields, oldName: original?.name) }
             dismiss()
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+extension DeskModel {
+    func saveProxyGroup(_ group: ProxyGroup) throws {
+        var candidate = settings
+        var groups = candidate.proxyGroups ?? []
+        if let index = groups.firstIndex(where: { $0.id == group.id }) {
+            let old = groups[index].name
+            guard !groups.contains(where: { $0.id != group.id && $0.name == group.name }) else { throw DeskError("代理组名称已存在") }
+            groups[index] = group
+            for index in groups.indices {
+                groups[index].targets = groups[index].targets.map { $0 == "group:" + old ? "group:" + group.name : $0 }
+                if groups[index].fields["default-selected"] == .string("group:" + old) { groups[index].fields["default-selected"] = .string("group:" + group.name) }
+            }
+            for index in candidate.rules.indices where candidate.rules[index].proxyGroup == old { candidate.rules[index].proxyGroup = group.name }
+            if candidate.defaultProxyGroup == old { candidate.defaultProxyGroup = group.name }
+            for index in candidate.manualProxies?.indices ?? 0..<0 {
+                if candidate.manualProxies?[index].fields["dialer-proxy"] == .string(old) { candidate.manualProxies?[index].fields["dialer-proxy"] = .string(group.name) }
+            }
+            var providers = candidate.options?["rule-providers"]?.object ?? [:]
+            for name in providers.keys {
+                var fields = providers[name]?.object ?? [:]
+                if fields["proxy"] == .string("group:" + old) || fields["proxy"] == .string(old) { fields["proxy"] = .string("group:" + group.name) }
+                providers[name] = .object(fields)
+            }
+            candidate.options?["rule-providers"] = .object(providers)
+            rewriteSubRules(&candidate, old: old, new: group.name, provider: false)
+        } else { groups.append(group) }
+        candidate.proxyGroups = groups
+        _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+    }
+    func saveRuleProvider(name: String, type: String, fields: [String: ConfigValue], oldName: String?) throws {
+        guard !configurationLocked else { throw DeskError("Stop the core before editing rule providers") }
+        guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集名称无效") }
+        var candidate = settings
+        var providers = candidate.options?["rule-providers"]?.object ?? [:]
+        guard name == oldName || providers[name] == nil else { throw DeskError("规则集名称已存在") }
+        var fields = fields; fields["type"] = .string(type)
+        try validateFieldValues(fields, schema: ruleProviderEditorFields(type))
+        if type == "file" {
+            guard FileManager.default.isReadableFile(atPath: fields["path"]?.text ?? "") else { throw DeskError("请选择可读取的本地规则文件") }
+        }
+        if let oldName, oldName != name {
+            providers.removeValue(forKey: oldName)
+            for index in candidate.rules.indices {
+                if candidate.rules[index].kind == .ruleSet, candidate.rules[index].value == oldName { candidate.rules[index].value = name }
+                else { candidate.rules[index].value = replacingProvider(candidate.rules[index].value, old: oldName, new: name) }
+            }
+            rewriteSubRules(&candidate, old: oldName, new: name, provider: true)
+        }
+        providers[name] = .object(fields)
+        var options = candidate.options ?? [:]; options["rule-providers"] = .object(providers); candidate.options = options
+        _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+    }
+    func deleteResource(_ row: ResourceRow, groups: Bool) {
+        guard groups || !configurationLocked else { return }
+        do {
+            var candidate = settings
+            let subRules = candidate.options?["sub-rules"]?.object.values.flatMap(\.array).map(\.text) ?? []
+            if groups {
+                guard !(candidate.manualProxies ?? []).contains(where: { $0.fields["dialer-proxy"] == .string(row.name) }),
+                      candidate.defaultProxyGroup != row.name,
+                      !candidate.rules.contains(where: { $0.proxyGroup == row.name }),
+                      !(candidate.proxyGroups ?? []).contains(where: { $0.id != row.id && $0.targets.contains("group:" + row.name) }),
+                      !(candidate.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("group:" + row.name) || $0.object["proxy"] == .string(row.name) }) ?? false),
+                      !subRules.contains(where: { $0.hasSuffix("," + row.name) }) else { throw DeskError("代理组仍被引用，请先调整引用") }
+                candidate.proxyGroups?.removeAll { $0.id == row.id }
+            } else {
+                guard !candidate.rules.contains(where: { ($0.kind == .ruleSet && $0.value == row.name) || replacingProvider($0.value, old: row.name, new: "__check__") != $0.value }),
+                      !subRules.contains(where: { replacingProvider($0, old: row.name, new: "__check__") != $0 }) else { throw DeskError("规则集仍被规则引用，请先调整规则") }
+                var providers = candidate.options?["rule-providers"]?.object ?? [:]; providers.removeValue(forKey: row.name)
+                candidate.options?["rule-providers"] = .object(providers)
+            }
+            _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+        } catch { self.error = error.localizedDescription }
+    }
+    private func replacingProvider(_ value: String, old: String, new: String) -> String {
+        value.replacingOccurrences(of: "RULE-SET," + old + ",", with: "RULE-SET," + new + ",")
+            .replacingOccurrences(of: "RULE-SET," + old + ")", with: "RULE-SET," + new + ")")
+    }
+    private func rewriteSubRules(_ candidate: inout ClashCore.Settings, old: String, new: String, provider: Bool) {
+        var subRules = candidate.options?["sub-rules"]?.object ?? [:]
+        for name in subRules.keys {
+            subRules[name] = .array((subRules[name]?.array ?? []).map { entry in
+                let text = entry.text
+                return .string(provider ? replacingProvider(text, old: old, new: new) : text.hasSuffix("," + old) ? String(text.dropLast(old.count)) + new : text)
+            })
+        }
+        if !subRules.isEmpty { candidate.options?["sub-rules"] = .object(subRules) }
     }
 }

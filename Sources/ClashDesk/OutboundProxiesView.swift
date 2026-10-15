@@ -2,159 +2,6 @@ import SwiftUI
 import AppKit
 import ClashCore
 
-struct SubscriptionsView: View {
-    @State private var sortOrder: [TableSort<Subscription>] = []
-    @EnvironmentObject var model: DeskModel
-    @State private var selection: String?
-    @State private var adding = false
-    @State private var editing: Subscription?
-    var selected: Subscription? { model.settings.subscriptions.first { $0.id == selection } }
-    func columnSort(_ column: String) -> TableSort<Subscription> {
-        let counts = Dictionary(model.nodes.map { ($0.provider, 1) }, uniquingKeysWith: +)
-        switch column {
-        case "上传流量": return TableSort(column) { $0.usage?.upload ?? -1 }
-        case "下载流量": return TableSort(column) { $0.usage?.download ?? -1 }
-        case "剩余流量": return TableSort(column) { $0.usage?.remaining ?? -1 }
-        case "总流量": return TableSort(column) { $0.usage?.total ?? -1 }
-        case "到期时间": return TableSort(column) { $0.usage?.expiresAt ?? .distantPast }
-        case "节点数": return TableSort(column) { counts[$0.provider] ?? 0 }
-        case "上次更新时间": return TableSort(column) { $0.lastUpdatedAt ?? .distantPast }
-        default: return TableSort(column) { $0.name }
-        }
-    }
-    var body: some View {
-        let currentSort = sortOrder.map { descriptor in
-            var comparator = columnSort(descriptor.column)
-            comparator.order = descriptor.order
-            return comparator
-        }
-        VStack(alignment: .leading, spacing: 0) {
-            Table(model.settings.subscriptions.sorted(using: currentSort), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("名称", sortUsing: columnSort("名称")) { subscription in
-                    Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
-                }.width(min: 40, ideal: contentWidth("名称"), max: nil)
-                TableColumn("上传流量", sortUsing: columnSort("上传流量")) { subscription in
-                    Text(columnText(subscription, "上传流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("上传流量"), max: nil)
-                TableColumn("下载流量", sortUsing: columnSort("下载流量")) { subscription in
-                    Text(columnText(subscription, "下载流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("下载流量"), max: nil)
-                TableColumn("剩余流量", sortUsing: columnSort("剩余流量")) { subscription in
-                    Text(columnText(subscription, "剩余流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("剩余流量"), max: nil)
-                TableColumn("总流量", sortUsing: columnSort("总流量")) { subscription in
-                    Text(columnText(subscription, "总流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("总流量"), max: nil)
-                TableColumn("到期时间", sortUsing: columnSort("到期时间")) { subscription in
-                    Text(columnText(subscription, "到期时间")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("到期时间"), max: nil)
-                TableColumn("节点数", sortUsing: columnSort("节点数")) { subscription in
-                    Text(columnText(subscription, "节点数")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("节点数"), max: nil)
-                TableColumn("上次更新时间", sortUsing: columnSort("上次更新时间")) { subscription in
-                    Text(columnText(subscription, "上次更新时间")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("上次更新时间"), max: nil)
-            }
-            .background(TableColumnAutoFit(widths: [
-                contentWidth("名称"),
-                contentWidth("上传流量"),
-                contentWidth("下载流量"),
-                contentWidth("剩余流量"),
-                contentWidth("总流量"),
-                contentWidth("到期时间"),
-                contentWidth("节点数"),
-                contentWidth("上次更新时间")
-            ]))
-
-        }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28)
-                        .disabled(model.busy)
-                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || selected == nil)
-                    DeleteButton(toolbar: true, message: "确定删除订阅“\(selected?.name ?? "")”及其节点吗？此操作无法撤销。") { if let selected { model.deleteSubscription(selected) } }
-                        .disabled(model.busy || selected == nil)
-                    Button { if let selected { model.refreshSubscription(selected) } } label: { toolbarIcon("更新", systemImage: "arrow.clockwise") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
-                    Button { model.refreshSubscriptions() } label: { toolbarIcon("全部更新", systemImage: "arrow.triangle.2.circlepath") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-        }
-        .sheet(isPresented: $adding) { SubscriptionEditorView() }
-        .sheet(item: $editing) { SubscriptionEditorView(subscription: $0) }
-
-    }
-    func columnText(_ subscription: Subscription, _ column: String) -> String {
-        switch column {
-        case "名称": return subscription.name
-        case "上传流量": return subscription.usage?.upload.map(bytes) ?? "—"
-        case "下载流量": return subscription.usage?.download.map(bytes) ?? "—"
-        case "剩余流量": return subscription.usage?.remaining.map(bytes) ?? "—"
-        case "总流量": return subscription.usage?.total.map(bytes) ?? "—"
-        case "到期时间": return subscription.usage?.expiresAt.map {
-            $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute())
-        } ?? "—"
-        case "节点数": return String(model.nodes.filter { $0.provider == subscription.provider }.count)
-        default: return subscription.lastUpdatedAt.map {
-            $0.formatted(.dateTime.year().month(.twoDigits).day(.twoDigits).hour().minute().second())
-        } ?? "未记录"
-        }
-    }
-    func contentWidth(_ column: String) -> CGFloat {
-        tableColumnWidth(column, (model.settings.subscriptions).map { columnText($0, column) },
-                         numeric: column != "名称")
-    }
-
-}
-
-struct SubscriptionEditorView: View {
-    @EnvironmentObject var model: DeskModel
-    @Environment(\.dismiss) private var dismiss
-    let original: Subscription?
-    @State private var name: String
-    @State private var url: String
-    @State private var error: String?
-    init(subscription: Subscription? = nil) {
-        original = subscription
-        _name = State(initialValue: subscription?.name ?? "")
-        _url = State(initialValue: subscription?.url ?? "")
-    }
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
-            formRow("name *") { TextField("订阅名称", text: $name) }
-            formRow("url *") { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
-            if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
-            HStack {
-                Spacer()
-                if model.busy { ProgressView().controlSize(.small) }
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.busy)
-                Button(model.busy ? "正在拉取…" : "拉取并保存") {
-                    var subscription = Subscription(name: name, url: url)
-                    if let original { subscription.id = original.id }
-                    model.busy = true; error = nil
-                    Task {
-                        defer { model.busy = false }
-                        do { try await model.saveSubscription(subscription); dismiss() }
-                        catch { self.error = error.localizedDescription }
-                    }
-                }.buttonStyle(.borderedProminent)
-                    .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            }
-            if model.settings.corePath.isEmpty { Text("请先在设置中选择 mihomo 二进制文件。").foregroundStyle(.orange) }
-        }.textFieldStyle(.roundedBorder).padding(16).controlSize(.regular).frame(width: 620)
-            .environment(\.formHelpDocument, "subscription")
-            .interactiveDismissDisabled(model.busy)
-    }
-}
-
 struct OutboundProxiesView: View {
     @State private var sortOrder: [TableSort<Node>] = []
     @EnvironmentObject var model: DeskModel
@@ -335,5 +182,50 @@ struct ProxyEditorView: View {
         default: kind = "string"
         }
         return EditorField(path, kind: kind, elementKind: "string")
+    }
+}
+
+extension DeskModel {
+    func manualProxy(for node: Node) -> ManualProxy? {
+        guard node.provider == "manual" else { return nil }
+        return settings.manualProxies?.first { $0.name == node.name }
+    }
+    func saveManualProxy(_ proxy: ManualProxy) throws {
+        _ = try proxy.configuration()
+        var candidate = settings
+        var proxies = candidate.manualProxies ?? []
+        if let index = proxies.firstIndex(where: { $0.id == proxy.id }) {
+            let old = proxies[index].name
+            proxies[index] = proxy
+            for index in candidate.rules.indices where candidate.rules[index].node?.provider == "manual" && candidate.rules[index].node?.name == old { candidate.rules[index].node = proxy.node }
+            if candidate.defaultNode?.provider == "manual", candidate.defaultNode?.name == old { candidate.defaultNode = proxy.node }
+            var providers = candidate.options?["rule-providers"]?.object ?? [:]
+            for name in providers.keys {
+                var fields = providers[name]?.object ?? [:]
+                if fields["proxy"] == .string("node:manual/" + old) || fields["proxy"] == .string(old) { fields["proxy"] = .string("node:" + proxy.node.id) }
+                providers[name] = .object(fields)
+            }
+            if !providers.isEmpty { candidate.options?["rule-providers"] = .object(providers) }
+
+            for index in candidate.proxyGroups?.indices ?? 0..<0 {
+                let targets = candidate.proxyGroups?[index].targets ?? []
+                candidate.proxyGroups?[index].targets = targets.map { $0 == "node:manual/" + old ? "node:" + proxy.node.id : $0 }
+                if candidate.proxyGroups?[index].fields["default-selected"] == .string("node:manual/" + old) { candidate.proxyGroups?[index].fields["default-selected"] = .string("node:" + proxy.node.id) }
+            }
+        } else { proxies.append(proxy) }
+        candidate.manualProxies = proxies
+        if candidate.defaultNode == nil, candidate.defaultDirect != true, candidate.defaultPolicy == nil, candidate.defaultProxyGroup == nil { candidate.defaultNode = proxies.first?.node ?? nodes.first }
+        _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+        message = "代理已保存，运行时将自动应用。"
+    }
+    func deleteManualProxy(_ proxy: ManualProxy) {
+        if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
+            error = "该代理仍被路由规则或 MATCH 使用，请先调整出口。"; return
+        }
+        if settings.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("node:" + proxy.node.id) || $0.object["proxy"] == .string(proxy.name) }) == true {
+            error = "该代理仍用于规则集下载，请先修改下载出口。"; return
+        }
+        settings.manualProxies?.removeAll { $0.id == proxy.id }
+        do { try save(); message = "代理已删除，运行时将自动应用。" } catch { self.error = error.localizedDescription }
     }
 }

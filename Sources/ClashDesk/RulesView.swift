@@ -1,25 +1,9 @@
 import SwiftUI
+import AppKit
 import ClashCore
 
 private let matchID = "default-match"
 struct RuleTableItem: Identifiable { let id: String; let number: Int; let rule: RouteRule? }
-
-struct PolicyPicker: View {
-    @ObservedObject var model: DeskModel
-    @Binding var selection: String
-    var body: some View {
-        Picker("出口", selection: $selection) {
-            Text(optionLabel("DIRECT")).tag("builtin:DIRECT")
-            Text(optionLabel("REJECT")).tag("builtin:REJECT")
-            Text(optionLabel("REJECT-DROP")).tag("builtin:REJECT-DROP")
-            if selection.hasPrefix("node:"), !model.allNodes.contains(where: { "node:" + $0.id == selection }) {
-                Text("已失效：" + selection.dropFirst(5)).tag(selection)
-            }
-            ForEach(model.settings.proxyGroups ?? []) { Text("代理组 / " + $0.name).tag("group:" + $0.name) }
-            ForEach(model.allNodes) { node in Text(model.nodeLabelWithDelay(node)).tag("node:" + node.id) }
-        }.labelsHidden()
-    }
-}
 
 struct RulesView: View {
     @State private var sortOrder: [TableSort<RuleTableItem>] = []
@@ -272,5 +256,76 @@ struct RuleEditorView: View {
             rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
             try model.saveRule(rule); dismiss()
         } catch { self.error = error.localizedDescription }
+    }
+}
+
+extension DeskModel {
+    func deleteRule(_ id: String) {
+        settings.rules.removeAll { $0.id == id }
+        do { try save(); message = "规则已删除，运行时将自动应用。" } catch { self.error = error.localizedDescription }
+    }
+    func chooseApplicationPath() -> String? {
+        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowedContentTypes = [.application]
+        if panel.runModal() == .OK, let url = panel.url,
+           let bundle = Bundle(url: url), let executable = bundle.executableURL {
+            return executable.path
+        }
+        return nil
+    }
+    func targetID(node: Node?, builtin: String?, group: String? = nil) -> String { group.map { "group:" + $0 } ?? node.map { "node:" + $0.id } ?? "builtin:" + (builtin ?? "DIRECT") }
+    func setDefaultTarget(_ target: String) {
+        do {
+            var candidate = settings
+            let selected = allNodes.first { "node:" + $0.id == target }
+                ?? (candidate.defaultNode.map { "node:" + $0.id == target } == true ? candidate.defaultNode : nil)
+            if target.hasPrefix("node:"), selected == nil { throw DeskError("所选代理已失效，请重新选择出口") }
+            candidate.defaultProxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
+            candidate.defaultNode = selected
+            candidate.defaultPolicy = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
+            candidate.defaultDirect = candidate.defaultPolicy == "DIRECT"
+            _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+        } catch { self.error = error.localizedDescription }
+    }
+    func saveRule(_ rule: RouteRule) throws {
+        var candidate = settings
+        if let index = candidate.rules.firstIndex(where: { $0.id == rule.id }) { candidate.rules[index] = rule }
+        else { candidate.rules.append(rule) }
+        _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
+        message = "路由规则已保存，运行时将自动应用。"
+    }
+    func setRuleTarget(_ rule: RouteRule, target: String) {
+        do {
+            var changed = rule
+            changed.node = allNodes.first { "node:" + $0.id == target }
+                ?? (rule.node.map { "node:" + $0.id == target } == true ? rule.node : nil)
+            if target.hasPrefix("node:"), changed.node == nil { throw DeskError("所选代理已失效，请重新选择出口") }
+            changed.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
+            changed.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
+            try saveRule(changed)
+        } catch { self.error = error.localizedDescription }
+    }
+    @discardableResult
+    func moveRule(_ id: String, before targetID: String?) -> Bool {
+        guard !busy, let source = settings.rules.firstIndex(where: { $0.id == id }) else { return false }
+        if targetID == id { return true }
+        if let targetID, !settings.rules.contains(where: { $0.id == targetID }) { return false }
+        var candidate = settings
+        let rule = candidate.rules.remove(at: source)
+        let destination = targetID.flatMap { target in candidate.rules.firstIndex { $0.id == target } } ?? candidate.rules.count
+        candidate.rules.insert(rule, at: destination)
+        do {
+            try saveSettings(candidate, to: directory)
+            settings = candidate
+            message = "路由规则顺序已保存，运行时将自动应用。"
+            return true
+        } catch {
+            self.error = error.localizedDescription
+            return false
+        }
+    }
+    func moveRule(_ id: String, offset: Int) {
+        guard let index = settings.rules.firstIndex(where: { $0.id == id }), settings.rules.indices.contains(index + offset) else { return }
+        settings.rules.swapAt(index, index + offset)
+        do { try save() } catch { self.error = error.localizedDescription }
     }
 }

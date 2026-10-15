@@ -1,99 +1,98 @@
-# ClashDesk 0.5
+# ClashDesk
 
-仅支持 macOS 的原生 mihomo 客户端。SwiftUI GUI、独立 mihomo 内核、Swift 流量采集服务和 SQLite。退出 GUI 后，launchd 管理的服务继续运行。
+macOS 原生 mihomo 客户端，使用 SwiftUI 管理代理、订阅、分流与连接，通过独立的 Swift 采集进程将流量统计写入 SQLite。关闭窗口或退出应用后，已启动的服务继续运行。
 
-## 构建
+## 编译构建
 
-macOS 13+，需要 Swift 编译器。没有第三方 Swift 依赖；构建当前机器架构。
+需要 macOS 13 或更高版本，以及 Xcode 或 Command Line Tools 提供的 Swift 编译器。没有第三方 Swift 包依赖；订阅解析使用系统 Ruby / Psych，数据库使用系统 SQLite。
 
 ```sh
 bash scripts/build.sh
 open dist/ClashDesk.app
 ```
 
-提供 `Package.swift`，可在完整 Xcode 中打开。构建脚本直接调用 swiftc，适用于只有 Command Line Tools 的环境。重新构建后必须 Cmd-Q 退出旧进程，再打开应用。
+脚本直接调用 `swiftc`，编译当前机器架构的 GUI 和统计程序，打包并进行本地临时签名。构建产物为 `dist/ClashDesk.app`，中间文件在 `.build/manual/`。重新构建后，请用 Cmd-Q 退出旧进程，再打开应用。
 
-## 九个页面
+也可通过 `Package.swift` 在支持 Swift Package 的开发环境中打开项目。`scripts/` 只保留编译构建脚本。
 
-1. **全局配置**：全局配置、DNS、域名嗅探和 TUN，按配置文档生成可视化控件。包含开关、枚举、数字、文本、列表和键值表；合并为卡片表单，编辑后自动保存，DNS / 嗅探 / TUN 开关联动禁用下属字段。DNS 的 hosts / nameserver-policy 支持单值和列表。保留全部全局配置字段；明确不支持 macOS 的字段禁用编辑，已有值仍保留。
-2. **代理订阅**：表格显示名称、上传流量、下载流量、剩余流量、总流量、到期时间、节点数与上次更新时间；流量信息来自 subscription-userinfo 响应头，未提供时显示 —，右上角添加按钮打开名称 / 地址表单，成功解析非空节点后才保存；选中订阅后通过右上角按钮更新、编辑、删除，另可更新全部订阅。
-3. **出站代理**：统一代理表格，支持手动代理和 HTTPS Clash YAML 订阅。选择协议后生成必填字段、公共字段和适用的 TLS / 传输字段。覆盖 26 种文档中的代理类型，包括 Hysteria2、TUIC、Shadowsocks、VMess、VLESS、Trojan、AnyTLS、HTTP、SOCKS5 等。手动代理支持编辑和删除；订阅节点由订阅更新。表格显示 UDP 能力，通过右上角按钮进行测速；选中手动代理后可通过右上角编辑 / 删除按钮管理；支持选中节点测速及全部节点最多 5 个并发测速，批量复用同一个临时内核。
-4. **代理分组**：表格与弹出表单管理 select / url-test / fallback / load-balance，支持有序成员、嵌套代理组、健康检查和过滤参数；可作为路由出口及 MATCH 出口。检测重复名称和循环引用，被引用的代理组禁止删除。文档中弃用的 relay 未提供新增入口。
-5. **规则集合**：表格、添加 / 编辑 / 删除操作栏与弹出表单，支持 HTTP / file / inline 来源及 domain / ipcidr / classical 行为、yaml / text / mrs 格式；mrs 仅支持 domain / ipcidr。可选择下载出口和请求头；本地文件在启动时复制到内核目录，运行期间只读。被引用的集合禁止删除，重命名同步更新 RULE-SET 引用。
-6. **路由规则**：默认按规则执行顺序显示，序号由列表顺序实时生成且不存储；长按拖动行可调整实际匹配顺序，放下后恢复匹配顺序显示，MATCH 固定在末尾。支持添加、编辑、删除、上移、下移及在表格内直接选择出口。IP-CIDR 表单提供地址、掩码与 no-resolve / src；其他类型包括域名、ASN、端口、网络、进程、通配符、正则和逻辑条件。内置 DIRECT、REJECT、REJECT-DROP。支持 inline / http / file 规则集与子规则配置。MATCH 在实际规则配置中始终保留在末尾；点击列头排序仅影响显示，不修改匹配优先级。
-7. **活动连接**：主机、下载量、上传量、下载速度、上传速度、链路、规则、进程、连接时间、源地址、目标地址和类型，可断开单个连接，通过右上角菜单添加域名 / IP / 程序规则。
-8. **流量统计**：支持按域名、进程、目标 IP、目标端口汇总下载量、上传量、总流量及流量占比，并展示当前速度、当前连接数、程序数（进程分组显示域名数）、目标 IP 数（IP 分组隐藏）和出口数；选择最近 24 小时、7 天或 30 天。
-9. **应用设置**：配置延迟测试地址、超时（毫秒）及 unified-delay；unified-delay 与全局配置共用同一数据。编辑后自动保存，用于下一次测速，地址和超时不写入运行 YAML。选择 mihomo 二进制，显示内核版本、内存占用、Clash PID、采集服务 PID、最后采集时间、控制接口及数据目录。内存来自内核 WebSocket API，PID 来自对应 launchd 服务；离线显示“—”。
+## 使用
 
-全局配置及添加 / 编辑表单的字段旁提供问号按钮，弹出说明与对应文档链接。字段定义和说明由 AI 阅读本地 Meta-Docs 的正文、示例、通用字段及协议限制后逐项核对，直接维护 Swift 中的固定数据并随应用打包。
+1. 下载并解压 [mihomo](https://github.com/MetaCubeX/mihomo/releases)，赋予可执行权限，在“应用设置”选择内核文件。
+2. 在“全局配置”调整端口、DNS、嗅探和 TUN。
+3. 添加代理订阅或手动出站代理。订阅只导入节点，不导入其 DNS、代理组与路由规则。
+4. 按需配置代理分组、规则集合和路由规则，并确认末尾 MATCH 的出口。
+5. 点击“启动全部”，应用校验配置并请求管理员授权安装和启动服务。
 
-表单中的“设置此项”表示显式配置可选字段；未设置时由默认配置或内核默认值决定。新文档里的协议或选项是否可用，还取决于所选 mihomo 版本；内核启动前会做配置校验。
+运行期间，全局配置、内核文件与规则集合只读；节点、代理组与路由规则修改后自动应用。顶栏可查看内核日志或停止服务。退出应用不会停止服务。
 
-## 首次使用
+## 页面
 
-1. 在“设置”选择可信的 [mihomo 二进制](https://github.com/MetaCubeX/mihomo/releases)。如果使用压缩包，请先解压并赋予可执行权限。
-2. 在“全局配置”设置所需参数。
-3. 在“出站代理”填写手动代理，或在“代理订阅”添加订阅并立即拉取。订阅只提供节点，不采用订阅内的 DNS、策略组或路由规则。生成的 mihomo YAML 不包含订阅链接、token 或名称；节点以内部唯一名称内联写入 proxies。
-4. 初次添加代理后 MATCH 指向第一个代理；在“路由规则”调整出口和分流条件。
-5. 点击顶栏“启动全部”，直接校验配置并授权启动，无需预览。
-6. 运行期间全局配置、内核文件、规则集合只读。节点、代理组和路由规则修改后自动热重载；持久化系统配置需要管理员授权，失败时尝试回滚。
-7. 顶栏“查看日志”直接读取用户数据目录 logs/core.log 最后 500 行，无需管理员授权。重启使用最后成功保存的配置。
+| 页面 | 功能 |
+|---|---|
+| 全局配置 | 编辑全局参数、DNS、嗅探、TUN，自动保存 |
+| 代理订阅 | 添加、编辑、更新、删除订阅，查看流量与到期信息 |
+| 出站代理 | 管理手动节点，查看订阅节点，执行延迟测试 |
+| 代理分组 | 管理 select、url-test、fallback、load-balance 与有序成员 |
+| 规则集合 | 管理 HTTP、本地文件、内嵌规则来源 |
+| 路由规则 | 编辑规则、出口和匹配顺序，MATCH 固定在末尾 |
+| 活动连接 | 查看实时连接和速率、断开连接、添加路由规则 |
+| 流量统计 | 按域名、进程、目标 IP 或端口汇总最近 24 小时、7 天或 30 天流量 |
+| 应用设置 | 选择内核，调整测速参数，查看版本、内存和服务状态 |
 
-启动前直接校验并安装配置。关闭窗口 / Cmd-Q 不停止服务；通过“停止”菜单停止代理、统计或全部服务。
+配置字段旁的问号提供说明与上游文档链接。“设置此项”表示显式配置可选字段；未设置时使用应用或内核默认值。字段是否可用取决于所选 mihomo 版本，启动前以内核配置校验结果为准。
 
-## 配置与兼容
+## 代码组织
 
-启动文件使用标准 YAML；REST API 请求外层仍为 mihomo 规定的 JSON。动态字段会生成正确的嵌套 YAML，单引号、Emoji、正则、URL 和进程路径保留原值。
+按实际使用关系组织代码：一个页面一个文件；页面专用的表单、类型与辅助逻辑留在页面文件中；复用组件各自独立；较大的共享状态、服务逻辑和字段数据单独维护。避免为单次使用的逻辑增加中间层。
 
-默认参数沿用已有设置：规则模式、本机 7890、info 日志、统一延迟、TCP 并发、mips / utun1024 / MTU 1500、指定 DNS 和 fallback 等。都可在全局配置页调整。默认控制接口为 `127.0.0.1:19090`，使用已有随机密钥；GUI 和采集后台需要有效的 host:port。未确认的草稿保存在 `settings.json`，已确认运行的接口配置保存在 `runtime.json`，防止编辑地址或密钥时中断采集。
+```text
+Sources/
+  ClashDesk/
+    App.swift                       应用入口、窗口与页面导航
+    GeneralConfigurationView.swift  全局配置
+    SubscriptionsView.swift         订阅及专用编辑表单
+    OutboundProxiesView.swift       出站代理及专用编辑表单
+    ProxyGroupsView.swift           代理分组
+    RuleProvidersView.swift         规则集合
+    RulesView.swift                 路由规则及专用编辑表单
+    ConnectionsView.swift           活动连接
+    StatisticsView.swift            流量统计
+    ApplicationSettingsView.swift   应用设置
+    ResourceEditorView.swift        分组与规则集合共用的编辑表单及行数据
+    Model.swift                     跨页面共享状态、持久化与运行配置协调
+    Services.swift                  launchd 服务安装、启停与日志
+    …                               复用字段控件、表格和格式化函数
+  ClashCore/                        配置、API、订阅、字段数据、SQLite 统计
+  ClashStats/main.swift             后台采集程序入口
+  CSQLite/                          系统 SQLite 模块声明
+scripts/build.sh                    编译、打包与本地签名
+Package.swift                       Swift Package 目标定义
+```
 
-所有表格均使用完整的当前数据计算内容列宽，普通内容不加额外留白，表头单独预留 24 点排序空间，带控件的列另行预留控件空间；双击列头分隔线按相同规则适配宽度，无额外延迟加载。所有列支持拖动调整宽度与点击列头排序，数值和日期按实际值排序。选中行会高亮。所有表格均不提供右键操作，不设操作列，操作统一放在右上角。
+`ClashCore` 供 GUI 与采集程序共用。`DocSchemas.swift` 保存字段定义，`HelpDocs.swift` 保存字段说明，更新时应核对上游文档正文、示例和协议限制；这些数据随程序编译，无需本地文档目录。仓库不包含测试目录、测试脚本或 `docs/` 目录。
 
-旧版本设置、订阅、缓存和统计数据库保留。旧版“程序优先”的规则排列会在首次迁移时转成相同的显式表格顺序，后续严格按保存的规则顺序匹配。指定订阅节点消失时保留原引用并使用 REJECT，不自动直连；被规则引用的手动代理不允许直接删除。
-
-首次确认启动后准备 DNS / 路由所需 GEO 数据：优先使用所选内核应用的配套数据；否则从官方数据地址下载。支持自定义 GEO URL 和 geodata-mode，ASN 规则会准备 ASN 数据。
-
-## 数据和服务
+## 数据与服务
 
 | 内容 | 位置 |
 |---|---|
-| 草稿设置 / 已确认配置 | `~/Library/Application Support/ClashDesk/settings.json` / `runtime.json` |
-| 订阅节点和延迟缓存 | 同目录 `nodes.json` / `providers/` |
-| SQLite 统计和 GEO 缓存 | 同目录 `traffic.sqlite` / `geodata/` |
+| 用户数据目录 | `~/Library/Application Support/ClashDesk/` |
+| 草稿 / 已确认运行配置 | 数据目录内 `settings.json` / `runtime.json` |
+| 节点与订阅缓存 | 数据目录内 `nodes.json` / `providers/` |
+| 流量统计与 GEO 缓存 | 数据目录内 `traffic.sqlite` / `geodata/` |
+| 内核日志 | 数据目录内 `logs/core.log` |
 | 用户采集服务 | `~/Library/LaunchAgents/local.clashdesk.stats.plist` |
-| 系统代理服务 | `/Library/LaunchDaemons/local.clashdesk.mihomo.plist` |
-| 系统 mihomo | `/Library/PrivilegedHelperTools/ClashDesk/mihomo` |
-| 系统 YAML、节点和 GEO 文件 | `/Library/Application Support/ClashDesk/` |
+| 系统内核服务 | `/Library/LaunchDaemons/local.clashdesk.mihomo.plist` |
+| 安装的内核 | `/Library/PrivilegedHelperTools/ClashDesk/mihomo` |
+| 系统运行配置 | `/Library/Application Support/ClashDesk/` |
 
-数据目录权限 700，设置 / 密钥文件权限 600，系统文件为 root 所有。统计后台是用户 LaunchAgent，退出 GUI 后继续采集、退出用户登录后停止。mihomo 是 LaunchDaemon，可在登录前运行。停止操作会 disable 对应任务；再次启动会 enable。
+用户数据目录权限为 700，设置与密钥文件权限为 600。系统内核由 LaunchDaemon 管理，采集程序由用户 LaunchAgent 管理；退出用户登录后采集停止。草稿与已确认配置分开保存，避免编辑控制接口时影响正在运行的采集。
 
-统计后台每 2 秒采样一次，内核不可用时每 5 秒重试。内存只保留活跃连接计数，数据库按小时聚合，保留 90 天；SQLite 缓存目标 1 MiB、关闭 mmap，没有 HTTP 服务或内存历史列表。文件锁阻止重复采集，重启后建立新基线以避免重复累计。
+统计程序每 2 秒采样，内核不可用时每 5 秒重试；按小时聚合，保留 90 天。日志按大小轮转。首次启动会准备配置需要的 GEO 数据，优先使用所选内核的配套数据，否则下载。
 
-## 文档字段与测试
+## 当前限制
 
-字段定义来源于用户提供的 Meta-Docs 配置文档，当前包含 126 个全局配置字段和 26 个代理类型。`Sources/ClashCore/DocSchemas.swift` 保存字段定义和对应来源；`Sources/ClashCore/HelpDocs.swift` 保存按“文档路径 | 完整字段路径”对应的说明。字段数据的构建和加载不依赖文档目录或 Ruby；订阅 YAML 解析仍使用系统 Ruby / Psych。
-
-文档变更后，由 AI 阅读相关章节、通用字段和协议文档，逐项更新这两份 Swift 数据。示例值不能当作默认值；正文、注释或不同章节存在冲突时，在说明中保留具体疑点，不推断未记载的默认值、单位或支持范围。保留平台专属选项，明确不支持 macOS 的字段禁用编辑。现有表单未提供的新参数可通过“额外字段”添加。
-
-本次核对范围、修正及文档疑点见 [字段核对记录](docs/field-review.md)。更新后运行核心测试；涉及新的协议配置时，再用所选 mihomo 内核校验实际 YAML。
-
-```sh
-bash scripts/test.sh
-bash scripts/integration-test.sh /path/to/mihomo
-python3 scripts/stats-integration-test.py
-bash scripts/services-test.sh
-```
-
-核心测试覆盖循环引用 / 过深 YAML 拒绝、提交失败回滚与中断恢复、规则顺序、旧设置迁移、嵌套配置、协议字段归属、手动 Hysteria2、CIDR / 逻辑验证、域名汇总和已确认配置隔离。集成测试使用临时目录、本地 HTTP CONNECT 假代理和无 TUN 内核，校验真实内核解析、API 鉴权、内存 WebSocket、热更新、规则集和延迟。不启动系统代理。服务安装测试在临时目录中替换 launchctl / curl，覆盖成功、写入失败、启动失败、接口超时的恢复，并验证日志容量限制。
-
-统计测试验证 1000 个活跃模拟连接、进程互斥、重启基线及草稿修改不影响采集；此前观测 RSS 约 17.9 MiB，仅为单次测试结果，不是长期或真实负载保证。
-
-## 当前边界
-
-- 使用 AppleScript 管理员授权安装 launchd 服务，尚未完成正式签名、notarization、SMAppService / XPC helper。
-- 支持 Clash YAML 订阅；Base64 / URI 转换尚未实现。节点表格从本地订阅 YAML 补全服务器和端口；使用 macOS 自带 Ruby / Psych 安全解析，拒绝 YAML aliases 和过深嵌套；节点摘要不缓存密码。订阅节点凭据暂不单独编辑。
-- GUI 订阅缓存需点击“更新全部订阅”同步；mihomo 不再拉取订阅，只接收内联节点；订阅更新由 GUI 管理，运行时更新后自动应用配置。
-- 流量为连接快照近似统计，会遗漏短连接、断线 / 重启期间和结束前最后一段流量；时间范围按小时分桶，最多显示 500 个域名，未提供历史分页或速率图表。
-- IPv6 配置已开放，但默认关闭；尚未完成真实 TUN 的 IPv6、其他 VPN 并存、休眠恢复和网络切换验证。
-- Linux UID / DSCP 等依赖其他平台入站的规则未列入 macOS 表单。复杂逻辑规则可以直接输入表达式；最终语法以 mihomo 校验为准。
-- 采集服务将统计错误保存到数据目录的 `services.log`，单文件上限 1 MiB，保留一份轮转文件。系统内核的启动输出由独立日志进程降权为当前用户后写入用户数据目录的 `logs/core.log`（目录 700、文件 600），同样保留两份、每份最多 1 MiB；安装失败日志保存在 `core-failure.log`。顶栏“查看日志”直接读取用户日志，无需管理员授权；旧安装需要停止并重新启动内核后启用新路径；启动校验错误显示在 GUI。
+- 服务安装通过 AppleScript 请求管理员授权，尚未采用正式签名、公证或 SMAppService / XPC helper。
+- 订阅仅支持 Clash YAML，不支持 Base64 / URI 转换；订阅由 GUI 更新，内核使用内联节点。
+- 流量来自连接快照，会遗漏短连接、断线与重启期间的流量；时间范围按小时分桶，结果最多显示 500 项。
+- IPv6 默认关闭；真实 TUN 的 IPv6、其他 VPN 并存、休眠恢复与网络切换仍需实际环境验证。
+- 复杂规则最终以所选 mihomo 内核校验结果为准。
