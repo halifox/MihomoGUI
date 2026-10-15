@@ -532,7 +532,7 @@ private let configFieldTitles: [String: String] = [
     "bbr-profile": "BBR 配置档位",
     "flow": "流控方式",
     "plugin": "插件",
-    "proxies": "代理成员",
+    "proxies": "出站代理",
     "use": "引入代理集合",
     "url": "地址",
     "interval": "间隔（秒）",

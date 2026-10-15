@@ -67,7 +67,7 @@ struct ResourceEditorView: View {
                                         }
                                     }
                                 }
-                                Button { targets.append(model.allNodes.first.map { "node:" + $0.id } ?? "builtin:REJECT") } label: { Label("添加成员", systemImage: "plus") }
+                                Button { targets.append(model.allNodes.first.map { "node:" + $0.id } ?? "builtin:REJECT") } label: { Label("添加一项", systemImage: "plus") }
                             }
                         }.padding(.vertical, 3)
                     }
