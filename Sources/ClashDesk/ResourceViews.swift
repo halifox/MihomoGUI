@@ -70,13 +70,17 @@ struct ResourcesView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 0) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.disabled(model.busy)
-                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.disabled(model.busy || selected == nil)
+                HStack(spacing: -4) {
+                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
+                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(model.busy || selected == nil)
                     DeleteButton(toolbar: true, message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
                         if let selected { model.deleteResource(selected, groups: groups) }
                     }.disabled(model.busy || selected == nil)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: groups) }

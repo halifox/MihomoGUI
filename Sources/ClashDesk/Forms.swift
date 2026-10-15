@@ -495,8 +495,7 @@ struct FieldHelpButton: View {
 
 func toolbarIcon(_ title: String, systemImage: String) -> some View {
     Image(systemName: systemImage)
-        .font(.system(size: 14, weight: .regular))
-        .frame(width: 20, height: 20)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .accessibilityLabel(title)
         .help(title)
 }
@@ -516,6 +515,7 @@ struct DeleteButton: View {
                 Label(title, systemImage: "trash")
             }
         }
+        .frame(width: toolbar ? 28 : nil, height: toolbar ? 28 : nil)
         .labelStyle(.iconOnly)
         .help(title)
         .controlSize(.regular)

@@ -69,18 +69,22 @@ struct SubscriptionsView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 0) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }
+                HStack(spacing: -4) {
+                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28)
                         .disabled(model.busy)
-                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }
+                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28)
                         .disabled(model.busy || selected == nil)
                     DeleteButton(toolbar: true, message: "确定删除订阅“\(selected?.name ?? "")”及其节点吗？此操作无法撤销。") { if let selected { model.deleteSubscription(selected) } }
                         .disabled(model.busy || selected == nil)
-                    Button { if let selected { model.refreshSubscription(selected) } } label: { toolbarIcon("更新", systemImage: "arrow.clockwise") }
+                    Button { if let selected { model.refreshSubscription(selected) } } label: { toolbarIcon("更新", systemImage: "arrow.clockwise") }.frame(width: 28, height: 28)
                         .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
-                    Button { model.refreshSubscriptions() } label: { toolbarIcon("全部更新", systemImage: "arrow.triangle.2.circlepath") }
+                    Button { model.refreshSubscriptions() } label: { toolbarIcon("全部更新", systemImage: "arrow.triangle.2.circlepath") }.frame(width: 28, height: 28)
                         .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
         }
         .sheet(isPresented: $adding) { SubscriptionEditorView() }
@@ -216,13 +220,13 @@ struct OutboundProxiesView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 0) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.disabled(model.busy)
-                    Button { editing = selectedManual } label: { toolbarIcon("编辑", systemImage: "pencil") }.disabled(model.busy || selectedManual == nil)
+                HStack(spacing: -4) {
+                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
+                    Button { editing = selectedManual } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(model.busy || selectedManual == nil)
                     DeleteButton(toolbar: true, message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
                     Button {
                         if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
-                    } label: { toolbarIcon("延迟", systemImage: "speedometer") }
+                    } label: { toolbarIcon("延迟", systemImage: "speedometer") }.frame(width: 28, height: 28)
                         .disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
                     Button {
                         if model.isTestingDelays { model.cancelDelayTests() }
@@ -230,8 +234,12 @@ struct OutboundProxiesView: View {
                     } label: {
                         toolbarIcon(model.isTestingDelays ? "取消测延迟" : "全部延迟",
                               systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
-                    }.disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
+                    }.frame(width: 28, height: 28).disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
         }
         .task(id: udpKey) { await model.refreshManualUDP() }

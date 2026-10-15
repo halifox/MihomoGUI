@@ -88,21 +88,25 @@ struct RulesView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 0) {
-                    Button { adding = true } label: { toolbarIcon("添加规则", systemImage: "plus") }.disabled(model.busy)
+                HStack(spacing: -4) {
+                    Button { adding = true } label: { toolbarIcon("添加规则", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
                     Button {
                         if let selectedIndex { editing = model.settings.rules[selectedIndex] }
-                    } label: { toolbarIcon("编辑", systemImage: "pencil") }.disabled(selectedIndex == nil || model.busy)
+                    } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(selectedIndex == nil || model.busy)
                     Button {
                         if let selection { model.moveRule(selection, offset: -1) }
-                    } label: { toolbarIcon("上移", systemImage: "arrow.up") }.disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
+                    } label: { toolbarIcon("上移", systemImage: "arrow.up") }.frame(width: 28, height: 28).disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
                     Button {
                         if let selection { model.moveRule(selection, offset: 1) }
-                    } label: { toolbarIcon("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
+                    } label: { toolbarIcon("下移", systemImage: "arrow.down") }.frame(width: 28, height: 28).disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
                     DeleteButton(toolbar: true, message: "确定删除所选路由规则吗？此操作无法撤销。") {
                         if let selection { model.deleteRule(selection); self.selection = nil }
                     }.disabled(selectedIndex == nil || model.busy)
                 }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
