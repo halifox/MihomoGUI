@@ -8,6 +8,7 @@ final class DeskModel: ObservableObject {
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
     private var connectionsDate: Date?
+    @Published var connectionSpeedsAvailable = false
     @Published var traffic: [DomainTrafficRow] = []
     @Published var statisticsError: String?
     @Published var testingNodes: Set<String> = []
@@ -121,9 +122,10 @@ final class DeskModel: ObservableObject {
                     }
                 }
             }
+            connectionSpeedsAvailable = connectionsDate != nil
             connectionsDate = now
             connections = live; coreRunning = true
-        } catch { coreRunning = false; connections = []; connectionsDate = nil }
+        } catch { coreRunning = false; connections = []; connectionsDate = nil; connectionSpeedsAvailable = false }
         do {
             let folder = directory; let range = hours; let grouping = trafficGrouping
             let result = try await Task.detached {

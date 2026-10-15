@@ -133,6 +133,14 @@ final class CoreTests: XCTestCase {
         let processes = try reader.groupedRows(since: .distantPast, by: .process)
         XCTAssertEqual(processes.first { $0.domain == "curl" }?.upload, 29)
         XCTAssertEqual(try reader.domainRows(since: .distantPast).first?.download, 59)
+        let limited = try reader.groupedRows(since: .distantPast, by: .ip, limit: 1)
+        XCTAssertEqual(limited.count, 1)
+        XCTAssertEqual(limited.first?.totalTraffic, 93)
+        let groupedDomains = try reader.domainRows(since: .distantPast)
+        XCTAssertEqual(groupedDomains.first?.ipCount, 2)
+        XCTAssertEqual(groupedDomains.first?.domainCount, 1)
+        XCTAssertEqual(processes.first { $0.domain == "curl" }?.domainCount, 1)
+
         try database.prune(before: now.addingTimeInterval(3600))
         XCTAssertTrue(try reader.rows(since: .distantPast).isEmpty)
     }

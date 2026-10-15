@@ -68,6 +68,9 @@ public struct DomainTrafficRow: Identifiable, Equatable {
     public var download: Int64
     public var processCount: Int
     public var outboundCount: Int
+    public var domainCount: Int
+    public var ipCount: Int
+    public var totalTraffic: Int64
 }
 
 public final class TrafficDatabase {
@@ -187,17 +190,23 @@ public final class TrafficDatabase {
     }
     public func groupedRows(since date: Date, by grouping: TrafficGrouping, limit: Int = 500) throws -> [DomainTrafficRow] {
         var column = grouping.rawValue
-        if grouping == .ip || grouping == .port {
+        var hasIP = false
+        do {
             let schema = try prepare("PRAGMA table_info(traffic)")
             var exists = false
             while sqlite3_step(schema) == SQLITE_ROW {
-                if String(cString: sqlite3_column_text(schema, 1)) == column { exists = true }
+                let name = String(cString: sqlite3_column_text(schema, 1))
+                if name == column { exists = true }
+                if name == "ip" { hasIP = true }
             }
             sqlite3_finalize(schema)
-            if !exists { column = grouping == .ip ? "'未知 IP'" : "'未知端口'" }
+            if !exists && (grouping == .ip || grouping == .port) { column = grouping == .ip ? "'未知 IP'" : "'未知端口'" }
         }
         let statement = try prepare("""
-        SELECT \(column),SUM(upload),SUM(download),COUNT(DISTINCT process),COUNT(DISTINCT outbound)
+        SELECT \(column),SUM(upload),SUM(download),COUNT(DISTINCT process),COUNT(DISTINCT outbound),
+        COUNT(DISTINCT domain),
+        \(hasIP ? "COUNT(DISTINCT CASE WHEN ip NOT IN ('', '未知 IP') THEN ip END)" : "0"),
+        SUM(SUM(upload)+SUM(download)) OVER ()
         FROM traffic WHERE bucket>=? GROUP BY \(column) ORDER BY SUM(upload)+SUM(download) DESC LIMIT ?
         """)
         defer { sqlite3_finalize(statement) }
@@ -210,7 +219,9 @@ public final class TrafficDatabase {
             guard code == SQLITE_ROW else { throw failure() }
             rows.append(DomainTrafficRow(domain: String(cString: sqlite3_column_text(statement, 0)),
                                          upload: sqlite3_column_int64(statement, 1), download: sqlite3_column_int64(statement, 2),
-                                         processCount: Int(sqlite3_column_int(statement, 3)), outboundCount: Int(sqlite3_column_int(statement, 4))))
+                                         processCount: Int(sqlite3_column_int(statement, 3)), outboundCount: Int(sqlite3_column_int(statement, 4)),
+                                         domainCount: Int(sqlite3_column_int(statement, 5)), ipCount: Int(sqlite3_column_int(statement, 6)),
+                                         totalTraffic: sqlite3_column_int64(statement, 7)))
         }
         return rows
     }
