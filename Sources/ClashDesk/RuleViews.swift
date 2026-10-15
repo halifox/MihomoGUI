@@ -58,27 +58,7 @@ struct RulesView: View {
     }
     var body: some View {
         let rows = rows
-        VStack(alignment: .leading, spacing: 14) {
-            HStack {
-                Text("路由规则").font(.title2.bold())
-                Spacer()
-                Button { adding = true } label: { Label("添加规则", systemImage: "plus") }.disabled(model.busy)
-                Button {
-                    if let selectedIndex { editing = model.settings.rules[selectedIndex] }
-                } label: { Label("编辑", systemImage: "pencil") }.disabled(selectedIndex == nil || model.busy)
-                Button {
-                    if let selection { model.moveRule(selection, offset: -1) }
-                } label: { Label("上移", systemImage: "arrow.up") }.disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
-                Button {
-                    if let selection { model.moveRule(selection, offset: 1) }
-                } label: { Label("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
-                DeleteButton(message: "确定删除所选路由规则吗？此操作无法撤销。") {
-                    if let selection { model.deleteRule(selection); self.selection = nil }
-                }.disabled(selectedIndex == nil || model.busy)
-                Menu {
-                    if let row = rows.first(where: { $0.id == selection }) { targetActions(row) }
-                } label: { Label("选择出口", systemImage: "arrow.triangle.branch") }.disabled(model.busy || selection == nil)
-            }.pageActions()
+        VStack(alignment: .leading, spacing: 0) {
             Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
                 TableColumn("序号", sortUsing: columnSort("序号")) { row in
                     Text(String(row.number)).monospacedDigit()
@@ -96,8 +76,29 @@ struct RulesView: View {
                     Text(targetText(row))
                 }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText)), max: nil)
             }
-            Text("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
-                .font(.caption).foregroundStyle(.secondary)
+            .help("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { adding = true } label: { Label("添加规则", systemImage: "plus") }.disabled(model.busy)
+                Button {
+                    if let selectedIndex { editing = model.settings.rules[selectedIndex] }
+                } label: { Label("编辑", systemImage: "pencil") }.disabled(selectedIndex == nil || model.busy)
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    if let selection { model.moveRule(selection, offset: -1) }
+                } label: { Label("上移", systemImage: "arrow.up") }.disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
+                Button {
+                    if let selection { model.moveRule(selection, offset: 1) }
+                } label: { Label("下移", systemImage: "arrow.down") }.disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
+                DeleteButton(message: "确定删除所选路由规则吗？此操作无法撤销。") {
+                    if let selection { model.deleteRule(selection); self.selection = nil }
+                }.disabled(selectedIndex == nil || model.busy)
+                Menu {
+                    if let row = rows.first(where: { $0.id == selection }) { targetActions(row) }
+                } label: { Label("选择出口", systemImage: "arrow.triangle.branch") }.disabled(model.busy || selection == nil)
+            }
         }
         .sheet(isPresented: $adding) { RuleEditorView() }
         .sheet(item: $editing) { RuleEditorView(rule: $0) }

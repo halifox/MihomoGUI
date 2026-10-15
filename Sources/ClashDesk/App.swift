@@ -12,6 +12,7 @@ struct ClashDeskApp: App {
                 .task { model.startMonitor() }
         }
         .defaultSize(width: 800, height: 600)
+        .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .appInfo) {
                 Button("安装 / 启动全部服务") { model.startAll() }.disabled(model.busy)
@@ -88,7 +89,8 @@ struct DeskView: View {
             NavigationSplitView {
                 List(DeskPage.allCases, selection: $page) { page in
                     Label(page.title, systemImage: page.icon).tag(page)
-                }.navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
+                }.listStyle(.sidebar)
+                    .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
             } detail: {
                 Group {
                     switch page ?? .general {
@@ -102,7 +104,8 @@ struct DeskView: View {
                     case .traffic: StatisticsView()
                     case .settings: ApplicationSettingsView()
                     }
-                }.padding(20)
+                }.navigationTitle((page ?? .general).title)
+                    .tableStyle(.inset(alternatesRowBackgrounds: true))
                     .id(page ?? .general)
             }
 
@@ -242,23 +245,10 @@ struct StatisticsView: View {
         }
         let rows = model.traffic
         let counts = activeCounts
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("流量统计").font(.title2.bold())
-                Spacer()
-                Menu {
-                    if let row = rows.first(where: { selection.contains($0.id) }) { trafficRoutes(row) }
-                } label: { Label("添加路由规则", systemImage: "plus.circle") }.disabled(selection.count != 1 || model.busy)
-                Picker("统计方式", selection: $model.trafficGrouping) {
-                    ForEach(TrafficGrouping.allCases) { grouping in Text(grouping.title).tag(grouping) }
-                }.frame(width: 180)
-                Picker("时间范围", selection: $model.hours) {
-                    Text("最近 24 小时（Last 24 hours）").tag(24); Text("最近 7 天（Last 7 days）").tag(168); Text("最近 30 天（Last 30 days）").tag(720)
-                }.frame(width: 220)
-            }.pageActions()
+        VStack(alignment: .leading, spacing: 0) {
             if let sampled = model.lastSample, Date().timeIntervalSince(sampled) > 15 {
                 Text("采集已暂停，以下为历史数据。最后采集：" + sampled.formatted(date: .abbreviated, time: .standard))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.caption).foregroundStyle(.secondary).padding(8)
             }
                 Table(rows.sorted(using: currentSort), selection: $selection, sortOrder: $sortOrder) {
                     TableColumn(model.trafficGrouping.title, sortUsing: columnSort(model.trafficGrouping.title)) { row in
@@ -277,6 +267,19 @@ struct StatisticsView: View {
                     }
                 }
 
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Menu {
+                    if let row = rows.first(where: { selection.contains($0.id) }) { trafficRoutes(row) }
+                } label: { Label("添加路由规则", systemImage: "plus.circle") }.disabled(selection.count != 1 || model.busy)
+                Picker("统计方式", selection: $model.trafficGrouping) {
+                    ForEach(TrafficGrouping.allCases) { grouping in Text(grouping.title).tag(grouping) }
+                }.labelsHidden().frame(width: 110).help("统计方式")
+                Picker("时间范围", selection: $model.hours) {
+                    Text("最近 24 小时").tag(24); Text("最近 7 天").tag(168); Text("最近 30 天").tag(720)
+                }.labelsHidden().frame(width: 125).help("时间范围")
+            }
         }
         .task(id: "\(model.trafficGrouping.rawValue)-\(model.hours)") { await model.refresh() }
     }
@@ -307,17 +310,7 @@ struct ConnectionsView: View {
     }
     var body: some View {
         let rows = model.connections
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("活动连接").font(.title2.bold())
-                Spacer()
-                Button(role: .destructive) {
-                    if let selection { model.perform { try await model.api.closeConnection(selection) } }
-                } label: { Label("断开", systemImage: "xmark.circle").foregroundStyle(.red) }.tint(.red).disabled(model.busy || !rows.contains { $0.id == selection })
-                Menu {
-                    if let row = rows.first(where: { $0.id == selection }) { connectionRoutes(row) }
-                } label: { Label("添加路由规则", systemImage: "plus.circle") }.disabled(model.busy || !rows.contains { $0.id == selection })
-            }.pageActions()
+        VStack(alignment: .leading, spacing: 0) {
             Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
                 TableColumn("域名 / IP", sortUsing: columnSort("域名 / IP")) { connection in
                     Text(connection.domain).textSelection(.enabled)
@@ -330,6 +323,16 @@ struct ConnectionsView: View {
                 TableColumn("上传", sortUsing: columnSort("上传")) { connection in Text(bytes(connection.upload)) }.width(min: 40, ideal: tableColumnWidth("上传", rows.map { bytes($0.upload) }, numeric: true), max: nil)
                 TableColumn("下载", sortUsing: columnSort("下载")) { connection in Text(bytes(connection.download)) }.width(min: 40, ideal: tableColumnWidth("下载", rows.map { bytes($0.download) }, numeric: true), max: nil)
 
+            }
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button(role: .destructive) {
+                    if let selection { model.perform { try await model.api.closeConnection(selection) } }
+                } label: { Label("断开", systemImage: "xmark.circle").foregroundStyle(.red) }.tint(.red).disabled(model.busy || !rows.contains { $0.id == selection })
+                Menu {
+                    if let row = rows.first(where: { $0.id == selection }) { connectionRoutes(row) }
+                } label: { Label("添加路由规则", systemImage: "plus.circle") }.disabled(model.busy || !rows.contains { $0.id == selection })
             }
         }
     }

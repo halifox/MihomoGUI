@@ -493,13 +493,6 @@ struct FieldHelpButton: View {
     }
 }
 
-extension View {
-    func pageActions() -> some View {
-        self.controlSize(.regular).font(.system(size: 13))
-            .buttonStyle(.bordered).labelStyle(.titleAndIcon)
-    }
-}
-
 struct DeleteButton: View {
     var title = "删除"
     var message = "确定删除此项吗？此操作无法撤销。"
@@ -510,9 +503,8 @@ struct DeleteButton: View {
         Button(role: .destructive) { confirming = true } label: {
             Label(title, systemImage: "trash")
         }
-        .labelStyle(.titleAndIcon)
-        .buttonStyle(.borderedProminent)
-        .tint(.red)
+        .labelStyle(.iconOnly)
+        .help(title)
         .controlSize(.regular)
         .alert("确认" + title, isPresented: $confirming) {
             Button("取消", role: .cancel) {}

@@ -37,20 +37,7 @@ struct ResourcesView: View {
     }
     var body: some View {
         let rows = rows
-        VStack(alignment: .leading, spacing: 16) {
-            HStack {
-                Text(title).font(.title2.bold())
-                Spacer()
-                Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
-                Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selected == nil)
-                DeleteButton(message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
-                    if let selected { model.deleteResource(selected, groups: groups) }
-                }.disabled(model.busy || selected == nil)
-                if groups {
-                    Menu { if let selected { memberActions(selected) } } label: { Label("选择节点", systemImage: "network") }
-                        .disabled(model.busy || selected?.group?.type != "select")
-                }
-            }.pageActions()
+        VStack(alignment: .leading, spacing: 0) {
             if groups {
                 Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: $sortOrder) {
                     TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
@@ -69,6 +56,21 @@ struct ResourcesView: View {
                 }
             }
 
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { adding = true } label: { Label("添加", systemImage: "plus") }.disabled(model.busy)
+                Button { editing = selected } label: { Label("编辑", systemImage: "pencil") }.disabled(model.busy || selected == nil)
+                DeleteButton(message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
+                    if let selected { model.deleteResource(selected, groups: groups) }
+                }.disabled(model.busy || selected == nil)
+            }
+            ToolbarItemGroup(placement: .primaryAction) {
+                if groups {
+                    Menu { if let selected { memberActions(selected) } } label: { Label("选择节点", systemImage: "network") }
+                        .disabled(model.busy || selected?.group?.type != "select")
+                }
+            }
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: groups) }
         .sheet(item: $editing) { ResourceEditorView(groups: groups, original: $0) }

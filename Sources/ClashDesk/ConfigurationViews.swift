@@ -5,10 +5,6 @@ struct GeneralConfigurationView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("全局配置").font(.title2.bold())
-                Spacer()
-            }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     ConfigurationRows(fields: documentSchemas.configuration).padding(6)
@@ -16,7 +12,7 @@ struct GeneralConfigurationView: View {
                 }.padding(.trailing, 4)
             }.disabled(model.busy)
 
-        }
+        }.padding(20)
     }
 }
 
@@ -59,15 +55,6 @@ struct ApplicationSettingsView: View {
     @EnvironmentObject var model: DeskModel
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("应用设置").font(.title2.bold())
-                Spacer()
-                Button { model.previewConfig() } label: { Label("预览配置", systemImage: "doc.text.magnifyingglass") }.disabled(model.busy)
-                Button { model.toggleAllServices() } label: {
-                    Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
-                }.controlSize(.regular).disabled(model.busy)
-                Button { model.applyLive() } label: { Label("应用更改", systemImage: "checkmark") }.disabled(model.busy || !model.coreRunning)
-            }.pageActions()
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 6) {
                     GroupBox {
@@ -131,7 +118,16 @@ struct ApplicationSettingsView: View {
                     }
                 }.padding(.trailing, 4)
             }
-        }.controlSize(.regular).environment(\.formHelpDocument, "settings")
+        }
+        .toolbar {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button { model.previewConfig() } label: { Label("预览配置", systemImage: "doc.text.magnifyingglass") }.disabled(model.busy)
+                Button { model.toggleAllServices() } label: {
+                    Label(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                }.controlSize(.regular).disabled(model.busy)
+                Button { model.applyLive() } label: { Label("应用更改", systemImage: "checkmark") }.disabled(model.busy || !model.coreRunning)
+            }
+        }.padding(20).controlSize(.regular).environment(\.formHelpDocument, "settings")
     }
     var statsStatus: String {
         guard model.statsPID != nil else { return "已停止" }
