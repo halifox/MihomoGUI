@@ -9,6 +9,15 @@ struct VisualField: View {
     var compact = false
     var inputEnabled = true
     var defaultValue: ConfigValue?
+    private var displayedValue: ConfigValue {
+        value ?? defaultValue ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
+    }
+    var inputValue: Binding<ConfigValue> {
+        Binding(get: { displayedValue }, set: {
+            guard $0 != displayedValue else { return }
+            value = $0
+        })
+    }
     var body: some View {
         if compact { compactRow.controlSize(.regular) }
         else { legacyRow }
@@ -18,9 +27,7 @@ struct VisualField: View {
             FieldKeyLabel(title: field.title + (field.required ? " *" : ""), key: field.path,
                           description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
                 .frame(width: 200, alignment: .leading)
-            VisualValue(field: field, value: Binding(get: {
-                value ?? defaultValue ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
-            }, set: { value = $0 }), compact: true).disabled(!inputEnabled)
+            VisualValue(field: field, value: inputValue, compact: true).disabled(!inputEnabled)
             if allowUnset && !field.required {
                 Button {
                     value = nil

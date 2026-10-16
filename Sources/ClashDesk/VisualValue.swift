@@ -7,14 +7,16 @@ struct VisualValue: View {
     @Binding var value: ConfigValue
     var compact = false
     var body: some View { input }
+    private var displayedText: String {
+        if field.kind == "choice", value.text.isEmpty,
+           let defaultValue = field.defaultHint, (field.choices ?? []).contains(defaultValue) {
+            return defaultValue
+        }
+        return value.text
+    }
     private var text: Binding<String> {
-        Binding(get: {
-            if field.kind == "choice", value.text.isEmpty,
-               let defaultValue = field.defaultHint, (field.choices ?? []).contains(defaultValue) {
-                return defaultValue
-            }
-            return value.text
-        }, set: {
+        Binding(get: { displayedText }, set: {
+            guard $0 != displayedText else { return }
             if field.kind == "integer", let integer = Int($0) { value = .integer(integer) }
             else if field.kind == "number", let number = Double($0) { value = .number(number) }
             else { value = .string($0) }

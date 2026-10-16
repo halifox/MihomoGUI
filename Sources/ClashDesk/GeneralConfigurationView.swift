@@ -79,7 +79,9 @@ private struct ConfigurationRows: View {
                                 TextField("https://www.gstatic.com/generate_204", text: Binding(get: {
                                     model.settings.delayTestURL ?? ""
                                 }, set: {
-                                    model.settings.delayTestURL = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+                                    let updated = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+                                    guard updated != model.settings.delayTestURL else { return }
+                                    model.settings.delayTestURL = updated
                                     model.scheduleConfigurationSave()
                                 }))
                                 Button {
@@ -94,12 +96,17 @@ private struct ConfigurationRows: View {
                         }
                         formRow("延迟超时（毫秒）") {
                             HStack {
-                                TextField("5000", value: Binding(get: {
-                                    model.settings.delayTestTimeoutMilliseconds
+                                TextField("5000", text: Binding(get: {
+                                    model.settings.delayTestTimeoutMilliseconds.map(String.init) ?? ""
                                 }, set: {
-                                    model.settings.delayTestTimeoutMilliseconds = $0
+                                    guard $0 != (model.settings.delayTestTimeoutMilliseconds.map(String.init) ?? "") else { return }
+                                    let text = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                                    guard text.isEmpty || Int(text) != nil else { return }
+                                    let updated = text.isEmpty ? nil : Int(text)
+                                    guard updated != model.settings.delayTestTimeoutMilliseconds else { return }
+                                    model.settings.delayTestTimeoutMilliseconds = updated
                                     model.scheduleConfigurationSave()
-                                }), format: .number.grouping(.never))
+                                }))
                                     .frame(width: 150)
                                 Button {
                                     model.settings.delayTestTimeoutMilliseconds = nil
