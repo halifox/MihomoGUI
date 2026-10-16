@@ -642,7 +642,7 @@ private let helpDocsJSON = #"""
   "proxy-groups/built-in.md|global": "默认包含所有代理组和节点。可自行定义；部分面板按其代理组顺序排序，文档建议包含除 GLOBAL 自身外的所有代理组。",
   "proxy-groups/index.md|default-selected": "默认选择的节点；为空或节点不存在时选择组中第一个节点。",
   "proxy-groups/index.md|disable-udp": "是否禁用该代理组的 UDP。",
-  "proxy-groups/index.md|empty-fallback": "组为空时的回退出口。内核默认 COMPATIBLE（等效 DIRECT）；客户端未设置时写入 REJECT。内核只允许代理名称，不允许代理组；本表单提供 DIRECT / REJECT / REJECT-DROP。",
+  "proxy-groups/index.md|empty-fallback": "组为空时的回退出口。未设置时使用内核默认 COMPATIBLE（等效 DIRECT）。内核只允许代理名称，不允许代理组；本表单提供 DIRECT / REJECT / REJECT-DROP。",
   "proxy-groups/index.md|exclude-filter": "按关键词或正则表达式排除节点，可用反引号分隔多个表达式。",
   "proxy-groups/index.md|exclude-type": "按节点类型排除，用 | 分隔，忽略大小写，不支持正则；文档注明只作用于 proxies 引入的节点。",
   "proxy-groups/index.md|expected-status": "健康检查期望的 HTTP 状态码，内核默认 * 表示不限制。可用 / 列出多个值，用 - 表示范围，例如 200/302/400-503。",

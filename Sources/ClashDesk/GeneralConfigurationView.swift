@@ -6,11 +6,12 @@ struct GeneralConfigurationView: View {
     @State private var configurationText: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
+            Text("未设置的选项使用 mihomo 默认值；TUN、DNS 和代理端口需自行开启和配置。")
+                .font(.caption).foregroundStyle(.secondary)
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 6) {
-                    ConfigurationRows(fields: documentSchemas.configuration).padding(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }.padding(.trailing, 4)
+                ConfigurationRows(fields: documentSchemas.configuration).padding(6)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.trailing, 4)
             }.disabled(model.busy || model.configurationLocked)
 
         }
@@ -61,7 +62,7 @@ private struct ConfigurationRows: View {
     let fields: [EditorField]
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 6) {
+        LazyVStack(alignment: .leading, spacing: 6) {
             ForEach(fields) { field in
                 if field.kind == "group" {
                     GroupBox {

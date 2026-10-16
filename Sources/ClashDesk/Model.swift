@@ -166,13 +166,17 @@ final class DeskModel: ObservableObject {
         coreMemory = await memory; coreVersion = await version
     }
     func baseOption(_ path: String) -> ConfigValue? {
-        var baseline = ClashCore.Settings(); baseline.secret = settings.secret; baseline.tun = settings.tun
-        guard let object = try? configurationObject(baseline), let value = configPath(path, in: object) else { return nil }
-        return ConfigValue(native: value)
+        switch path {
+        case "external-controller": return .string("127.0.0.1:19090")
+        case "secret": return .string(settings.secret)
+        case "tun.enable": return settings.tun.map { .boolean($0) }
+        default: return nil
+        }
     }
     func option(_ path: String) -> ConfigValue? { settings.options?[path] ?? baseOption(path) }
     func setOption(_ path: String, value: ConfigValue?) {
         guard !configurationLocked, !busy else { return }
+        if path == "tun.enable" { settings.tun = nil }
         var options = settings.options ?? [:]; options[path] = value; settings.options = options
         scheduleConfigurationSave()
     }

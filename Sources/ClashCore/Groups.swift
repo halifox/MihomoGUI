@@ -19,8 +19,6 @@ public func groupEditorFields(_ type: String) -> [EditorField] {
         EditorField("empty-fallback", kind: "choice", choices: ["REJECT", "REJECT-DROP", "DIRECT"]),
         EditorField("default-selected"), EditorField("hidden", kind: "boolean"), EditorField("icon")
     ]
-    // generateConfig uses REJECT when empty-fallback is omitted.
-    if let index = fields.firstIndex(where: { $0.path == "empty-fallback" }) { fields[index].defaultHint = "REJECT" }
     fields.insert(contentsOf: [EditorField("url", hint: "https://www.gstatic.com/generate_204"),
             EditorField("interval", kind: "integer", hint: "300"), EditorField("timeout", kind: "integer", hint: "5000"),
             EditorField("lazy", kind: "boolean"), EditorField("max-failed-times", kind: "integer"), EditorField("expected-status", hint: "204")], at: 0)

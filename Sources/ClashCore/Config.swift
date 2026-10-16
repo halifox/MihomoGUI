@@ -131,10 +131,11 @@ public struct Settings: Codable {
     public var secret = UUID().uuidString + UUID().uuidString
     public var subscriptions: [Subscription] = []
     public var subscriptionProxies: [String: [ConfigValue]]?
-    public var rules: [RouteRule] = [RouteRule(kind: .geoIP, value: "cn", node: nil)]
+    public var rules: [RouteRule] = []
     public var defaultNode: Node?
     public var defaultDirect: Bool?
-    public var tun = true
+    // Retained only to read the TUN choice saved by earlier versions.
+    public var tun: Bool?
     public var options: [String: ConfigValue]?
     public var manualProxies: [ManualProxy]?
     public var proxyGroups: [ProxyGroup]?
@@ -229,10 +230,9 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         object["name"] = group.name; object["type"] = group.type
         object["proxies"] = try group.targets.map(resolve)
         if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try resolve(selected) }
-        if object["empty-fallback"] == nil { object["empty-fallback"] = "REJECT" }
         groups.append(object)
     }
-    let defaultTarget: String
+    let defaultTarget: String?
     if let name = settings.defaultProxyGroup {
         defaultTarget = name
     } else if let policy = settings.defaultPolicy {
@@ -248,7 +248,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             groups.append(["name": defaultGroup, "type": "select", "proxies": targets])
             defaultTarget = defaultGroup
         } else {
-            defaultTarget = targets.first ?? "REJECT"
+            defaultTarget = targets.first
         }
     }
     let dialerTargets = Set(proxyObjects.compactMap { $0["name"] as? String }
@@ -274,34 +274,18 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         if rule.sourceIP == true { line += ",src" }
         rules.append(line)
     }
-    rules.append("MATCH,\(defaultTarget)")
+    if let defaultTarget { rules.append("MATCH,\(defaultTarget)") }
+    // The desktop and statistics collector require an authenticated local API.
     var config: [String: Any] = [
-        "mode": "rule", "mixed-port": 7890, "allow-lan": false, "log-level": "info",
-        "external-controller": "127.0.0.1:19090", "secret": settings.secret,
-        "unified-delay": true, "tcp-concurrent": true, "bind-address": "*",
-        "external-controller-cors": ["allow-private-network": true, "allow-origins": [
-            "tauri://localhost", "http://tauri.localhost", "https://yacd.metacubex.one",
-            "https://metacubex.github.io", "https://board.zash.run.place"]],
-        "find-process-mode": "always", "ipv6": false,
-        "profile": ["store-selected": true],
-        "tun": ["enable": settings.tun, "stack": "mips", "auto-route": true,
-                "auto-detect-interface": true, "device": "utun1024", "dns-hijack": ["any:53"],
-                "mtu": 1500, "route-exclude-address": [], "strict-route": false],
-        "dns": ["enable": true, "ipv6": false,
-                "enhanced-mode": "fake-ip", "fake-ip-range": "198.18.0.1/16",
-                "use-hosts": true, "respect-rules": true,
-                "default-nameserver": ["223.5.5.5", "119.29.29.29", "114.114.114.114"],
-                "nameserver": ["223.5.5.5", "119.29.29.29", "114.114.114.114"],
-                "proxy-server-nameserver": ["223.5.5.5", "119.29.29.29", "114.114.114.114"],
-                "fallback": ["1.1.1.1", "8.8.8.8"],
-                "fallback-filter": ["geoip": true, "geoip-code": "CN", "geosite": ["gfw"],
-                                    "ipcidr": ["240.0.0.0/4"], "domain": ["+.google.com", "+.facebook.com", "+.youtube.com"]]],
-        "proxy-groups": groups, "rules": rules
+        "external-controller": "127.0.0.1:19090", "secret": settings.secret
     ]
-    config["proxies"] = proxyObjects
+    if let tun = settings.tun { config["tun"] = ["enable": tun] }
+    if !proxyObjects.isEmpty { config["proxies"] = proxyObjects }
+    if !groups.isEmpty { config["proxy-groups"] = groups }
+    if !rules.isEmpty { config["rules"] = rules }
     for (path, value) in settings.options ?? [:] {
         guard validConfigPath(path) else { throw DeskError("配置字段路径无效") }
-        // An empty visual input omits an optional field, even when our defaults contain it.
+        // An empty visual input omits an optional field.
         let omitted = value == .string("") && path != "external-controller" && path != "secret"
         setConfigPath(path, value: omitted ? nil : value.native, in: &config)
     }
