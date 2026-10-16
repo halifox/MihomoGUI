@@ -40,10 +40,10 @@ final class LaunchSizeView: NSView {
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic, settings
+    case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic
     var id: Int { rawValue }
-    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "流量统计", "应用设置"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "gearshape"][rawValue] }
+    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "流量统计"][rawValue] }
+    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar"][rawValue] }
 }
 
 struct DeskView: View {
@@ -67,7 +67,6 @@ struct DeskView: View {
                     case .rules: RulesView()
                     case .connections: ConnectionsView()
                     case .traffic: StatisticsView()
-                    case .settings: ApplicationSettingsView()
                     }
                 }.navigationTitle((page ?? .general).title)
                     .tableStyle(.inset(alternatesRowBackgrounds: true))

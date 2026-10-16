@@ -3,6 +3,7 @@ import ClashCore
 
 struct GeneralConfigurationView: View {
     @EnvironmentObject var model: DeskModel
+    @State private var configurationText: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             ScrollView {
@@ -12,7 +13,46 @@ struct GeneralConfigurationView: View {
                 }.padding(.trailing, 4)
             }.disabled(model.busy || model.configurationLocked)
 
-        }.padding(20)
+        }
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                HStack(spacing: 4) {
+                    Button {
+                        do {
+                            configurationText = String(decoding: try generateConfig(model.settings), as: UTF8.self)
+                        } catch {
+                            model.error = error.localizedDescription
+                        }
+                    } label: {
+                        toolbarIcon("配置预览", systemImage: "doc.text.magnifyingglass")
+                    }.frame(width: 28, height: 28).disabled(model.busy).help("查看当前设置生成的完整配置文件")
+                    Button { model.perform { model.serviceLogs = try await readCoreLog(directory: model.directory) } } label: {
+                        toolbarIcon("日志预览", systemImage: "doc.text")
+                    }.frame(width: 28, height: 28).disabled(model.busy).help("读取用户日志目录中的 core.log")
+                    Button { model.toggleAllServices() } label: {
+                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                    }.frame(width: 28, height: 28).disabled(model.busy)
+                }
+                .buttonStyle(.bordered)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+        }
+        .sheet(isPresented: Binding(get: { configurationText != nil }, set: { if !$0 { configurationText = nil } })) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text("完整配置 · config.yaml").font(.title2)
+                Text("根据当前设置生成").font(.caption).foregroundStyle(.secondary)
+                ScrollView([.horizontal, .vertical]) {
+                    Text(configurationText ?? "")
+                        .font(.system(.body, design: .monospaced))
+                        .textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                Button("关闭") { configurationText = nil }.keyboardShortcut(.cancelAction)
+            }.padding(20).frame(width: 760, height: 520)
+        }
+        .padding(20)
     }
 }
 
@@ -33,6 +73,19 @@ private struct ConfigurationRows: View {
                     }, set: { model.setOption(field.path, value: $0) }),
                                 compact: true, inputEnabled: field.unavailableReason == nil && fieldEnabled(field.path), defaultValue: model.baseOption(field.path))
                         .environment(\.formHelpDocument, field.document ?? "general.md")
+                    if field.path == "unified-delay" {
+                        formRow("延迟测试地址") {
+                            TextField("HTTP / HTTPS URL", text: Binding(get: {
+                                model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
+                            }, set: { model.settings.delayTestURL = $0; model.scheduleConfigurationSave() }))
+                        }
+                        formRow("延迟超时（毫秒）") {
+                            TextField("5000", value: Binding(get: {
+                                model.settings.delayTestTimeoutMilliseconds ?? 5000
+                            }, set: { model.settings.delayTestTimeoutMilliseconds = $0; model.scheduleConfigurationSave() }), format: .number.grouping(.never))
+                                .frame(width: 150)
+                        }
+                    }
                 }
             }
         }
