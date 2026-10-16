@@ -213,18 +213,11 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         }
     }
     var groups: [[String: Any]] = []
-    var nodeGroups: [Node: String] = [:]
-    for node in selected where nodeGroups[node] == nil {
-        let name = "CD.Node.\(groups.count)"
-        nodeGroups[node] = name
-        if node.provider == "manual" {
-            groups.append(["name": name, "type": "select", "proxies": [node.name]])
-            continue
-        }
-        groups.append(["name": name, "type": "select", "proxies": [aliases[node] ?? "REJECT"]])
+    func nodeTarget(_ node: Node) -> String {
+        node.provider == "manual" ? node.name : aliases[node] ?? "REJECT"
     }
     func resolve(_ target: String) -> String {
-        if let node = referencedNode(target) { return node.provider == "manual" ? node.name : aliases[node] ?? "REJECT" }
+        if let node = referencedNode(target) { return nodeTarget(node) }
         if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
         return String(target.dropFirst(8))
     }
@@ -236,18 +229,24 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         if object["empty-fallback"] == nil { object["empty-fallback"] = "REJECT" }
         groups.append(object)
     }
+    let defaultTarget: String
     if let name = settings.defaultProxyGroup {
-        groups.append(["name": defaultGroup, "type": "select", "proxies": [name]])
+        defaultTarget = name
     } else if let policy = settings.defaultPolicy {
         guard ["DIRECT", "REJECT", "REJECT-DROP"].contains(policy) else { throw DeskError("默认出口策略无效") }
-        groups.append(["name": defaultGroup, "type": "select", "proxies": [policy]])
+        defaultTarget = policy
     } else if settings.defaultDirect == true {
-        groups.append(["name": defaultGroup, "type": "select", "proxies": ["DIRECT"]])
+        defaultTarget = "DIRECT"
     } else if let node = settings.defaultNode {
-        groups.append(["name": defaultGroup, "type": "select", "proxies": [nodeGroups[node]!]])
+        defaultTarget = nodeTarget(node)
     } else {
-        groups.append(["name": defaultGroup, "type": "select",
-                       "proxies": proxyObjects.isEmpty ? ["REJECT"] : proxyObjects.compactMap { $0["name"] as? String }])
+        let targets = proxyObjects.compactMap { $0["name"] as? String }
+        if targets.count > 1 {
+            groups.append(["name": defaultGroup, "type": "select", "proxies": targets])
+            defaultTarget = defaultGroup
+        } else {
+            defaultTarget = targets.first ?? "REJECT"
+        }
     }
     var rules: [String] = []
     let ordered = settings.ruleOrderMigrated == nil
@@ -258,13 +257,13 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             rules.append("SUB-RULE,\(rule.value),\(rule.subRuleTarget!)")
             continue
         }
-        let target = rule.proxyGroup ?? rule.node.flatMap { nodeGroups[$0] } ?? rule.builtin ?? "DIRECT"
+        let target = rule.proxyGroup ?? rule.node.map(nodeTarget) ?? rule.builtin ?? "DIRECT"
         var line = "\(rule.kind.rawValue),\(rule.value),\(target)"
         if rule.noResolve == true { line += ",no-resolve" }
         if rule.sourceIP == true { line += ",src" }
         rules.append(line)
     }
-    rules.append("MATCH,\(defaultGroup)")
+    rules.append("MATCH,\(defaultTarget)")
     var config: [String: Any] = [
         "mode": "rule", "mixed-port": 7890, "allow-lan": false, "log-level": "info",
         "external-controller": "127.0.0.1:19090", "secret": settings.secret,
