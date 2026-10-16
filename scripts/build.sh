@@ -1,6 +1,9 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+SECONDS=0
+trap 'printf "Build failed after %ss (line %s).\n" "$SECONDS" "$LINENO" >&2' ERR
+printf '[1/7] Checking bundled resources and architecture...\n'
 ARCH="$(uname -m)"
 CORE_FILE="$PWD/resources/core/$ARCH/mihomo"
 GEO_DIR="$PWD/resources/geodata"
@@ -19,13 +22,17 @@ mkdir -p "$BUILD_DIR"
 export CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache"
 SWIFT_FLAGS=(-module-cache-path "$BUILD_DIR/module-cache" -target "$(uname -m)-apple-macosx13.0")
 # Direct swiftc also works on machines whose Command Line Tools have a broken SwiftPM.
+printf '[2/7] Compiling ClashCore...\n'
 swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -emit-module -emit-object -whole-module-optimization \
   -module-name ClashCore -I Sources/CSQLite Sources/ClashCore/*.swift \
   -emit-module-path "$BUILD_DIR/ClashCore.swiftmodule" -o "$BUILD_DIR/ClashCore.o"
+printf '[3/7] Compiling clash-stats...\n'
 swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" -I Sources/CSQLite \
   Sources/ClashStats/*.swift "$BUILD_DIR/ClashCore.o" -lsqlite3 -o "$BUILD_DIR/clash-stats"
+printf '[4/7] Compiling ClashDesk...\n'
 swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" -I Sources/CSQLite \
   Sources/ClashDesk/*.swift "$BUILD_DIR/ClashCore.o" -lsqlite3 -o "$BUILD_DIR/ClashDesk"
+printf '[5/7] Packaging application and bundled resources...\n'
 APP_DIR="$PWD/dist/ClashDesk.app"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Contents/Resources/geodata"
 cp "$BUILD_DIR/ClashDesk" "$APP_DIR/Contents/MacOS/ClashDesk"
@@ -49,8 +56,10 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
+printf '[6/7] Signing application and helpers...\n'
 codesign --force --sign - "$APP_DIR/Contents/Helpers/clash-stats"
 codesign --force --sign - "$APP_DIR/Contents/Helpers/mihomo"
 codesign --force --sign - "$APP_DIR"
+printf '[7/7] Build completed in %ss.\n' "$SECONDS"
 printf 'Built: %s\n' "$APP_DIR"
 printf 'If ClashDesk is already running, quit with Cmd-Q and reopen the app to load this build.\n'
