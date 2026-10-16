@@ -22,7 +22,6 @@ struct VisualField: View {
                 value ?? defaultValue ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
             }, set: { value = $0 }), compact: true).disabled(!inputEnabled)
             if allowUnset && !field.required {
-                if value == nil { Text("未设置").font(.caption).foregroundStyle(.secondary) }
                 Button {
                     value = nil
                 } label: { Image(systemName: "arrow.uturn.backward") }
