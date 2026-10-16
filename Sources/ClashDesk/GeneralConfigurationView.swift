@@ -5,14 +5,12 @@ struct GeneralConfigurationView: View {
     @EnvironmentObject var model: DeskModel
     @State private var configurationText: String?
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            ScrollView {
-                ConfigurationRows(fields: documentSchemas.configuration).padding(6)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding(.trailing, 4)
-            }.disabled(model.busy || model.configurationLocked)
-
+        ScrollView {
+            ConfigurationRows(fields: documentSchemas.configuration).padding(6)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(.trailing, 4)
         }
+        .disabled(model.busy || model.configurationLocked)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
