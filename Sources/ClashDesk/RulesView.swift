@@ -240,7 +240,7 @@ struct RuleEditorView: View {
     }
     @ViewBuilder func matchValueField(kind: RuleKind, value: Binding<String>) -> some View {
         if kind == .geosite || kind == .geoIP || kind == .sourceGeoIP {
-            GeoMatchInput(value: value, options: kind == .geosite ? geoSiteOptions : geoIPOptions)
+            GeoMatchInput(value: value, options: kind == .geosite ? geoSiteOptions : geoIPOptions, isGeoIP: kind != .geosite)
                 .frame(height: 24)
         } else {
             TextField("", text: value)
@@ -392,6 +392,23 @@ private func geoCollectionNames(_ name: String) -> [String] {
 private struct GeoMatchInput: NSViewRepresentable {
     @Binding var value: String
     let options: [String]
+    let isGeoIP: Bool
+
+    private static let geoIPTranslations = [
+        "cn": "中国大陆", "private": "私有网络", "google": "谷歌", "telegram": "电报",
+        "netflix": "奈飞", "facebook": "脸书", "twitter": "推特", "tor": "洋葱网络",
+        "cloudflare": "Cloudflare 云服务", "cloudfront": "亚马逊内容分发网络",
+        "fastly": "Fastly 内容分发网络"
+    ]
+
+    func label(_ name: String) -> String {
+        guard isGeoIP else { return name }
+        if let translated = Self.geoIPTranslations[name] { return translated + "（" + name + "）" }
+        if name.count == 2, let region = Locale(identifier: "zh_Hans").localizedString(forRegionCode: name.uppercased()) {
+            return region + "（" + name + "）"
+        }
+        return "IP 集合（" + name + "）"
+    }
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
     func makeNSView(context: Context) -> NSComboBox {
@@ -409,23 +426,30 @@ private struct GeoMatchInput: NSViewRepresentable {
         context.coordinator.updating = true
         defer { context.coordinator.updating = false }
         if view.stringValue != value { view.stringValue = value }
-        let choices = value.isEmpty ? options : options.filter { $0.localizedCaseInsensitiveContains(value) }
-        if context.coordinator.choices != choices {
+        let choices = value.isEmpty ? options : options.filter { label($0).localizedCaseInsensitiveContains(value) }
+        let labels = choices.map(label)
+        if context.coordinator.choices != choices || context.coordinator.labels != labels {
+            context.coordinator.labels = labels
             context.coordinator.choices = choices
             let text = view.stringValue
             view.removeAllItems()
-            view.addItems(withObjectValues: choices)
+            view.addItems(withObjectValues: labels)
             view.stringValue = text
         }
     }
     final class Coordinator: NSObject, NSComboBoxDelegate {
         var parent: GeoMatchInput
         var choices: [String] = []
+        var labels: [String] = []
         var updating = false
         init(_ parent: GeoMatchInput) { self.parent = parent }
         func controlTextDidChange(_ notification: Notification) {
             guard !updating, let view = notification.object as? NSComboBox else { return }
-            parent.value = view.stringValue
+            if let index = labels.firstIndex(of: view.stringValue), choices.indices.contains(index) {
+                parent.value = choices[index]
+            } else {
+                parent.value = view.stringValue
+            }
         }
         func comboBoxSelectionDidChange(_ notification: Notification) {
             guard !updating, let view = notification.object as? NSComboBox,
