@@ -213,19 +213,21 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         }
     }
     var groups: [[String: Any]] = []
-    func nodeTarget(_ node: Node) -> String {
-        node.provider == "manual" ? node.name : aliases[node] ?? "REJECT"
+    func nodeTarget(_ node: Node) throws -> String {
+        if node.provider == "manual", manualNames.contains(node.name) { return node.name }
+        guard let alias = aliases[node] else { throw DeskError("引用的代理节点已失效，请重新选择出口：" + node.name) }
+        return alias
     }
-    func resolve(_ target: String) -> String {
-        if let node = referencedNode(target) { return nodeTarget(node) }
+    func resolve(_ target: String) throws -> String {
+        if let node = referencedNode(target) { return try nodeTarget(node) }
         if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
         return String(target.dropFirst(8))
     }
     for group in settings.proxyGroups ?? [] {
         var object = group.fields.filter { $0.value != .string("") }.mapValues(\.native)
         object["name"] = group.name; object["type"] = group.type
-        object["proxies"] = group.targets.map(resolve)
-        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = resolve(selected) }
+        object["proxies"] = try group.targets.map(resolve)
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try resolve(selected) }
         if object["empty-fallback"] == nil { object["empty-fallback"] = "REJECT" }
         groups.append(object)
     }
@@ -238,7 +240,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     } else if settings.defaultDirect == true {
         defaultTarget = "DIRECT"
     } else if let node = settings.defaultNode {
-        defaultTarget = nodeTarget(node)
+        defaultTarget = try nodeTarget(node)
     } else {
         let targets = proxyObjects.compactMap { $0["name"] as? String }
         if targets.count > 1 {
@@ -246,6 +248,14 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             defaultTarget = defaultGroup
         } else {
             defaultTarget = targets.first ?? "REJECT"
+        }
+    }
+    let dialerTargets = Set(proxyObjects.compactMap { $0["name"] as? String }
+        + groups.compactMap { $0["name"] as? String }
+        + ["DIRECT", "REJECT", "REJECT-DROP", "PASS", "GLOBAL", "COMPATIBLE"])
+    for proxy in proxyObjects {
+        if let dialer = proxy["dialer-proxy"] as? String, !dialerTargets.contains(dialer) {
+            throw DeskError("拨号代理引用的出口不存在，请重新选择：" + dialer)
         }
     }
     var rules: [String] = []
@@ -257,7 +267,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             rules.append("SUB-RULE,\(rule.value),\(rule.subRuleTarget!)")
             continue
         }
-        let target = rule.proxyGroup ?? rule.node.map(nodeTarget) ?? rule.builtin ?? "DIRECT"
+        let target = try rule.proxyGroup ?? rule.node.map(nodeTarget) ?? rule.builtin ?? "DIRECT"
         var line = "\(rule.kind.rawValue),\(rule.value),\(target)"
         if rule.noResolve == true { line += ",no-resolve" }
         if rule.sourceIP == true { line += ",src" }
@@ -289,13 +299,14 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     ]
     config["proxies"] = proxyObjects
     for (path, value) in settings.options ?? [:] {
+        guard validConfigPath(path) else { throw DeskError("配置字段路径无效") }
         // An empty visual input omits an optional field, even when our defaults contain it.
         let omitted = value == .string("") && path != "external-controller" && path != "secret"
         setConfigPath(path, value: omitted ? nil : value.native, in: &config)
     }
     if var resources = config["rule-providers"] as? [String: [String: Any]] {
         for (index, name) in resources.keys.sorted().enumerated() {
-            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = resolve(target) }
+            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = try resolve(target) }
             if resources[name]?["type"] as? String == "file" {
                 let format = resources[name]?["format"] as? String ?? "yaml"
                 resources[name]?["path"] = "./rules/set-\(index)." + format
@@ -347,6 +358,13 @@ public func recoverFileCommit(directory: URL) throws {
 
 public func commitFiles(_ files: [(String, Data)], directory: URL, write: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws {
     try recoverFileCommit(directory: directory)
+    for file in files {
+        let target = directory.appendingPathComponent(file.0)
+        if FileManager.default.fileExists(atPath: target.path),
+           try target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true {
+            throw DeskError("保存目标不是普通文件：" + file.0)
+        }
+    }
     let journal = directory.appendingPathComponent("file-commit")
     if FileManager.default.fileExists(atPath: journal.path) { try FileManager.default.removeItem(at: journal) }
     try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])

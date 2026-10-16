@@ -7,6 +7,10 @@ final class DeskModel: ObservableObject {
     @Published var settings = Settings() { didSet { scheduleLiveUpdate() } }
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
+    @Published var connectionsError: String?
+    private var connectionsRefreshID = UUID()
+    private var udpRefreshID = UUID()
+    @Published var runtimeConfigurationUncertain = false
     private var connectionsDate: Date?
     @Published var connectionSpeedsAvailable = false
     @Published var traffic: [DomainTrafficRow] = []
@@ -37,8 +41,9 @@ final class DeskModel: ObservableObject {
     private var liveUpdatePending = false
     var configurationLocked: Bool { coreRunning || corePID != nil }
 
-    init() {
-        directory = (try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk")
+    init(directory: URL? = nil) {
+        self.directory = directory ?? ((try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk"))
+        let directory = self.directory
         do {
             settings = try loadSettings(from: directory)
             let bundledCore = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo")
@@ -94,10 +99,10 @@ final class DeskModel: ObservableObject {
             }
         }
     }
-    var api: CoreAPI { (try? CoreAPI(settings: runtimeSettings)) ?? CoreAPI(secret: runtimeSettings.secret) }
+    var api: CoreAPI { get throws { try CoreAPI(settings: runtimeSettings) } }
     var allNodes: [Node] { (settings.manualProxies ?? []).map(\.node) + nodes }
     var servicesActive: Bool { coreRunning || corePID != nil || statsPID != nil }
-    var hasUnappliedChanges: Bool { runtimeConfigurationChanged(settings, applied: runtimeSettings) }
+    var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
     func toggleAllServices() {
         if !servicesActive { startAll(); return }
         perform {
@@ -110,8 +115,12 @@ final class DeskModel: ObservableObject {
     }
     var activeController: String { runtimeSettings.options?["external-controller"]?.text ?? "127.0.0.1:19090" }
     func refresh() async {
+        let refreshID = UUID()
+        connectionsRefreshID = refreshID
         do {
             var live = try await api.connections()
+            try Task.checkCancellation()
+            guard connectionsRefreshID == refreshID else { return }
             let now = Date()
             if let previousDate = connectionsDate {
                 let elapsed = now.timeIntervalSince(previousDate)
@@ -126,8 +135,14 @@ final class DeskModel: ObservableObject {
             }
             connectionSpeedsAvailable = connectionsDate != nil
             connectionsDate = now
-            connections = live; coreRunning = true
-        } catch { coreRunning = false; connections = []; connectionsDate = nil; connectionSpeedsAvailable = false }
+            connections = live; coreRunning = true; connectionsError = nil
+        } catch {
+            guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
+            // HTTP and decoding failures still mean the controller is reachable.
+            coreRunning = error is CoreAPIError
+            connections = []; connectionsDate = nil; connectionSpeedsAvailable = false
+            connectionsError = "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
+        }
         do {
             let folder = directory; let range = hours; let grouping = trafficGrouping
             let result = try await Task.detached {
@@ -283,26 +298,40 @@ final class DeskModel: ObservableObject {
     }
     @Published var manualUDP: [String: Bool] = [:]
     func refreshManualUDP() async {
-        let snapshot = settings.manualProxies ?? []
+        let requestID = UUID()
+        udpRefreshID = requestID
+        let sourceSettings = settings
+        let snapshot = sourceSettings.manualProxies ?? []
         manualUDP = [:]
-        let providers = settings.subscriptions.compactMap { source -> (String, URL)? in
+        let providers = sourceSettings.subscriptions.compactMap { source -> (String, URL)? in
             let file = providerFile(source, directory: directory)
             return FileManager.default.fileExists(atPath: file.path) ? (source.provider, file) : nil
         }
         guard !snapshot.isEmpty || !providers.isEmpty, !settings.corePath.isEmpty else { return }
         do {
             let proxies = try snapshot.map { try $0.configuration() }
-            let (support, imported) = try await withProviderCore(corePath: settings.corePath, providers: providers, proxies: proxies) { api in
+            let (support, imported) = try await withProviderCore(corePath: sourceSettings.corePath, providers: providers, proxies: proxies) { api in
                 (try await api.udpSupport(), try await api.nodes(providerOrder: providers.map { $0.0 }))
             }
-            let capabilities = Dictionary(imported.map { ($0.id, $0.supportsUDP) }, uniquingKeysWith: { first, _ in first })
-            for index in nodes.indices {
-                if let capability = capabilities[nodes[index].id] { nodes[index].supportsUDP = capability }
-            }
-            try saveNodeCache(nodes, directory: directory)
+            try Task.checkCancellation()
             let current = settings.manualProxies ?? []
-            if snapshot.count == current.count, zip(snapshot, current).allSatisfy({ $0.id == $1.id && $0.type == $1.type && $0.fields == $1.fields }) { manualUDP = support }
-        } catch { /* Unsupported or invalid core configuration remains unknown. */ }
+            guard udpRefreshID == requestID, !busy,
+                  sourceSettings.corePath == settings.corePath,
+                  sourceSettings.subscriptions == settings.subscriptions,
+                  sourceSettings.subscriptionProxies == settings.subscriptionProxies,
+                  snapshot.count == current.count,
+                  zip(snapshot, current).allSatisfy({ $0.id == $1.id && $0.type == $1.type && $0.fields == $1.fields }) else { return }
+            let capabilities = Dictionary(imported.map { ($0.id, $0.supportsUDP) }, uniquingKeysWith: { first, _ in first })
+            var updated = nodes
+            for index in updated.indices {
+                if let capability = capabilities[updated[index].id] { updated[index].supportsUDP = capability }
+            }
+            try saveNodeCache(updated, directory: directory)
+            nodes = updated; manualUDP = support
+        } catch {
+            guard !Task.isCancelled, udpRefreshID == requestID else { return }
+            self.error = "无法更新 UDP 能力：" + error.localizedDescription
+        }
     }
     func testDelay(_ node: Node) { testDelays([node]) }
     func testAllDelays() {
@@ -378,9 +407,14 @@ final class DeskModel: ObservableObject {
             _ = try controllerEndpoint(snapshot)
             try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
             self.runtimeSettings = snapshot
+            self.runtimeConfigurationUncertain = false
             try await startStatistics(directory: self.directory)
             self.message = "配置已校验并启动。"
         }
+    }
+    func retryLiveUpdate() {
+        guard !busy else { return }
+        scheduleLiveUpdate()
     }
     private func scheduleLiveUpdate() {
         guard configurationLocked else { return }
@@ -398,18 +432,39 @@ final class DeskModel: ObservableObject {
                 self.busy = true
                 do {
                     let config = try generateConfig(snapshot)
-                    let previous = try generateConfig(self.runtimeSettings)
-                    try await self.api.reload(config)
+                    let previousSettings = self.runtimeSettings
+                    let previous = try generateConfig(previousSettings)
+                    let controller = try self.api
+                    try await controller.reload(config)
+                    self.runtimeConfigurationUncertain = true
+                    var configurationPersisted = false
+                    var runtimeSaveAttempted = false
                     do {
                         try await persistCoreConfiguration(config)
+                        configurationPersisted = true
+                        runtimeSaveAttempted = true
+                        try saveRuntimeSettings(snapshot, to: self.directory)
                     } catch {
                         let persistenceError = error
-                        do { try await self.api.reload(previous) }
-                        catch { self.busy = false; self.error = "保存运行配置失败，回滚也失败：\(error.localizedDescription)"; return }
+                        var failures: [String] = []
+                        do { try await controller.reload(previous) }
+                        catch { failures.append("内核回滚失败：" + error.localizedDescription) }
+                        if configurationPersisted {
+                            do { try await persistCoreConfiguration(previous) }
+                            catch { failures.append("系统配置恢复失败：" + error.localizedDescription) }
+                        }
+                        if runtimeSaveAttempted {
+                            do { try saveRuntimeSettings(previousSettings, to: self.directory) }
+                            catch { failures.append("采集配置恢复失败：" + error.localizedDescription) }
+                        }
+                        self.runtimeConfigurationUncertain = !failures.isEmpty
+                        if !failures.isEmpty {
+                            throw DeskError(persistenceError.localizedDescription + "；" + failures.joined(separator: "；") + "。请重试应用或重新启动服务。")
+                        }
                         throw persistenceError
                     }
                     self.runtimeSettings = snapshot
-                    try saveRuntimeSettings(snapshot, to: self.directory)
+                    self.runtimeConfigurationUncertain = false
                     self.message = "修改已自动应用。"
                 } catch {
                     self.error = "修改已保存在本地，但自动应用失败：\(error.localizedDescription)"

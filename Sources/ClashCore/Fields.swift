@@ -116,7 +116,17 @@ public func emptyValue(_ field: EditorField) -> ConfigValue {
     }
 }
 
+public func validConfigPath(_ path: String) -> Bool {
+    let parts = path.split(separator: ".", omittingEmptySubsequences: false)
+    return !parts.isEmpty && parts.allSatisfy { part in
+        !part.isEmpty && !part.unicodeScalars.contains {
+            CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0)
+        }
+    }
+}
+
 public func setConfigPath(_ path: String, value: Any?, in object: inout [String: Any]) {
+    guard validConfigPath(path) else { return }
     let parts = path.split(separator: ".", maxSplits: 1).map(String.init)
     if parts.count == 1 { object[path] = value; return }
     var nested = object[parts[0]] as? [String: Any] ?? [:]
@@ -125,6 +135,7 @@ public func setConfigPath(_ path: String, value: Any?, in object: inout [String:
 }
 
 public func configPath(_ path: String, in object: [String: Any]) -> Any? {
+    guard validConfigPath(path) else { return nil }
     let parts = path.split(separator: ".", maxSplits: 1).map(String.init)
     if parts.count == 1 { return object[path] }
     guard let nested = object[parts[0]] as? [String: Any] else { return nil }
@@ -164,7 +175,10 @@ public struct ManualProxy: Codable, Identifiable {
            ((fields["uuid"]?.text ?? "").isEmpty || (fields["password"]?.text ?? "").isEmpty) { throw DeskError("TUIC 需要 token，或 uuid 与 password") }
         if type == "hysteria2", fields["obfs"] != nil, (fields["obfs-password"]?.text ?? "").isEmpty { throw DeskError("启用 Hysteria2 混淆需要 obfs-password") }
         var object: [String: Any] = ["type": type]
-        for (path, value) in fields { setConfigPath(path, value: value.native, in: &object) }
+        for (path, value) in fields {
+            guard validConfigPath(path) else { throw DeskError("额外字段路径无效，请使用点号分隔非空字段名") }
+            setConfigPath(path, value: value.native, in: &object)
+        }
         return object
     }
 }

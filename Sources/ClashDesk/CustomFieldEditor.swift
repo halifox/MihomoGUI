@@ -18,12 +18,16 @@ struct CustomFieldEditor: View {
                     Text("列表（list）").tag("list"); Text("键值表（map）").tag("map")
                 }.labelsHidden()
             }
+            if !fieldPath.isEmpty && !validConfigPath(fieldPath) {
+                Text("字段路径须由非空字段名组成，不能以点号开头、结尾或包含连续点号、空白字符。")
+                    .font(.caption).foregroundStyle(.red)
+            }
             HStack {
                 Spacer()
                 Button("添加字段") {
                     fields[fieldPath] = emptyValue(EditorField(fieldPath, kind: kind, elementKind: "string")); path = ""
                     onAdd()
-                }.disabled(fieldPath.isEmpty || fields[fieldPath] != nil || reservedPaths.contains(fieldPath))
+                }.disabled(!validConfigPath(fieldPath) || fields[fieldPath] != nil || reservedPaths.contains(fieldPath))
             }
         }
     }

@@ -8,6 +8,7 @@ struct VisualField: View {
     var allowUnset = true
     var compact = false
     var inputEnabled = true
+    var defaultValue: ConfigValue?
     var body: some View {
         if compact { compactRow.controlSize(.regular) }
         else { legacyRow }
@@ -18,8 +19,18 @@ struct VisualField: View {
                           description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
                 .frame(width: 200, alignment: .leading)
             VisualValue(field: field, value: Binding(get: {
-                value ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
+                value ?? defaultValue ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
             }, set: { value = $0 }), compact: true).disabled(!inputEnabled)
+            if allowUnset && !field.required {
+                if value == nil { Text("未设置").font(.caption).foregroundStyle(.secondary) }
+                Button {
+                    value = nil
+                } label: { Image(systemName: "arrow.uturn.backward") }
+                    .buttonStyle(.borderless)
+                    .help("恢复默认（不提交此字段）")
+                    .accessibilityLabel(field.title + " 恢复默认")
+                    .disabled(!inputEnabled || value == nil)
+            }
             Spacer(minLength: 0)
         }.padding(.vertical, 3)
     }

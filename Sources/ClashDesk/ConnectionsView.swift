@@ -68,6 +68,12 @@ struct ConnectionsView: View {
                 TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(value(row, "类型")).help(value(row, "类型")) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { value($0, "类型") }), max: nil)
                 )
             }
+            .overlay {
+                if rows.isEmpty {
+                    Text(model.connectionsError ?? "暂无活动连接")
+                        .foregroundStyle(.secondary).allowsHitTesting(false)
+                }
+            }
             .background(TableColumnAutoFit(widths: ["主机", "下载量", "上传量", "下载速度", "上传速度", "链路", "规则", "进程", "连接时间", "源地址", "目标地址", "类型"].map { column in
                 tableColumnWidth(column, rows.map { value($0, column) })
             }))

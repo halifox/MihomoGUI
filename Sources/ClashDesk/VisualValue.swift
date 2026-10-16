@@ -49,12 +49,14 @@ struct VisualValue: View {
 }
 
 func typedPath(_ path: String, in object: [String: ConfigValue]) -> ConfigValue? {
+    guard validConfigPath(path) else { return nil }
     let parts = path.split(separator: ".", maxSplits: 1).map(String.init)
     if parts.count == 1 { return object[path] }
     return typedPath(parts[1], in: object[parts[0]]?.object ?? [:])
 }
 
 func setTypedPath(_ path: String, value: ConfigValue?, in object: inout [String: ConfigValue]) {
+    guard validConfigPath(path) else { return }
     let parts = path.split(separator: ".", maxSplits: 1).map(String.init)
     if parts.count == 1 { object[path] = value; return }
     var nested = object[parts[0]]?.object ?? [:]

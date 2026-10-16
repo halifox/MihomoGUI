@@ -157,16 +157,24 @@ struct SubscriptionEditorView: View {
 
 extension DeskModel {
     func deleteSubscription(_ subscription: Subscription) {
+        guard !busy else { return }
         if settings.defaultNode?.provider == subscription.provider || settings.rules.contains(where: { $0.node?.provider == subscription.provider }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains(where: { referencedNode($0)?.provider == subscription.provider }) }) {
             error = "该订阅仍被规则引用，请先调整相关出口。"; return
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { referencedNode($0.object["proxy"]?.text ?? "")?.provider == subscription.provider }) == true {
             error = "该订阅节点仍用于规则集下载，请先修改下载出口。"; return
         }
-        settings.subscriptions.removeAll { $0.id == subscription.id }
-        settings.subscriptionProxies?.removeValue(forKey: subscription.id)
-        nodes.removeAll { $0.provider == subscription.provider }
-        do { try save(); try saveNodeCache(nodes, directory: directory) }
-        catch { self.error = error.localizedDescription }
+        do {
+            var candidate = settings
+            candidate.subscriptions.removeAll { $0.id == subscription.id }
+            candidate.subscriptionProxies?.removeValue(forKey: subscription.id)
+            let remaining = nodes.filter { $0.provider != subscription.provider }
+            _ = try generateConfig(candidate)
+            try commitFiles([
+                ("settings.json", try JSONEncoder().encode(candidate)),
+                ("nodes.json", try JSONEncoder().encode(remaining))
+            ], directory: directory)
+            settings = candidate; nodes = remaining
+        } catch { self.error = error.localizedDescription }
     }
 }

@@ -31,7 +31,28 @@ public struct Connection: Decodable, Identifiable {
 }
 
 public struct Connections: Decodable {
-    public let connections: [Connection]?
+    public let connections: [Connection]
+    private enum CodingKeys: String, CodingKey { case connections }
+    public init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        guard values.contains(.connections) else {
+            throw DecodingError.keyNotFound(CodingKeys.connections,
+                .init(codingPath: decoder.codingPath, debugDescription: "Missing connections field"))
+        }
+        // mihomo can encode an empty Go slice as null; the field must still be present.
+        connections = try values.decodeIfPresent([Connection].self, forKey: .connections) ?? []
+    }
+}
+
+public enum CoreAPIError: LocalizedError {
+    case http(Int), invalidResponse, invalidConnections
+    public var errorDescription: String? {
+        switch self {
+        case .http(let code): return "mihomo 请求失败（HTTP \(code)），请检查控制接口授权及服务日志"
+        case .invalidResponse: return "mihomo 控制接口返回了无效的 HTTP 响应"
+        case .invalidConnections: return "mihomo 连接数据格式无效或缺少必要字段，请检查内核版本及服务日志"
+        }
+    }
 }
 
 public struct CoreAPI {
@@ -52,16 +73,15 @@ public struct CoreAPI {
         request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let (data, response) = try await URLSession.shared.data(for: request)
-        guard let response = response as? HTTPURLResponse, (200..<300).contains(response.statusCode) else {
-            // Do not echo API response bodies: configuration errors can include subscription credentials.
-            let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-            throw DeskError("mihomo 请求失败（HTTP \(code)），请在应用设置中查看服务日志")
-        }
+        guard let response = response as? HTTPURLResponse else { throw CoreAPIError.invalidResponse }
+        // Do not echo API response bodies: configuration errors can include subscription credentials.
+        guard (200..<300).contains(response.statusCode) else { throw CoreAPIError.http(response.statusCode) }
         return data
     }
     public func connections() async throws -> [Connection] {
         let data = try await request("/connections")
-        return try autoreleasepool { try JSONDecoder().decode(Connections.self, from: data).connections ?? [] }
+        do { return try autoreleasepool { try JSONDecoder().decode(Connections.self, from: data).connections } }
+        catch is DecodingError { throw CoreAPIError.invalidConnections }
     }
     public func nodes(providerOrder: [String] = []) async throws -> [Node] {
         struct Provider: Decodable { var proxies: [Proxy]? }

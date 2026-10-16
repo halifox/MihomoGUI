@@ -16,6 +16,16 @@ struct ApplicationSettingsView: View {
                             formRow("采集服务", help: "后台流量采集服务的状态。等待采集表示服务已启动，但尚未收到近期采集数据。") {
                                 statusBadge(statsStatus, active: model.statsPID != nil && statsStatus == "采集中")
                             }
+                            if let error = model.connectionsError {
+                                Text(error).font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                            }
+                            if model.configurationLocked && model.hasUnappliedChanges {
+                                HStack {
+                                    Text(model.runtimeConfigurationUncertain ? "运行配置状态待恢复" : "存在尚未应用的修改")
+                                        .font(.caption).foregroundStyle(.orange)
+                                    Button("重试应用") { model.retryLiveUpdate() }.disabled(model.busy)
+                                }
+                            }
                             info("内核版本", model.coreVersion ?? "—", "当前运行的 mihomo 版本。")
                             info("内存占用", model.coreMemory.map(bytes) ?? "—", "mihomo 控制接口报告的内存使用量。")
                             info("内核服务 PID", model.corePID.map(String.init) ?? "—", "由 launchd 管理的内核服务进程编号，包含内核与日志采集子进程。")

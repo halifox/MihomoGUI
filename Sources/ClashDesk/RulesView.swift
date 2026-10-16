@@ -260,7 +260,7 @@ struct RuleEditorView: View {
             var rule = RouteRule(kind: kind, value: payload, node: node)
             if let original { rule.id = original.id }
             rule.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
-            rule.builtin = target.hasPrefix("builtin:") ? optionLabel(String(target.dropFirst(8))) : nil
+            rule.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
             rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
             try model.saveRule(rule); dismiss()
         } catch { self.error = error.localizedDescription }
@@ -269,8 +269,14 @@ struct RuleEditorView: View {
 
 extension DeskModel {
     func deleteRule(_ id: String) {
-        settings.rules.removeAll { $0.id == id }
-        do { try save(); message = "规则已删除，运行时将自动应用。" } catch { self.error = error.localizedDescription }
+        guard !busy else { return }
+        do {
+            var candidate = settings
+            candidate.rules.removeAll { $0.id == id }
+            try saveSettings(candidate, to: directory)
+            settings = candidate
+            message = "规则已删除，运行时将自动应用。"
+        } catch { self.error = error.localizedDescription }
     }
     func chooseApplicationPath() -> String? {
         let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowedContentTypes = [.application]
@@ -295,6 +301,7 @@ extension DeskModel {
         } catch { self.error = error.localizedDescription }
     }
     func saveRule(_ rule: RouteRule) throws {
+        guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
         var candidate = settings
         if let index = candidate.rules.firstIndex(where: { $0.id == rule.id }) { candidate.rules[index] = rule }
         else { candidate.rules.append(rule) }
@@ -332,9 +339,13 @@ extension DeskModel {
         }
     }
     func moveRule(_ id: String, offset: Int) {
-        guard let index = settings.rules.firstIndex(where: { $0.id == id }), settings.rules.indices.contains(index + offset) else { return }
-        settings.rules.swapAt(index, index + offset)
-        do { try save() } catch { self.error = error.localizedDescription }
+        guard !busy, let index = settings.rules.firstIndex(where: { $0.id == id }), settings.rules.indices.contains(index + offset) else { return }
+        do {
+            var candidate = settings
+            candidate.rules.swapAt(index, index + offset)
+            try saveSettings(candidate, to: directory)
+            settings = candidate
+        } catch { self.error = error.localizedDescription }
     }
 }
 

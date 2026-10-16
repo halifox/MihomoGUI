@@ -77,17 +77,17 @@ struct ResourceEditorView: View {
                             HStack {
                                 FieldKeyLabel(title: "default-selected", key: "default-selected").frame(width: 200, alignment: .leading)
                                 Picker("默认成员", selection: Binding(get: {
-                                    let selected = fields["default-selected"]?.text ?? ""
-                                    return selected.isEmpty ? targets.first ?? "" : selected
-                                }, set: { fields["default-selected"] = .string($0) })) {
-                                    if targets.isEmpty { Text("空（Empty）").tag("") }
+                                    fields["default-selected"]?.text ?? ""
+                                }, set: { fields["default-selected"] = $0.isEmpty ? nil : .string($0) })) {
+                                    Text("默认（首个成员）").tag("")
                                     ForEach(Array(Set(targets)).sorted(), id: \.self) { target in Text(memberLabel(target)).tag(target) }
                                 }.labelsHidden()
                             }
                         } else {
                             VisualField(field: field, value: Binding(get: {
-                                fields[field.path] ?? (field.path == "lazy" ? .boolean(true) : nil)
-                            }, set: { fields[field.path] = $0 }), compact: true)
+                                fields[field.path]
+                            }, set: { fields[field.path] = $0 }), compact: true,
+                                        defaultValue: field.path == "lazy" ? .boolean(true) : nil)
                         }
                         if field.path == "path", type == "file" {
                             Button("选择规则文件") {
@@ -161,6 +161,7 @@ struct ResourceEditorView: View {
 
 extension DeskModel {
     func saveProxyGroup(_ group: ProxyGroup) throws {
+        guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
         var candidate = settings
         var groups = candidate.proxyGroups ?? []
         if let index = groups.firstIndex(where: { $0.id == group.id }) {
@@ -189,6 +190,7 @@ extension DeskModel {
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
     }
     func saveRuleProvider(name: String, type: String, fields: [String: ConfigValue], oldName: String?) throws {
+        guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
         guard !configurationLocked else { throw DeskError("Stop the core before editing rule providers") }
         guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集名称无效") }
         var candidate = settings

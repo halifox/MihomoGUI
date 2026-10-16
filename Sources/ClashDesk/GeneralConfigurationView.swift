@@ -29,9 +29,9 @@ private struct ConfigurationRows: View {
                     }
                 } else {
                     VisualField(field: field, value: Binding(get: {
-                        model.option(field.path)
+                        model.settings.options?[field.path]
                     }, set: { model.setOption(field.path, value: $0) }),
-                                allowUnset: model.baseOption(field.path) == nil, compact: true, inputEnabled: field.unavailableReason == nil && fieldEnabled(field.path))
+                                compact: true, inputEnabled: field.unavailableReason == nil && fieldEnabled(field.path), defaultValue: model.baseOption(field.path))
                         .environment(\.formHelpDocument, field.document ?? "general.md")
                 }
             }

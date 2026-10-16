@@ -212,12 +212,16 @@ extension DeskModel {
         return settings.manualProxies?.first { $0.name == node.name }
     }
     func saveManualProxy(_ proxy: ManualProxy) throws {
+        guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
         _ = try proxy.configuration()
         var candidate = settings
         var proxies = candidate.manualProxies ?? []
         if let index = proxies.firstIndex(where: { $0.id == proxy.id }) {
             let old = proxies[index].name
             proxies[index] = proxy
+            for index in proxies.indices where proxies[index].fields["dialer-proxy"] == .string(old) {
+                proxies[index].fields["dialer-proxy"] = .string(proxy.name)
+            }
             for index in candidate.rules.indices where candidate.rules[index].node?.provider == "manual" && candidate.rules[index].node?.name == old { candidate.rules[index].node = proxy.node }
             if candidate.defaultNode?.provider == "manual", candidate.defaultNode?.name == old { candidate.defaultNode = proxy.node }
             var providers = candidate.options?["rule-providers"]?.object ?? [:]
@@ -240,13 +244,23 @@ extension DeskModel {
         message = "代理已保存，运行时将自动应用。"
     }
     func deleteManualProxy(_ proxy: ManualProxy) {
+        guard !busy else { return }
+        if (settings.manualProxies ?? []).contains(where: { $0.id != proxy.id && $0.fields["dialer-proxy"] == .string(proxy.name) }) {
+            error = "该代理仍被其他代理用作拨号出口，请先调整引用。"; return
+        }
         if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
             error = "该代理仍被路由规则或 MATCH 使用，请先调整出口。"; return
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("node:" + proxy.node.id) || $0.object["proxy"] == .string(proxy.name) }) == true {
             error = "该代理仍用于规则集下载，请先修改下载出口。"; return
         }
-        settings.manualProxies?.removeAll { $0.id == proxy.id }
-        do { try save(); message = "代理已删除，运行时将自动应用。" } catch { self.error = error.localizedDescription }
+        do {
+            var candidate = settings
+            candidate.manualProxies?.removeAll { $0.id == proxy.id }
+            _ = try generateConfig(candidate)
+            try saveSettings(candidate, to: directory)
+            settings = candidate
+            message = "代理已删除，运行时将自动应用。"
+        } catch { self.error = error.localizedDescription }
     }
 }
