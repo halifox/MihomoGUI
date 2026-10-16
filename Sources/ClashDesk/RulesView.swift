@@ -195,14 +195,14 @@ struct RuleEditorView: View {
                                         }
                                     }
                                 }
-                                formRow("condition[\(index + 1)].value", help: (documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "填写条件的匹配内容。") + "\n\n示例：" + conditions[index].kind.hint) { TextField("", text: $conditions[index].value) }
+                                formRow("condition[\(index + 1)].value", help: (documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "填写条件的匹配内容。") + "\n\n示例：" + conditions[index].kind.hint) { matchValueField(kind: conditions[index].kind, value: $conditions[index].value) }
                             }
                             if kind != .not && kind != .subRule {
                                 formRow("conditions") { Button("添加条件") { conditions.append(RuleCondition()) } }
                             }
                         }
                     } else {
-                        formRow("value *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写当前规则类型的匹配内容。") + "\n\n示例：" + kind.hint) { TextField("", text: $value).help(kind.hint) }
+                        formRow("value *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写当前规则类型的匹配内容。") + "\n\n示例：" + kind.hint) { matchValueField(kind: kind, value: $value).help(kind.hint) }
                         if kind == .processPath {
                             formRow("application") { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
                         }
@@ -237,6 +237,14 @@ struct RuleEditorView: View {
         .alert("规则参数无效", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("确定") { error = nil }
         } message: { Text(error ?? "") }
+    }
+    @ViewBuilder func matchValueField(kind: RuleKind, value: Binding<String>) -> some View {
+        if kind == .geosite || kind == .geoIP || kind == .sourceGeoIP {
+            GeoMatchInput(value: value, options: kind == .geosite ? geoSiteOptions : geoIPOptions)
+                .frame(height: 24)
+        } else {
+            TextField("", text: value)
+        }
     }
     func save() {
         do {
@@ -327,5 +335,102 @@ extension DeskModel {
         guard let index = settings.rules.firstIndex(where: { $0.id == id }), settings.rules.indices.contains(index + offset) else { return }
         settings.rules.swapAt(index, index + offset)
         do { try save() } catch { self.error = error.localizedDescription }
+    }
+}
+
+// Read collection names from the bundled protobuf files once, without decoding domain/IP entries.
+private let geoSiteOptions = geoCollectionNames("geosite.dat")
+private let geoIPOptions = geoCollectionNames("geoip.dat")
+
+private func geoCollectionNames(_ name: String) -> [String] {
+    let url = Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/geodata/" + name)
+    guard let data = try? Data(contentsOf: url, options: .mappedIfSafe) else { return [] }
+    func varint(_ index: inout Int, end: Int) -> Int? {
+        var result: UInt64 = 0
+        for shift in stride(from: 0, through: 63, by: 7) {
+            guard index < end else { return nil }
+            let byte = data[index]; index += 1
+            if shift == 63 && byte > 1 { return nil }
+            result |= UInt64(byte & 127) << shift
+            if byte < 128 { return Int(exactly: result) }
+        }
+        return nil
+    }
+    func field(_ index: inout Int, end: Int) -> (Int, Range<Int>?)? {
+        guard let key = varint(&index, end: end), key >> 3 > 0 else { return nil }
+        switch key & 7 {
+        case 0:
+            guard varint(&index, end: end) != nil else { return nil }
+        case 1, 5:
+            let count = key & 7 == 1 ? 8 : 4
+            guard end - index >= count else { return nil }
+            index += count
+        case 2:
+            guard let count = varint(&index, end: end), count <= end - index else { return nil }
+            let range = index..<(index + count); index += count
+            return (key >> 3, range)
+        default: return nil
+        }
+        return (key >> 3, nil)
+    }
+    var names = Set<String>()
+    var index = 0
+    while index < data.count {
+        guard let (number, entry) = field(&index, end: data.count) else { break }
+        guard number == 1, let entry else { continue }
+        var nested = entry.lowerBound
+        while nested < entry.upperBound {
+            guard let (number, bytes) = field(&nested, end: entry.upperBound) else { break }
+            if number == 1, let bytes, let name = String(data: data.subdata(in: bytes), encoding: .utf8) {
+                names.insert(name.lowercased()); break
+            }
+        }
+    }
+    return names.sorted()
+}
+
+private struct GeoMatchInput: NSViewRepresentable {
+    @Binding var value: String
+    let options: [String]
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NSComboBox {
+        let view = NSComboBox()
+        view.isEditable = true
+        view.completes = false
+        view.numberOfVisibleItems = 12
+        view.placeholderString = "输入或选择集合名称"
+        view.delegate = context.coordinator
+        view.setAccessibilityLabel("GEO 匹配集合")
+        return view
+    }
+    func updateNSView(_ view: NSComboBox, context: Context) {
+        context.coordinator.parent = self
+        context.coordinator.updating = true
+        defer { context.coordinator.updating = false }
+        if view.stringValue != value { view.stringValue = value }
+        let choices = value.isEmpty ? options : options.filter { $0.localizedCaseInsensitiveContains(value) }
+        if context.coordinator.choices != choices {
+            context.coordinator.choices = choices
+            let text = view.stringValue
+            view.removeAllItems()
+            view.addItems(withObjectValues: choices)
+            view.stringValue = text
+        }
+    }
+    final class Coordinator: NSObject, NSComboBoxDelegate {
+        var parent: GeoMatchInput
+        var choices: [String] = []
+        var updating = false
+        init(_ parent: GeoMatchInput) { self.parent = parent }
+        func controlTextDidChange(_ notification: Notification) {
+            guard !updating, let view = notification.object as? NSComboBox else { return }
+            parent.value = view.stringValue
+        }
+        func comboBoxSelectionDidChange(_ notification: Notification) {
+            guard !updating, let view = notification.object as? NSComboBox,
+                  choices.indices.contains(view.indexOfSelectedItem) else { return }
+            parent.value = choices[view.indexOfSelectedItem]
+        }
     }
 }
