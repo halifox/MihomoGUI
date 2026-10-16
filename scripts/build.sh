@@ -1,6 +1,19 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+ARCH="$(uname -m)"
+CORE_FILE="$PWD/resources/core/$ARCH/mihomo"
+GEO_DIR="$PWD/resources/geodata"
+for resource in "$CORE_FILE" "$GEO_DIR/Country.mmdb" "$GEO_DIR/geoip.dat" "$GEO_DIR/geosite.dat" "$GEO_DIR/ASN.mmdb"; do
+  if [ ! -s "$resource" ]; then
+    printf 'Missing bundled resource: %s\nSee resources/README.md for required files.\n' "$resource" >&2
+    exit 1
+  fi
+done
+if ! /usr/bin/lipo "$CORE_FILE" -verify_arch "$ARCH" >/dev/null 2>&1; then
+  printf 'Bundled mihomo must be a macOS executable supporting %s: %s\n' "$ARCH" "$CORE_FILE" >&2
+  exit 1
+fi
 BUILD_DIR="$PWD/.build/manual"
 mkdir -p "$BUILD_DIR"
 export CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache"
@@ -14,9 +27,14 @@ swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" -I Sources/CSQLi
 swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" -I Sources/CSQLite \
   Sources/ClashDesk/*.swift "$BUILD_DIR/ClashCore.o" -lsqlite3 -o "$BUILD_DIR/ClashDesk"
 APP_DIR="$PWD/dist/ClashDesk.app"
-mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers"
+mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Contents/Resources/geodata"
 cp "$BUILD_DIR/ClashDesk" "$APP_DIR/Contents/MacOS/ClashDesk"
 cp "$BUILD_DIR/clash-stats" "$APP_DIR/Contents/Helpers/clash-stats"
+cp "$CORE_FILE" "$APP_DIR/Contents/Helpers/mihomo"
+chmod 755 "$APP_DIR/Contents/Helpers/mihomo"
+for name in Country.mmdb geoip.dat geosite.dat ASN.mmdb; do
+  cp "$GEO_DIR/$name" "$APP_DIR/Contents/Resources/geodata/$name"
+done
 cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
@@ -32,6 +50,7 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 </dict></plist>
 PLIST
 codesign --force --sign - "$APP_DIR/Contents/Helpers/clash-stats"
+codesign --force --sign - "$APP_DIR/Contents/Helpers/mihomo"
 codesign --force --sign - "$APP_DIR"
 printf 'Built: %s\n' "$APP_DIR"
 printf 'If ClashDesk is already running, quit with Cmd-Q and reopen the app to load this build.\n'

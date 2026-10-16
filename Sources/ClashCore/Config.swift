@@ -131,7 +131,7 @@ public struct Settings: Codable {
     public var secret = UUID().uuidString + UUID().uuidString
     public var subscriptions: [Subscription] = []
     public var subscriptionProxies: [String: [ConfigValue]]?
-    public var rules: [RouteRule] = []
+    public var rules: [RouteRule] = [RouteRule(kind: .geoIP, value: "cn", node: nil)]
     public var defaultNode: Node?
     public var defaultDirect: Bool?
     public var tun = true

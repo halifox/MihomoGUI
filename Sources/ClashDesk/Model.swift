@@ -41,6 +41,8 @@ final class DeskModel: ObservableObject {
         directory = (try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk")
         do {
             settings = try loadSettings(from: directory)
+            let bundledCore = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo")
+            settings.corePath = bundledCore.path
             runtimeSettings = try loadRuntimeSettings(from: directory)
             if settings.ruleOrderMigrated == nil {
                 settings.rules = settings.rules.filter { $0.kind.isProcess } + settings.rules.filter { !$0.kind.isProcess }

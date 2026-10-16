@@ -97,7 +97,7 @@ func stopStatistics() async throws {
 }
 
 func installAndStartCore(settings: Settings, config: Data, directory: URL) async throws {
-    guard FileManager.default.isExecutableFile(atPath: settings.corePath) else { throw DeskError("请先选择可执行的 macOS mihomo 二进制文件") }
+    guard FileManager.default.isExecutableFile(atPath: settings.corePath) else { throw DeskError("应用内置 mihomo 内核缺失或不可执行，请重新安装应用") }
     // Stage immutable inputs for this operation, never interpolate unquoted user values into a shell.
     let staging = directory.appendingPathComponent("install-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])

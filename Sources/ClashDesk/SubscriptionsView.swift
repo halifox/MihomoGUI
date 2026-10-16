@@ -148,7 +148,7 @@ struct SubscriptionEditorView: View {
                 }.buttonStyle(.borderedProminent)
                     .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
-            if model.settings.corePath.isEmpty { Text("请先在设置中选择 mihomo 二进制文件。").foregroundStyle(.orange) }
+            if model.settings.corePath.isEmpty { Text("应用内置 mihomo 内核不可用，请重新安装应用。").foregroundStyle(.orange) }
         }.textFieldStyle(.roundedBorder).padding(16).controlSize(.regular).frame(width: 620)
             .environment(\.formHelpDocument, "subscription")
             .interactiveDismissDisabled(model.busy)

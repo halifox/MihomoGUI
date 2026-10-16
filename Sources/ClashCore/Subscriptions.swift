@@ -86,6 +86,7 @@ public func prepareGeoAssets(corePath: String, directory: URL, names: [String] =
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     let coreFolder = URL(fileURLWithPath: corePath).deletingLastPathComponent()
     var sourceFolders = [coreFolder]
+    sourceFolders.append(Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/geodata"))
     if coreFolder.lastPathComponent == "MacOS", coreFolder.deletingLastPathComponent().lastPathComponent == "Contents" {
         sourceFolders.append(coreFolder.deletingLastPathComponent().appendingPathComponent("Resources/resources"))
     }

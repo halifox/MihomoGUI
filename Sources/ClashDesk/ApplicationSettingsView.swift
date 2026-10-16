@@ -1,5 +1,4 @@
 import SwiftUI
-import AppKit
 import ClashCore
 
 struct ApplicationSettingsView: View {
@@ -33,17 +32,6 @@ struct ApplicationSettingsView: View {
                             Button { model.perform { await model.refreshDiagnostics() } } label: { Image(systemName: "arrow.clockwise") }
                                 .buttonStyle(.borderless).help("刷新运行信息").disabled(model.busy)
                         }
-                    }
-                    GroupBox("内核文件") {
-                        formRow("core-path", help: "选择可执行的 macOS mihomo 二进制文件，用于代理运行、订阅解析和延迟测试。") {
-                            HStack {
-                                Text(model.settings.corePath.isEmpty ? "尚未配置" : model.settings.corePath)
-                                    .font(.system(.body, design: .monospaced)).lineLimit(1).truncationMode(.middle)
-                                    .textSelection(.enabled).help(model.settings.corePath)
-                                Spacer(minLength: 0)
-                                Button("选择文件") { model.chooseCore() }.disabled(model.busy || model.configurationLocked)
-                            }
-                        }.padding(6)
                     }
                     GroupBox("延迟测试") {
                         VStack(alignment: .leading, spacing: 4) {
@@ -100,17 +88,5 @@ struct ApplicationSettingsView: View {
     }
     func info(_ title: String, _ value: String, _ help: String) -> some View {
         formRow(title, help: help) { Text(value).lineLimit(1).truncationMode(.middle).textSelection(.enabled).help(value) }
-    }
-}
-
-extension DeskModel {
-    func chooseCore() {
-        guard !configurationLocked, !busy else { return }
-        let panel = NSOpenPanel(); panel.canChooseDirectories = false; panel.allowsMultipleSelection = false
-        panel.message = "选择你信任的官方 macOS mihomo 二进制（之后将以管理员权限运行）"
-        if panel.runModal() == .OK, let url = panel.url {
-            settings.corePath = url.path
-            do { try save() } catch { self.error = error.localizedDescription }
-        }
     }
 }
