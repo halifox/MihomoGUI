@@ -143,7 +143,8 @@ public struct Settings: Codable {
     public var ruleOrderMigrated: Bool? = true
     public init() {}
     public func delayTestParameters() throws -> (url: String, timeout: Int) {
-        let address = (delayTestURL ?? "https://www.gstatic.com/generate_204").trimmingCharacters(in: .whitespacesAndNewlines)
+        let configuredAddress = (delayTestURL ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let address = configuredAddress.isEmpty ? "https://www.gstatic.com/generate_204" : configuredAddress
         guard let parsed = URL(string: address), ["http", "https"].contains(parsed.scheme?.lowercased() ?? ""),
               parsed.host != nil, parsed.user == nil, parsed.password == nil,
               !address.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.contains($0) || CharacterSet.controlCharacters.contains($0) }) else {

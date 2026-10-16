@@ -75,15 +75,42 @@ private struct ConfigurationRows: View {
                         .environment(\.formHelpDocument, field.document ?? "general.md")
                     if field.path == "unified-delay" {
                         formRow("延迟测试地址") {
-                            TextField("HTTP / HTTPS URL", text: Binding(get: {
-                                model.settings.delayTestURL ?? "https://www.gstatic.com/generate_204"
-                            }, set: { model.settings.delayTestURL = $0; model.scheduleConfigurationSave() }))
+                            HStack {
+                                TextField("https://www.gstatic.com/generate_204", text: Binding(get: {
+                                    model.settings.delayTestURL ?? ""
+                                }, set: {
+                                    model.settings.delayTestURL = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+                                    model.scheduleConfigurationSave()
+                                }))
+                                Button {
+                                    model.settings.delayTestURL = nil
+                                    model.scheduleConfigurationSave()
+                                } label: { Image(systemName: "arrow.uturn.backward") }
+                                    .buttonStyle(.borderless)
+                                    .help("恢复默认：https://www.gstatic.com/generate_204")
+                                    .accessibilityLabel("延迟测试地址 恢复默认")
+                                    .disabled(model.settings.delayTestURL == nil)
+                            }
                         }
                         formRow("延迟超时（毫秒）") {
-                            TextField("5000", value: Binding(get: {
-                                model.settings.delayTestTimeoutMilliseconds ?? 5000
-                            }, set: { model.settings.delayTestTimeoutMilliseconds = $0; model.scheduleConfigurationSave() }), format: .number.grouping(.never))
-                                .frame(width: 150)
+                            HStack {
+                                TextField("5000", value: Binding(get: {
+                                    model.settings.delayTestTimeoutMilliseconds
+                                }, set: {
+                                    model.settings.delayTestTimeoutMilliseconds = $0
+                                    model.scheduleConfigurationSave()
+                                }), format: .number.grouping(.never))
+                                    .frame(width: 150)
+                                Button {
+                                    model.settings.delayTestTimeoutMilliseconds = nil
+                                    model.scheduleConfigurationSave()
+                                } label: { Image(systemName: "arrow.uturn.backward") }
+                                    .buttonStyle(.borderless)
+                                    .help("恢复默认：5000 毫秒")
+                                    .accessibilityLabel("延迟超时 恢复默认")
+                                    .disabled(model.settings.delayTestTimeoutMilliseconds == nil)
+                                Spacer(minLength: 0)
+                            }
                         }
                     }
                 }
