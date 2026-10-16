@@ -11569,6 +11569,15 @@ let docSchemaJSON = #"""
       "required": false,
       "children": [
         {
+          "path": "dns.enable",
+          "title": "enable",
+          "kind": "boolean",
+          "hint": "true",
+          "description": "是否启用内核 DNS。关闭时使用系统 DNS 解析。",
+          "required": false,
+          "document": "dns/index.md"
+        },
+        {
           "path": "dns.cache-algorithm",
           "title": "cache-algorithm",
           "kind": "choice",
@@ -11580,15 +11589,6 @@ let docSchemaJSON = #"""
             "lru",
             "arc"
           ],
-          "document": "dns/index.md"
-        },
-        {
-          "path": "dns.enable",
-          "title": "enable",
-          "kind": "boolean",
-          "hint": "true",
-          "description": "是否启用内核 DNS。关闭时使用系统 DNS 解析。",
-          "required": false,
           "document": "dns/index.md"
         },
         {
