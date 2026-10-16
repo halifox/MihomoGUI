@@ -50,29 +50,26 @@ struct DeskView: View {
     @EnvironmentObject var model: DeskModel
     @State private var page: DeskPage? = .general
     var body: some View {
-        VStack(spacing: 0) {
-            NavigationSplitView {
-                List(DeskPage.allCases, selection: $page) { page in
-                    Label(page.title, systemImage: page.icon).tag(page)
-                }.listStyle(.sidebar)
-                    .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
-            } detail: {
-                Group {
-                    switch page ?? .general {
-                    case .general: GeneralConfigurationView()
-                    case .subscriptions: SubscriptionsView()
-                    case .outbound: OutboundProxiesView()
-                    case .groups: ProxyGroupsView()
-                    case .ruleSets: RuleProvidersView().disabled(model.busy || model.configurationLocked)
-                    case .rules: RulesView()
-                    case .connections: ConnectionsView()
-                    case .traffic: StatisticsView()
-                    }
-                }.navigationTitle((page ?? .general).title)
-                    .tableStyle(.inset(alternatesRowBackgrounds: true))
-                    .id(page ?? .general)
-            }
-
+        NavigationSplitView {
+            List(DeskPage.allCases, selection: $page) { page in
+                Label(page.title, systemImage: page.icon).tag(page)
+            }.listStyle(.sidebar)
+                .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
+        } detail: {
+            Group {
+                switch page ?? .general {
+                case .general: GeneralConfigurationView()
+                case .subscriptions: SubscriptionsView()
+                case .outbound: OutboundProxiesView()
+                case .groups: ProxyGroupsView()
+                case .ruleSets: RuleProvidersView().disabled(model.busy || model.configurationLocked)
+                case .rules: RulesView()
+                case .connections: ConnectionsView()
+                case .traffic: StatisticsView()
+                }
+            }.navigationTitle((page ?? .general).title)
+                .tableStyle(.inset(alternatesRowBackgrounds: true))
+                .id(page ?? .general)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.flushConfigurationSave() }
         .onDisappear { model.flushConfigurationSave() }

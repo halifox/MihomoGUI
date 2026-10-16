@@ -42,34 +42,32 @@ struct RulesView: View {
     }
     var body: some View {
         let rows = rows
-        VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("序号", sortUsing: columnSort("序号")) { row in
-                    Text(String(row.number)).monospacedDigit()
-                }.width(min: 40, ideal: tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true), max: nil)
-                TableColumn("类型", sortUsing: columnSort("类型")) { row in
-                    Text(row.rule?.kind.rawValue ?? "MATCH").monospaced()
-                }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true), max: nil)
-                TableColumn("匹配条件", sortUsing: columnSort("匹配条件")) { row in
-                    Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled)
-                }.width(min: 40, ideal: tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }), max: nil)
-                TableColumn("附加选项", sortUsing: columnSort("附加选项")) { row in
-                    Text(optionsText(row))
-                }.width(min: 40, ideal: tableColumnWidth("附加选项", rows.map(optionsText)), max: nil)
-                TableColumn("出口", sortUsing: columnSort("出口")) { row in
-                    targetPicker(row)
-                        .disabled(model.busy)
-                }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText), padding: 48), max: nil)
-            }
-            .background(TableColumnAutoFit(widths: [
-                tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true),
-                tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true),
-                tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }),
-                tableColumnWidth("附加选项", rows.map(optionsText)),
-                tableColumnWidth("出口", rows.map(targetText), padding: 48)
-            ]))
-            .help("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
+        Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
+            TableColumn("序号", sortUsing: columnSort("序号")) { row in
+                Text(String(row.number)).monospacedDigit()
+            }.width(min: 40, ideal: tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true), max: nil)
+            TableColumn("类型", sortUsing: columnSort("类型")) { row in
+                Text(row.rule?.kind.rawValue ?? "MATCH").monospaced()
+            }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true), max: nil)
+            TableColumn("匹配条件", sortUsing: columnSort("匹配条件")) { row in
+                Text(row.rule?.value ?? "所有未匹配的连接").textSelection(.enabled)
+            }.width(min: 40, ideal: tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }), max: nil)
+            TableColumn("附加选项", sortUsing: columnSort("附加选项")) { row in
+                Text(optionsText(row))
+            }.width(min: 40, ideal: tableColumnWidth("附加选项", rows.map(optionsText)), max: nil)
+            TableColumn("出口", sortUsing: columnSort("出口")) { row in
+                targetPicker(row)
+                    .disabled(model.busy)
+            }.width(min: 40, ideal: tableColumnWidth("出口", rows.map(targetText), padding: 48), max: nil)
         }
+        .background(TableColumnAutoFit(widths: [
+            tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true),
+            tableColumnWidth("类型", rows.map { $0.rule?.kind.rawValue ?? "MATCH" }, monospaced: true),
+            tableColumnWidth("匹配条件", rows.map { $0.rule?.value ?? "所有未匹配的连接" }),
+            tableColumnWidth("附加选项", rows.map(optionsText)),
+            tableColumnWidth("出口", rows.map(targetText), padding: 48)
+        ]))
+        .help("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {

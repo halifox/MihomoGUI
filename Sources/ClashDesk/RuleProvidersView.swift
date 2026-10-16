@@ -25,21 +25,19 @@ struct RuleProvidersView: View {
     }
     var body: some View {
         let rows = rows
-        VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
-                TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
-                TableColumn("行为", sortUsing: columnSort("行为")) { row in Text(detail(row)) }.width(min: 40, ideal: tableColumnWidth("行为", rows.map(detail)), max: nil)
-                TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
-                    .width(min: 40, ideal: tableColumnWidth("来源 / 内容", rows.map(source)), max: nil)
-            }
-            .background(TableColumnAutoFit(widths: [
-                tableColumnWidth("名称", rows.map(\.name)),
-                tableColumnWidth("类型", rows.map(\.type)),
-                tableColumnWidth("行为", rows.map(detail)),
-                tableColumnWidth("来源 / 内容", rows.map(source))
-            ]))
+        Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
+            TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
+            TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
+            TableColumn("行为", sortUsing: columnSort("行为")) { row in Text(detail(row)) }.width(min: 40, ideal: tableColumnWidth("行为", rows.map(detail)), max: nil)
+            TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
+                .width(min: 40, ideal: tableColumnWidth("来源 / 内容", rows.map(source)), max: nil)
         }
+        .background(TableColumnAutoFit(widths: [
+            tableColumnWidth("名称", rows.map(\.name)),
+            tableColumnWidth("类型", rows.map(\.type)),
+            tableColumnWidth("行为", rows.map(detail)),
+            tableColumnWidth("来源 / 内容", rows.map(source))
+        ]))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {

@@ -33,38 +33,35 @@ struct OutboundProxiesView: View {
     }
     var body: some View {
         let rows = model.allNodes
-        VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("名称", sortUsing: columnSort("名称")) { node in Text(node.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
-                TableColumn("类型", sortUsing: columnSort("类型")) { node in Text(node.protocolName ?? "—") }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }), max: nil)
-                TableColumn("UDP", sortUsing: columnSort("UDP")) { node in
-                    let supported = node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP
-                    Text(supported.map { $0 ? "支持" : "不支持" } ?? "未知")
-                }.width(min: 40, ideal: tableColumnWidth("UDP", rows.map { node in
-                    (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
-                }), max: nil)
-                TableColumn("来源", sortUsing: columnSort("来源")) { node in
-                    Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
-                }.width(min: 40, ideal: tableColumnWidth("来源", rows.map { node in
-                    node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
-                }), max: nil)
-                TableColumn("延迟", sortUsing: columnSort("延迟")) { node in
-                    NodeDelayCell(model: model, nodeID: node.id)
-                }.width(min: 40, ideal: tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"]), max: nil)
-            }
-            .background(TableColumnAutoFit(widths: [
-                tableColumnWidth("名称", rows.map(\.name)),
-                tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }),
-                tableColumnWidth("UDP", rows.map { node in
-                    (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
-                }),
-                tableColumnWidth("来源", rows.map { node in
-                    node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
-                }),
-                tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"])
-            ]))
-
+        Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
+            TableColumn("名称", sortUsing: columnSort("名称")) { node in Text(node.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
+            TableColumn("类型", sortUsing: columnSort("类型")) { node in Text(node.protocolName ?? "—") }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }), max: nil)
+            TableColumn("UDP", sortUsing: columnSort("UDP")) { node in
+                let supported = node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP
+                Text(supported.map { $0 ? "支持" : "不支持" } ?? "未知")
+            }.width(min: 40, ideal: tableColumnWidth("UDP", rows.map { node in
+                (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
+            }), max: nil)
+            TableColumn("来源", sortUsing: columnSort("来源")) { node in
+                Text(node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—")
+            }.width(min: 40, ideal: tableColumnWidth("来源", rows.map { node in
+                node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
+            }), max: nil)
+            TableColumn("延迟", sortUsing: columnSort("延迟")) { node in
+                NodeDelayCell(model: model, nodeID: node.id)
+            }.width(min: 40, ideal: tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"]), max: nil)
         }
+        .background(TableColumnAutoFit(widths: [
+            tableColumnWidth("名称", rows.map(\.name)),
+            tableColumnWidth("类型", rows.map { $0.protocolName ?? "—" }),
+            tableColumnWidth("UDP", rows.map { node in
+                (node.provider == "manual" ? model.manualUDP[node.name] : node.supportsUDP).map { $0 ? "支持" : "不支持" } ?? "未知"
+            }),
+            tableColumnWidth("来源", rows.map { node in
+                node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
+            }),
+            tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"])
+        ]))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {

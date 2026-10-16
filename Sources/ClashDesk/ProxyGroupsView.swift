@@ -21,20 +21,18 @@ struct ProxyGroupsView: View {
     }
     var body: some View {
         let rows = rows
-        VStack(alignment: .leading, spacing: 0) {
-            Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
-                TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
-                TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
-                    memberPicker(row)
-                }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
-            }
-            .background(TableColumnAutoFit(widths: [
-                tableColumnWidth("名称", rows.map(\.name)),
-                tableColumnWidth("类型", rows.map(\.type)),
-                tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48)
-            ]))
+        Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
+            TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
+            TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
+            TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
+                memberPicker(row)
+            }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
         }
+        .background(TableColumnAutoFit(widths: [
+            tableColumnWidth("名称", rows.map(\.name)),
+            tableColumnWidth("类型", rows.map(\.type)),
+            tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48)
+        ]))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {

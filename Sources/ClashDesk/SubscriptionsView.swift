@@ -28,45 +28,42 @@ struct SubscriptionsView: View {
             comparator.order = descriptor.order
             return comparator
         }
-        VStack(alignment: .leading, spacing: 0) {
-            Table(model.settings.subscriptions.sorted(using: currentSort), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
-                TableColumn("名称", sortUsing: columnSort("名称")) { subscription in
-                    Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
-                }.width(min: 40, ideal: contentWidth("名称"), max: nil)
-                TableColumn("上传流量", sortUsing: columnSort("上传流量")) { subscription in
-                    Text(columnText(subscription, "上传流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("上传流量"), max: nil)
-                TableColumn("下载流量", sortUsing: columnSort("下载流量")) { subscription in
-                    Text(columnText(subscription, "下载流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("下载流量"), max: nil)
-                TableColumn("剩余流量", sortUsing: columnSort("剩余流量")) { subscription in
-                    Text(columnText(subscription, "剩余流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("剩余流量"), max: nil)
-                TableColumn("总流量", sortUsing: columnSort("总流量")) { subscription in
-                    Text(columnText(subscription, "总流量")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("总流量"), max: nil)
-                TableColumn("到期时间", sortUsing: columnSort("到期时间")) { subscription in
-                    Text(columnText(subscription, "到期时间")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("到期时间"), max: nil)
-                TableColumn("节点数", sortUsing: columnSort("节点数")) { subscription in
-                    Text(columnText(subscription, "节点数")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("节点数"), max: nil)
-                TableColumn("上次更新时间", sortUsing: columnSort("上次更新时间")) { subscription in
-                    Text(columnText(subscription, "上次更新时间")).monospacedDigit()
-                }.width(min: 40, ideal: contentWidth("上次更新时间"), max: nil)
-            }
-            .background(TableColumnAutoFit(widths: [
-                contentWidth("名称"),
-                contentWidth("上传流量"),
-                contentWidth("下载流量"),
-                contentWidth("剩余流量"),
-                contentWidth("总流量"),
-                contentWidth("到期时间"),
-                contentWidth("节点数"),
-                contentWidth("上次更新时间")
-            ]))
-
+        Table(model.settings.subscriptions.sorted(using: currentSort), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
+            TableColumn("名称", sortUsing: columnSort("名称")) { subscription in
+                Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
+            }.width(min: 40, ideal: contentWidth("名称"), max: nil)
+            TableColumn("上传流量", sortUsing: columnSort("上传流量")) { subscription in
+                Text(columnText(subscription, "上传流量")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("上传流量"), max: nil)
+            TableColumn("下载流量", sortUsing: columnSort("下载流量")) { subscription in
+                Text(columnText(subscription, "下载流量")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("下载流量"), max: nil)
+            TableColumn("剩余流量", sortUsing: columnSort("剩余流量")) { subscription in
+                Text(columnText(subscription, "剩余流量")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("剩余流量"), max: nil)
+            TableColumn("总流量", sortUsing: columnSort("总流量")) { subscription in
+                Text(columnText(subscription, "总流量")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("总流量"), max: nil)
+            TableColumn("到期时间", sortUsing: columnSort("到期时间")) { subscription in
+                Text(columnText(subscription, "到期时间")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("到期时间"), max: nil)
+            TableColumn("节点数", sortUsing: columnSort("节点数")) { subscription in
+                Text(columnText(subscription, "节点数")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("节点数"), max: nil)
+            TableColumn("上次更新时间", sortUsing: columnSort("上次更新时间")) { subscription in
+                Text(columnText(subscription, "上次更新时间")).monospacedDigit()
+            }.width(min: 40, ideal: contentWidth("上次更新时间"), max: nil)
         }
+        .background(TableColumnAutoFit(widths: [
+            contentWidth("名称"),
+            contentWidth("上传流量"),
+            contentWidth("下载流量"),
+            contentWidth("剩余流量"),
+            contentWidth("总流量"),
+            contentWidth("到期时间"),
+            contentWidth("节点数"),
+            contentWidth("上次更新时间")
+        ]))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
