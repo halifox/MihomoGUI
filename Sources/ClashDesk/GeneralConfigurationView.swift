@@ -6,8 +6,6 @@ struct GeneralConfigurationView: View {
     @State private var configurationText: String?
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("未设置的选项使用 mihomo 默认值；TUN、DNS 和代理端口需自行开启和配置。")
-                .font(.caption).foregroundStyle(.secondary)
             ScrollView {
                 ConfigurationRows(fields: documentSchemas.configuration).padding(6)
                     .frame(maxWidth: .infinity, alignment: .leading)
