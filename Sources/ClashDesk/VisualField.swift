@@ -28,16 +28,8 @@ struct VisualField: View {
                           description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
                 .frame(width: 200, alignment: .leading)
             VisualValue(field: field, value: inputValue, compact: true).disabled(!inputEnabled)
-            if allowUnset && !field.required {
-                Button {
-                    value = nil
-                } label: { Image(systemName: "arrow.uturn.backward") }
-                    .buttonStyle(.borderless)
-                    .help("恢复默认（不提交此字段）")
-                    .accessibilityLabel(field.title + " 恢复默认")
-                    .disabled(!inputEnabled || value == nil)
-            }
             Spacer(minLength: 0)
+
         }.padding(.vertical, 3)
     }
     var legacyRow: some View {

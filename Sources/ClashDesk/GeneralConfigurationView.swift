@@ -62,7 +62,7 @@ private struct ConfigurationRows: View {
     let fields: [EditorField]
 
     var body: some View {
-        LazyVStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 6) {
             ForEach(fields) { field in
                 if field.kind == "group" {
                     GroupBox {
@@ -76,49 +76,28 @@ private struct ConfigurationRows: View {
                         .environment(\.formHelpDocument, field.document ?? "general.md")
                     if field.path == "unified-delay" {
                         formRow("延迟测试地址") {
-                            HStack {
-                                TextField("https://www.gstatic.com/generate_204", text: Binding(get: {
-                                    model.settings.delayTestURL ?? ""
-                                }, set: {
-                                    let updated = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
-                                    guard updated != model.settings.delayTestURL else { return }
-                                    model.settings.delayTestURL = updated
-                                    model.scheduleConfigurationSave()
-                                }))
-                                Button {
-                                    model.settings.delayTestURL = nil
-                                    model.scheduleConfigurationSave()
-                                } label: { Image(systemName: "arrow.uturn.backward") }
-                                    .buttonStyle(.borderless)
-                                    .help("恢复默认：https://www.gstatic.com/generate_204")
-                                    .accessibilityLabel("延迟测试地址 恢复默认")
-                                    .disabled(model.settings.delayTestURL == nil)
-                            }
+                            TextField("https://www.gstatic.com/generate_204", text: Binding(get: {
+                                model.settings.delayTestURL ?? ""
+                            }, set: {
+                                let updated = $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+                                guard updated != model.settings.delayTestURL else { return }
+                                model.settings.delayTestURL = updated
+                                model.scheduleConfigurationSave()
+                            }))
                         }
                         formRow("延迟超时（毫秒）") {
-                            HStack {
-                                TextField("5000", text: Binding(get: {
-                                    model.settings.delayTestTimeoutMilliseconds.map(String.init) ?? ""
-                                }, set: {
-                                    guard $0 != (model.settings.delayTestTimeoutMilliseconds.map(String.init) ?? "") else { return }
-                                    let text = $0.trimmingCharacters(in: .whitespacesAndNewlines)
-                                    guard text.isEmpty || Int(text) != nil else { return }
-                                    let updated = text.isEmpty ? nil : Int(text)
-                                    guard updated != model.settings.delayTestTimeoutMilliseconds else { return }
-                                    model.settings.delayTestTimeoutMilliseconds = updated
-                                    model.scheduleConfigurationSave()
-                                }))
-                                    .frame(width: 150)
-                                Button {
-                                    model.settings.delayTestTimeoutMilliseconds = nil
-                                    model.scheduleConfigurationSave()
-                                } label: { Image(systemName: "arrow.uturn.backward") }
-                                    .buttonStyle(.borderless)
-                                    .help("恢复默认：5000 毫秒")
-                                    .accessibilityLabel("延迟超时 恢复默认")
-                                    .disabled(model.settings.delayTestTimeoutMilliseconds == nil)
-                                Spacer(minLength: 0)
-                            }
+                            TextField("5000", text: Binding(get: {
+                                model.settings.delayTestTimeoutMilliseconds.map(String.init) ?? ""
+                            }, set: {
+                                guard $0 != (model.settings.delayTestTimeoutMilliseconds.map(String.init) ?? "") else { return }
+                                let text = $0.trimmingCharacters(in: .whitespacesAndNewlines)
+                                guard text.isEmpty || Int(text) != nil else { return }
+                                let updated = text.isEmpty ? nil : Int(text)
+                                guard updated != model.settings.delayTestTimeoutMilliseconds else { return }
+                                model.settings.delayTestTimeoutMilliseconds = updated
+                                model.scheduleConfigurationSave()
+                            }))
+                                .frame(width: 150)
                         }
                     }
                 }
