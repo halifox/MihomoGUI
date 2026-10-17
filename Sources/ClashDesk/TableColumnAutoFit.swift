@@ -3,13 +3,20 @@ import AppKit
 import ClashCore
 
 func tableColumnWidth(_ title: String, _ values: [String], numeric: Bool = false, monospaced: Bool = false,
-                      padding: CGFloat = 0) -> CGFloat {
+                      padding: CGFloat = 0, unitSample: String? = nil) -> CGFloat {
     let font = monospaced ? NSFont.monospacedSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         : numeric ? NSFont.monospacedDigitSystemFont(ofSize: NSFont.systemFontSize, weight: .regular)
         : NSFont.systemFont(ofSize: NSFont.systemFontSize)
     let header = (title as NSString).size(withAttributes: [.font: NSFont.systemFont(ofSize: NSFont.systemFontSize, weight: .semibold)]).width
     let content = values.lazy.flatMap { $0.components(separatedBy: .newlines) }
-        .map { ($0 as NSString).size(withAttributes: [.font: font]).width }.max() ?? 0
+        .map { value in
+            let width = (value as NSString).size(withAttributes: [.font: font]).width
+            guard let unitSample else { return width }
+            let number = value.hasSuffix("%") ? String(value.dropLast())
+                : String(value.split(separator: " ", maxSplits: 1).first ?? "")
+            let reserved = ((number + " " + unitSample) as NSString).size(withAttributes: [.font: font]).width
+            return max(width, reserved)
+        }.max() ?? 0
     // Keep room for the header's sort indicator without padding every cell as much.
     return ceil(max(header + 24, content + padding))
 }

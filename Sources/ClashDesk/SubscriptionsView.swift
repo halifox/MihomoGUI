@@ -106,7 +106,8 @@ struct SubscriptionsView: View {
     }
     func contentWidth(_ column: String) -> CGFloat {
         tableColumnWidth(column, (model.settings.subscriptions).map { columnText($0, column) },
-                         numeric: column != "名称")
+                         numeric: column != "名称",
+                         unitSample: ["上传流量", "下载流量", "剩余流量", "总流量"].contains(column) ? "MB" : nil)
     }
 
 }

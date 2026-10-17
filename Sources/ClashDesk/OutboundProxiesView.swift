@@ -49,7 +49,7 @@ struct OutboundProxiesView: View {
             }), max: nil)
             TableColumn("延迟", sortUsing: columnSort("延迟")) { node in
                 NodeDelayCell(model: model, nodeID: node.id)
-            }.width(min: 40, ideal: tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"]), max: nil)
+            }.width(min: 40, ideal: tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"], numeric: true, unitSample: "ms"), max: nil)
         }
         .background(TableColumnAutoFit(widths: [
             tableColumnWidth("名称", rows.map(\.name)),
@@ -60,7 +60,7 @@ struct OutboundProxiesView: View {
             tableColumnWidth("来源", rows.map { node in
                 node.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == node.provider }?.name ?? "—"
             }),
-            tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"])
+            tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"], numeric: true, unitSample: "ms")
         ]))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {

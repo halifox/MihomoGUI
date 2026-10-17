@@ -28,22 +28,29 @@ struct CoreLogsView: View {
     }
 
     var body: some View {
+        let rows = filtered
+        let widths = [
+            tableColumnWidth("接收时间", rows.map { $0.date.formatted(date: .omitted, time: .standard) }),
+            tableColumnWidth("等级", rows.map { $0.log.type.uppercased() }),
+            tableColumnWidth("日志", rows.map { $0.log.payload }, monospaced: true)
+        ]
         VStack(spacing: 0) {
             HStack {
                 Text(streamError ?? (connected ? "正在接收实时日志 · 最多保留 5,000 条" : "正在连接内核…"))
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()
             }.padding(10)
-            Table(filtered) {
-                TableColumn("接收时间") { entry in Text(entry.date, style: .time) }.width(90)
-                TableColumn("等级") { entry in Text(entry.log.type.uppercased()) }.width(80)
+            Table(rows) {
+                TableColumn("接收时间") { entry in Text(entry.date.formatted(date: .omitted, time: .standard)) }.width(min: 40, ideal: widths[0], max: nil)
+                TableColumn("等级") { entry in Text(entry.log.type.uppercased()) }.width(min: 40, ideal: widths[1], max: nil)
                 TableColumn("日志") { entry in
                     Text(entry.log.payload).font(.system(.body, design: .monospaced))
                         .textSelection(.enabled).help(entry.log.payload)
-                }
+                }.width(min: 40, ideal: widths[2], max: nil)
             }
+            .background(TableColumnAutoFit(widths: widths))
             .overlay {
-                if filtered.isEmpty {
+                if rows.isEmpty {
                     Text(entries.isEmpty ? "暂无实时日志" : "没有匹配的日志")
                         .foregroundStyle(.secondary).allowsHitTesting(false)
                 }

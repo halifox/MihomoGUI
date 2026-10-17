@@ -15,7 +15,7 @@ struct ProxyGroupsView: View {
     func columnSort(_ column: String) -> TableSort<ResourceRow> {
         switch column {
         case "名称": return TableSort(column) { $0.name }
-        case "类型": return TableSort(column) { $0.type }
+        case "类型": return TableSort(column) { optionLabel($0.type) }
         default: return TableSort(column, value: selectedMemberText)
         }
     }
@@ -23,14 +23,14 @@ struct ProxyGroupsView: View {
         let rows = rows
         Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
             TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
-            TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
+            TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(optionLabel(row.type)) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { optionLabel($0.type) }), max: nil)
             TableColumn("选择节点", sortUsing: columnSort("选择节点")) { row in
                 memberPicker(row)
             }.width(min: 40, ideal: tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48), max: nil)
         }
         .background(TableColumnAutoFit(widths: [
             tableColumnWidth("名称", rows.map(\.name)),
-            tableColumnWidth("类型", rows.map(\.type)),
+            tableColumnWidth("类型", rows.map { optionLabel($0.type) }),
             tableColumnWidth("选择节点", rows.map(selectedMemberText), padding: 48)
         ]))
         .toolbar {

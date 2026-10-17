@@ -11,7 +11,7 @@ struct ClashDeskApp: App {
                 .background(InitialWindowSize())
                 .task { model.startMonitor() }
         }
-        .defaultSize(width: 900, height: 400)
+        .defaultSize(width: 800, height: 400)
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -33,7 +33,7 @@ final class LaunchSizeView: NSView {
         super.viewDidMoveToWindow()
         guard !sized, let window else { return }
         sized = true
-        window.setContentSize(NSSize(width: 900, height: 400))
+        window.setContentSize(NSSize(width: 800, height: 400))
     }
 }
 
