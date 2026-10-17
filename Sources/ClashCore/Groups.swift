@@ -24,6 +24,16 @@ public func groupEditorFields(_ type: String) -> [EditorField] {
             EditorField("lazy", kind: "boolean"), EditorField("max-failed-times", kind: "integer"), EditorField("expected-status", hint: "204")], at: 0)
     if type == "url-test" { fields.append(EditorField("tolerance", kind: "integer", hint: "50")) }
     if type == "load-balance" { fields.append(EditorField("strategy", kind: "choice", choices: ["consistent-hashing", "round-robin", "sticky-sessions"])) }
+    // mihomo v1.19.32 adapter/outboundgroup/parser.go and provider/healthcheck.go.
+    for index in fields.indices {
+        switch fields[index].path {
+        case "lazy": fields[index].defaultValue = .boolean(true)
+        case "url": fields[index].defaultValue = .string("https://www.gstatic.com/generate_204")
+        case "interval": fields[index].defaultValue = .integer(type == "select" ? 0 : 300)
+        case "timeout": fields[index].defaultValue = .integer(5000)
+        default: break
+        }
+    }
     return fields
 }
 

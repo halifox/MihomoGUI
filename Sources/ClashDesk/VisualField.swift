@@ -10,7 +10,7 @@ struct VisualField: View {
     var inputEnabled = true
     var defaultValue: ConfigValue?
     private var displayedValue: ConfigValue {
-        value ?? defaultValue ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : field.kind == "boolean" ? .boolean(false) : field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
+        value ?? defaultValue ?? field.initialValue ?? (field.kind == "boolean" || field.kind == "list" || field.kind == "map" || field.kind == "object" ? emptyValue(field) : .string(""))
     }
     var inputValue: Binding<ConfigValue> {
         Binding(get: { displayedValue }, set: {
@@ -39,11 +39,11 @@ struct VisualField: View {
                 if field.required { Text("必填").font(.caption).foregroundStyle(.orange) }
                 Spacer()
                 if allowUnset && !field.required {
-                    Toggle("设置此项", isOn: Binding(get: { value != nil }, set: { value = $0 ? emptyValue(field) : nil }))
+                    Toggle("设置此项", isOn: Binding(get: { value != nil }, set: { value = $0 ? displayedValue : nil }))
                         .toggleStyle(.checkbox).font(.caption).help("未设置时使用内核默认值")
                 }
             }
-            VisualValue(field: field, value: Binding(get: { value ?? (field.kind == "choice" ? .string(field.defaultHint ?? "") : emptyValue(field)) }, set: { value = $0 }))
+            VisualValue(field: field, value: inputValue)
                 .disabled(value == nil && !field.required && allowUnset)
             if !field.description.isEmpty {
                 Text(field.description).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

@@ -1,4 +1,5 @@
 // Configuration fields reviewed against local Meta-Docs; maintain directly after semantic review.
+// Typed defaults follow bundled mihomo v1.19.32; hints remain documentation examples.
 import Foundation
 
 let docSchemaJSON = #"""
@@ -24,7 +25,8 @@ let docSchemaJSON = #"""
           "hint": "*",
           "description": "代理端口的绑定地址。* 表示所有 IP；也可指定单个 IPv4 或方括号包裹的 IPv6 地址。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": "*"
         },
         {
           "path": "lan-allowed-ips",
@@ -34,7 +36,8 @@ let docSchemaJSON = #"""
           "description": "允许连接的 IP 地址段，仅在 allow-lan 开启时生效。文档默认值为 0.0.0.0/0 和 ::/0。",
           "required": false,
           "elementKind": "string",
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": ["0.0.0.0/0", "::/0"]
         },
         {
           "path": "lan-disallowed-ips",
@@ -95,7 +98,8 @@ let docSchemaJSON = #"""
             "info",
             "debug"
           ],
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": "info"
         },
         {
           "path": "ipv6",
@@ -104,7 +108,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否允许内核接受 IPv6 流量。文档中的内核默认值为 true；客户端初始配置关闭此项。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": true
         },
         {
           "path": "keep-alive-interval",
@@ -165,7 +170,8 @@ let docSchemaJSON = #"""
           "description": "API 跨域访问允许的来源列表。文档示例使用 *；示例不代表默认值。",
           "required": false,
           "elementKind": "string",
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": ["*"]
         },
         {
           "path": "external-controller-cors.allow-private-network",
@@ -174,7 +180,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "API CORS 私有网络访问设置。文档仅给出示例，未声明默认值。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": true
         },
         {
           "path": "external-controller-unix",
@@ -266,7 +273,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "保存 API 对策略组的选择，供内核下次启动使用。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": true
         },
         {
           "path": "profile.store-fake-ip",
@@ -348,7 +356,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "GEOIP 数据格式：true 使用 geoip.dat；false 使用 MMDB。文档默认值为 false。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": false
         },
         {
           "path": "geodata-loader",
@@ -380,7 +389,8 @@ let docSchemaJSON = #"""
           "hint": "24",
           "description": "GEO 数据自动更新的间隔，单位为小时。文档中的 24 是示例值。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": 24
         },
         {
           "path": "geox-url.geoip",
@@ -426,7 +436,8 @@ let docSchemaJSON = #"""
           "description": "下载外部资源时使用的 User-Agent，内核默认值为 clash.meta。",
           "required": false,
           "document": "general.md",
-          "defaultHint": "clash.meta"
+          "defaultHint": "clash.meta",
+          "defaultValue": "clash.meta/v1.19.32"
         },
         {
           "path": "etag-support",
@@ -435,7 +446,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否支持外部资源下载的 ETag，文档默认值为 true。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": true
         },
         {
           "path": "port",
@@ -529,7 +541,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否使用配置中的静态 hosts 映射，默认 true。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": true
         },
         {
           "path": "dns.use-system-hosts",
@@ -538,7 +551,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否查询系统 hosts，默认 true。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": true
         },
         {
           "path": "dns.respect-rules",
@@ -575,7 +589,8 @@ let docSchemaJSON = #"""
           "description": "用于解析 DNS 服务器自身域名的 DNS 地址列表。服务器地址必须使用 IP，可以使用加密 DNS。",
           "required": false,
           "elementKind": "string",
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": ["114.114.114.114", "223.5.5.5", "8.8.8.8", "1.0.0.1"]
         },
         {
           "path": "dns.enhanced-mode",
@@ -598,7 +613,8 @@ let docSchemaJSON = #"""
           "hint": "198.18.0.1/16",
           "description": "Fake-IP 的 IPv4 地址段，也作为 TUN 默认 IPv4 地址的参考。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": "198.18.0.1/16"
         },
         {
           "path": "dns.fake-ip-range6",
@@ -632,7 +648,8 @@ let docSchemaJSON = #"""
           "description": "Fake-IP 过滤列表。blacklist / whitelist 模式支持域名通配和域名集合；rule 模式使用路由规则语法，以 fake-ip 或 real-ip 为结果，最后可用 MATCH 兜底。",
           "required": false,
           "elementKind": "string",
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": ["dns.msftnsci.com", "www.msftnsci.com", "www.msftconnecttest.com"]
         },
         {
           "path": "dns.fake-ip-ttl",
@@ -641,7 +658,8 @@ let docSchemaJSON = #"""
           "hint": "1",
           "description": "Fake-IP 查询响应的 TTL。文档未声明默认值，非必要时不建议修改。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": 1
         },
         {
           "path": "dns.nameserver-policy",
@@ -661,7 +679,8 @@ let docSchemaJSON = #"""
           "description": "默认的域名解析服务器列表。",
           "required": false,
           "elementKind": "string",
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": ["https://doh.pub/dns-query", "tls://223.5.5.5:853"]
         },
         {
           "path": "dns.fallback",
@@ -710,7 +729,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "direct-nameserver 是否遵循 nameserver-policy，默认 false；仅在 direct-nameserver 非空时生效。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": false
         },
         {
           "path": "dns.fallback-filter.geoip",
@@ -719,7 +739,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否启用 GEOIP 判断，用 geoip-code 指定的国家筛选 nameserver 结果。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": true
         },
         {
           "path": "dns.fallback-filter.geoip-code",
@@ -768,7 +789,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "默认 false；开启后先检查 nameserver 结果是否满足 fallback-filter，再按需发起 fallback 查询。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": false
         },
         {
           "path": "hosts",
@@ -803,7 +825,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "对 redir-host 类型识别的流量强制嗅探。",
           "required": false,
-          "document": "sniff/index.md"
+          "document": "sniff/index.md",
+          "defaultValue": true
         },
         {
           "path": "sniffer.parse-pure-ip",
@@ -812,7 +835,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "对尚未获取域名的流量强制嗅探。",
           "required": false,
-          "document": "sniff/index.md"
+          "document": "sniff/index.md",
+          "defaultValue": true
         },
         {
           "path": "sniffer.override-destination",
@@ -821,7 +845,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否以嗅探结果作为实际访问目标，文档默认 true。",
           "required": false,
-          "document": "sniff/index.md"
+          "document": "sniff/index.md",
+          "defaultValue": true
         },
         {
           "path": "sniffer.sniff.HTTP.ports",
@@ -941,7 +966,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "自动配置全局路由，将流量路由到 TUN 网卡。",
           "required": false,
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": true
         },
         {
           "path": "tun.auto-redirect",
@@ -960,7 +986,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "自动选择流量出口接口。多网卡同时连接时，文档建议手动指定出口接口。",
           "required": false,
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": true
         },
         {
           "path": "tun.dns-hijack",
@@ -970,7 +997,8 @@ let docSchemaJSON = #"""
           "description": "将匹配的 DNS 连接导入内核 DNS 模块；省略协议时使用 UDP。macOS / Windows 无法自动劫持发往局域网的 DNS 请求。",
           "required": false,
           "elementKind": "string",
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": ["0.0.0.0:53"]
         },
         {
           "path": "tun.device",
@@ -1027,7 +1055,8 @@ let docSchemaJSON = #"""
           "description": "TUN IPv6 地址列表，需要顶层 ipv6 为 true。启动时检测不到其他网卡 IPv6 时会禁用；文档提供 SKIP_SYSTEM_IPV6_CHECK=1 环境变量强制开启。",
           "required": false,
           "elementKind": "string",
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": ["fdfe:dcba:9876::1/126"]
         },
         {
           "path": "tun.udp-timeout",
@@ -2134,7 +2163,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否禁用 KCP 输入，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "disable-p2p",
@@ -2143,7 +2173,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否禁用 P2P、只通过中继通信，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "disable-quic-input",
@@ -2152,7 +2183,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否禁用 QUIC 输入，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "enable-encryption",
@@ -2161,7 +2193,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否启用节点间加密，默认 true。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": true
         },
         {
           "path": "enable-exit-node",
@@ -2170,7 +2203,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否作为其他节点的出口节点，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "enable-kcp-proxy",
@@ -2179,7 +2213,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否通过 KCP 转发 TCP 流量，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "enable-quic-proxy",
@@ -2188,7 +2223,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否通过 QUIC 转发 TCP 流量，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "encryption-algorithm",
@@ -2269,7 +2305,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "优先选择最低延迟而非最少跳数的路径，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "listeners",
@@ -2353,7 +2390,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否禁用监听，默认 true；不能与 listeners 同时启用。显式 false 且 listeners 为空时监听 tcp://0.0.0.0:11010。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": true
         },
         {
           "path": "peers",
@@ -2372,7 +2410,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否启用隐私模式，默认 false。",
           "required": false,
-          "document": "proxies/easytier.md"
+          "document": "proxies/easytier.md",
+          "defaultValue": false
         },
         {
           "path": "proxy-networks",
@@ -3029,7 +3068,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否启用 Fast Open，以降低建立连接的延迟；示例注释明确默认 false。",
           "required": false,
-          "document": "proxies/hysteria.md"
+          "document": "proxies/hysteria.md",
+          "defaultValue": false
         },
         {
           "path": "fingerprint",
@@ -4356,7 +4396,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否强制远程 DNS 解析，默认 false。",
           "required": false,
-          "document": "proxies/openvpn.md"
+          "document": "proxies/openvpn.md",
+          "defaultValue": false
         },
         {
           "path": "smux.brutal-opts.down",
@@ -5009,7 +5050,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否通过数据流传输 UDP，默认 false。",
           "required": false,
-          "document": "proxies/shadowquic.md"
+          "document": "proxies/shadowquic.md",
+          "defaultValue": false
         },
         {
           "path": "up",
@@ -5215,7 +5257,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "Snell 复用选项，仅版本 4、5 支持，默认 false。",
           "required": false,
-          "document": "proxies/snell.md"
+          "document": "proxies/snell.md",
+          "defaultValue": false
         },
         {
           "path": "smux.brutal-opts.down",
@@ -5971,7 +6014,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否启用 UDP over TCP，默认 false。",
           "required": false,
-          "document": "proxies/ss.md"
+          "document": "proxies/ss.md",
+          "defaultValue": false
         },
         {
           "path": "udp-over-tcp-version",
@@ -6900,7 +6944,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否以临时节点登录，默认 false。",
           "required": false,
-          "document": "proxies/tailscale.md"
+          "document": "proxies/tailscale.md",
+          "defaultValue": false
         },
         {
           "path": "exit-node",
@@ -7986,7 +8031,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否启用 QUIC，默认 false。",
           "required": false,
-          "document": "proxies/trusttunnel.md"
+          "document": "proxies/trusttunnel.md",
+          "defaultValue": false
         },
         {
           "path": "restls-opts.password",
@@ -10260,7 +10306,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否强制远程 DNS 解析，默认 false。",
           "required": false,
-          "document": "proxies/wg.md"
+          "document": "proxies/wg.md",
+          "defaultValue": false
         },
         {
           "path": "reserved",
@@ -10323,7 +10370,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "encrypted-hello 选项，文档默认 false；未解释具体行为。",
           "required": false,
-          "document": "proxies/zerotier.md"
+          "document": "proxies/zerotier.md",
+          "defaultValue": false
         },
         {
           "path": "identity-secret",
@@ -10397,7 +10445,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否启用低带宽模式，默认 false。",
           "required": false,
-          "document": "proxies/zerotier.md"
+          "document": "proxies/zerotier.md",
+          "defaultValue": false
         },
         {
           "path": "mtu",
@@ -10556,7 +10605,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否启用 UDP，协议文档默认 true。",
           "required": false,
-          "document": "proxies/zerotier.md"
+          "document": "proxies/zerotier.md",
+          "defaultValue": true
         }
       ],
       "document": "proxies/zerotier.md"
@@ -10625,7 +10675,8 @@ let docSchemaJSON = #"""
       "hint": "*",
       "description": "代理端口的绑定地址。* 表示所有 IP；也可指定单个 IPv4 或方括号包裹的 IPv6 地址。",
       "required": false,
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": "*"
     },
     {
       "path": "authentication",
@@ -10655,7 +10706,8 @@ let docSchemaJSON = #"""
       "description": "允许连接的 IP 地址段，仅在 allow-lan 开启时生效。文档默认值为 0.0.0.0/0 和 ::/0。",
       "required": false,
       "elementKind": "string",
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": ["0.0.0.0/0", "::/0"]
     },
     {
       "path": "lan-disallowed-ips",
@@ -10759,7 +10811,8 @@ let docSchemaJSON = #"""
       "hint": "24",
       "description": "GEO 数据自动更新的间隔，单位为小时。文档中的 24 是示例值。",
       "required": false,
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": 24
     },
     {
       "path": "log-level",
@@ -10775,7 +10828,8 @@ let docSchemaJSON = #"""
         "info",
         "debug"
       ],
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": "info"
     },
     {
       "path": "ipv6",
@@ -10784,7 +10838,8 @@ let docSchemaJSON = #"""
       "hint": "true",
       "description": "是否允许内核接受 IPv6 流量。文档中的内核默认值为 true；客户端初始配置关闭此项。",
       "required": false,
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": true
     },
     {
       "path": "tls",
@@ -10866,7 +10921,8 @@ let docSchemaJSON = #"""
           "description": "API 跨域访问允许的来源列表。文档示例使用 *；示例不代表默认值。",
           "required": false,
           "elementKind": "string",
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": ["*"]
         },
         {
           "path": "external-controller-cors.allow-private-network",
@@ -10875,7 +10931,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "API CORS 私有网络访问设置。文档仅给出示例，未声明默认值。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": true
         }
       ]
     },
@@ -10994,7 +11051,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "保存 API 对策略组的选择，供内核下次启动使用。",
           "required": false,
-          "document": "general.md"
+          "document": "general.md",
+          "defaultValue": true
         },
         {
           "path": "profile.store-fake-ip",
@@ -11048,7 +11106,8 @@ let docSchemaJSON = #"""
           "description": "将匹配的 DNS 连接导入内核 DNS 模块；省略协议时使用 UDP。macOS / Windows 无法自动劫持发往局域网的 DNS 请求。",
           "required": false,
           "elementKind": "string",
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": ["0.0.0.0:53"]
         },
         {
           "path": "tun.auto-detect-interface",
@@ -11057,7 +11116,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "自动选择流量出口接口。多网卡同时连接时，文档建议手动指定出口接口。",
           "required": false,
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": true
         },
         {
           "path": "tun.auto-route",
@@ -11066,7 +11126,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "自动配置全局路由，将流量路由到 TUN 网卡。",
           "required": false,
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": true
         },
         {
           "path": "tun.mtu",
@@ -11188,7 +11249,8 @@ let docSchemaJSON = #"""
           "description": "TUN IPv6 地址列表，需要顶层 ipv6 为 true。启动时检测不到其他网卡 IPv6 时会禁用；文档提供 SKIP_SYSTEM_IPV6_CHECK=1 环境变量强制开启。",
           "required": false,
           "elementKind": "string",
-          "document": "inbound/tun.md"
+          "document": "inbound/tun.md",
+          "defaultValue": ["fdfe:dcba:9876::1/126"]
         },
         {
           "path": "tun.udp-timeout",
@@ -11419,7 +11481,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "对 redir-host 类型识别的流量强制嗅探。",
           "required": false,
-          "document": "sniff/index.md"
+          "document": "sniff/index.md",
+          "defaultValue": true
         },
         {
           "path": "sniffer.parse-pure-ip",
@@ -11428,7 +11491,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "对尚未获取域名的流量强制嗅探。",
           "required": false,
-          "document": "sniff/index.md"
+          "document": "sniff/index.md",
+          "defaultValue": true
         },
         {
           "path": "sniffer.override-destination",
@@ -11437,7 +11501,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "是否以嗅探结果作为实际访问目标，文档默认 true。",
           "required": false,
-          "document": "sniff/index.md"
+          "document": "sniff/index.md",
+          "defaultValue": true
         },
         {
           "path": "sniffer.sniff",
@@ -11626,7 +11691,8 @@ let docSchemaJSON = #"""
           "description": "用于解析 DNS 服务器自身域名的 DNS 地址列表。服务器地址必须使用 IP，可以使用加密 DNS。",
           "required": false,
           "elementKind": "string",
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": ["114.114.114.114", "223.5.5.5", "8.8.8.8", "1.0.0.1"]
         },
         {
           "path": "dns.enhanced-mode",
@@ -11649,7 +11715,8 @@ let docSchemaJSON = #"""
           "hint": "198.18.0.1/16",
           "description": "Fake-IP 的 IPv4 地址段，也作为 TUN 默认 IPv4 地址的参考。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": "198.18.0.1/16"
         },
         {
           "path": "dns.fake-ip-range6",
@@ -11668,7 +11735,8 @@ let docSchemaJSON = #"""
           "description": "Fake-IP 过滤列表。blacklist / whitelist 模式支持域名通配和域名集合；rule 模式使用路由规则语法，以 fake-ip 或 real-ip 为结果，最后可用 MATCH 兜底。",
           "required": false,
           "elementKind": "string",
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": ["dns.msftnsci.com", "www.msftnsci.com", "www.msftconnecttest.com"]
         },
         {
           "path": "dns.fake-ip-filter-mode",
@@ -11692,7 +11760,8 @@ let docSchemaJSON = #"""
           "hint": "1",
           "description": "Fake-IP 查询响应的 TTL。文档未声明默认值，非必要时不建议修改。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": 1
         },
         {
           "path": "dns.use-hosts",
@@ -11701,7 +11770,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否使用配置中的静态 hosts 映射，默认 true。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": true
         },
         {
           "path": "dns.respect-rules",
@@ -11720,7 +11790,8 @@ let docSchemaJSON = #"""
           "description": "默认的域名解析服务器列表。",
           "required": false,
           "elementKind": "string",
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": ["https://doh.pub/dns-query", "tls://223.5.5.5:853"]
         },
         {
           "path": "dns.fallback",
@@ -11769,7 +11840,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "direct-nameserver 是否遵循 nameserver-policy，默认 false；仅在 direct-nameserver 非空时生效。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": false
         },
         {
           "path": "dns.fallback-filter",
@@ -11786,7 +11858,8 @@ let docSchemaJSON = #"""
               "hint": "true",
               "description": "是否启用 GEOIP 判断，用 geoip-code 指定的国家筛选 nameserver 结果。",
               "required": false,
-              "document": "dns/index.md"
+              "document": "dns/index.md",
+              "defaultValue": true
             },
             {
               "path": "dns.fallback-filter.geoip-code",
@@ -11837,7 +11910,8 @@ let docSchemaJSON = #"""
           "hint": "false",
           "description": "默认 false；开启后先检查 nameserver 结果是否满足 fallback-filter，再按需发起 fallback 查询。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": false
         },
         {
           "path": "dns.nameserver-policy",
@@ -11856,7 +11930,8 @@ let docSchemaJSON = #"""
           "hint": "true",
           "description": "是否查询系统 hosts，默认 true。",
           "required": false,
-          "document": "dns/index.md"
+          "document": "dns/index.md",
+          "defaultValue": true
         }
       ]
     },
@@ -11906,7 +11981,8 @@ let docSchemaJSON = #"""
       "hint": "true",
       "description": "GEOIP 数据格式：true 使用 geoip.dat；false 使用 MMDB。文档默认值为 false。",
       "required": false,
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": false
     },
     {
       "path": "geodata-loader",
@@ -11930,7 +12006,8 @@ let docSchemaJSON = #"""
       "description": "下载外部资源时使用的 User-Agent，内核默认值为 clash.meta。",
       "required": false,
       "defaultHint": "clash.meta",
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": "clash.meta/v1.19.32"
     },
     {
       "path": "etag-support",
@@ -11939,7 +12016,8 @@ let docSchemaJSON = #"""
       "hint": "true",
       "description": "是否支持外部资源下载的 ETag，文档默认值为 true。",
       "required": false,
-      "document": "general.md"
+      "document": "general.md",
+      "defaultValue": true
     }
   ]
 }

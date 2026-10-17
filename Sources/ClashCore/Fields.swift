@@ -65,6 +65,18 @@ public struct EditorField: Codable, Identifiable {
     public var kind: String
     public var hint: String
     public var defaultHint: String?
+    public var defaultValue: ConfigValue?
+    public var initialValue: ConfigValue? {
+        if let defaultValue { return defaultValue }
+        guard let defaultHint else { return nil }
+        switch kind {
+        case "boolean": return Bool(defaultHint).map(ConfigValue.boolean)
+        case "integer": return Int(defaultHint).map(ConfigValue.integer)
+        case "number": return Double(defaultHint).map(ConfigValue.number)
+        case "string", "secret", "choice": return .string(defaultHint)
+        default: return nil
+        }
+    }
     public var description: String
     public var required: Bool
     public var choices: [String]?
@@ -101,10 +113,11 @@ public let documentSchemas: DocumentSchemas = {
 }()
 
 public func emptyValue(_ field: EditorField) -> ConfigValue {
+    if let initialValue = field.initialValue { return initialValue }
     switch field.kind {
     case "boolean": return .boolean(false)
-    case "integer": return .integer(Int(field.hint) ?? 0)
-    case "number": return .number(Double(field.hint) ?? 0)
+    case "integer": return .integer(0)
+    case "number": return .number(0)
     case "choice": return .string("")
     case "list": return .array([])
     case "map": return .object([:])

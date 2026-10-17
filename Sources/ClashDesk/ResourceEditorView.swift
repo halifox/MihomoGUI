@@ -86,8 +86,7 @@ struct ResourceEditorView: View {
                         } else {
                             VisualField(field: field, value: Binding(get: {
                                 fields[field.path]
-                            }, set: { fields[field.path] = $0 }), compact: true,
-                                        defaultValue: field.path == "lazy" ? .boolean(true) : nil)
+                            }, set: { fields[field.path] = $0 }), compact: true)
                         }
                         if field.path == "path", type == "file" {
                             Button("选择规则文件") {
@@ -116,12 +115,6 @@ struct ResourceEditorView: View {
         .onChange(of: type) { _ in
             let allowed = Set(schema.map(\.path) + (groups ? [] : ["proxy"]))
             fields = fields.filter { allowed.contains($0.key) }
-            if groups && type != "select" {
-                if fields["url"] == nil { fields["url"] = .string("https://www.gstatic.com/generate_204") }
-                if fields["interval"] == nil { fields["interval"] = .integer(300) }
-                if fields["timeout"] == nil { fields["timeout"] = .integer(5000) }
-                if fields["lazy"] == nil { fields["lazy"] = .boolean(true) }
-            }
             if !groups && type == "inline" { fields["payload"] = fields["payload"] ?? .array([]) }
         }
     }
