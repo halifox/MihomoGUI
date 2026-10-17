@@ -40,8 +40,8 @@ struct StatisticsView: View {
             TableColumn("出口数", sortUsing: columnSort("出口数")) { row in Text(String(row.outboundCount)).monospacedDigit() }.width(min: 40, ideal: tableColumnWidth("出口数", rows.map { row in String(row.outboundCount) }, numeric: true), max: nil)
         }
         .overlay {
-            if rows.isEmpty {
-                Text(model.statisticsError.map { "统计不可用：" + $0 } ?? "暂无统计。启动服务后访问网站，数据会自动显示。")
+            if rows.isEmpty, let error = model.statisticsError {
+                Text("统计不可用：" + error)
                     .foregroundStyle(.secondary).allowsHitTesting(false)
             }
         }

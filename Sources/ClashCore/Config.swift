@@ -162,6 +162,24 @@ public struct Settings: Codable {
     }
 }
 
+// Used before committing subscription changes or deleting a manual proxy.
+public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node]) {
+    let available = Set(nodes + (settings.manualProxies ?? []).map(\.node))
+    for index in settings.rules.indices {
+        if let node = settings.rules[index].node, !available.contains(node) {
+            settings.rules[index].node = nil
+            settings.rules[index].proxyGroup = nil
+            settings.rules[index].builtin = "REJECT"
+        }
+    }
+    if let node = settings.defaultNode, !available.contains(node) {
+        settings.defaultNode = nil
+        settings.defaultProxyGroup = nil
+        settings.defaultDirect = false
+        settings.defaultPolicy = "REJECT"
+    }
+}
+
 public func loadSettings(from directory: URL) throws -> Settings {
     try recoverFileCommit(directory: directory)
     let url = directory.appendingPathComponent("settings.json")

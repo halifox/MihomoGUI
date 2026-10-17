@@ -68,8 +68,8 @@ struct ConnectionsView: View {
             )
         }
         .overlay {
-            if rows.isEmpty {
-                Text(model.connectionsError ?? "暂无活动连接")
+            if rows.isEmpty, let error = model.connectionsError {
+                Text(error)
                     .foregroundStyle(.secondary).allowsHitTesting(false)
             }
         }

@@ -245,8 +245,8 @@ extension DeskModel {
         if (settings.manualProxies ?? []).contains(where: { $0.id != proxy.id && $0.fields["dialer-proxy"] == .string(proxy.name) }) {
             error = "该代理仍被其他代理用作拨号出口，请先调整引用。"; return
         }
-        if settings.defaultNode == proxy.node || settings.rules.contains(where: { $0.node == proxy.node }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
-            error = "该代理仍被路由规则或 MATCH 使用，请先调整出口。"; return
+        if (settings.proxyGroups ?? []).contains(where: { $0.targets.contains("node:" + proxy.node.id) }) {
+            error = "该代理仍被代理组引用，请先调整组内出口。"; return
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("node:" + proxy.node.id) || $0.object["proxy"] == .string(proxy.name) }) == true {
             error = "该代理仍用于规则集下载，请先修改下载出口。"; return
@@ -254,6 +254,7 @@ extension DeskModel {
         do {
             var candidate = settings
             candidate.manualProxies?.removeAll { $0.id == proxy.id }
+            rejectUnavailableRouteNodes(&candidate, nodes: nodes)
             _ = try generateConfig(candidate)
             try saveSettings(candidate, to: directory)
             settings = candidate

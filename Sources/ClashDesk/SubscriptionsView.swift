@@ -155,8 +155,8 @@ struct SubscriptionEditorView: View {
 extension DeskModel {
     func deleteSubscription(_ subscription: Subscription) {
         guard !busy else { return }
-        if settings.defaultNode?.provider == subscription.provider || settings.rules.contains(where: { $0.node?.provider == subscription.provider }) || (settings.proxyGroups ?? []).contains(where: { $0.targets.contains(where: { referencedNode($0)?.provider == subscription.provider }) }) {
-            error = "该订阅仍被规则引用，请先调整相关出口。"; return
+        if (settings.proxyGroups ?? []).contains(where: { $0.targets.contains(where: { referencedNode($0)?.provider == subscription.provider }) }) {
+            error = "该订阅仍被代理组引用，请先调整组内出口。"; return
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { referencedNode($0.object["proxy"]?.text ?? "")?.provider == subscription.provider }) == true {
             error = "该订阅节点仍用于规则集下载，请先修改下载出口。"; return
@@ -166,6 +166,7 @@ extension DeskModel {
             candidate.subscriptions.removeAll { $0.id == subscription.id }
             candidate.subscriptionProxies?.removeValue(forKey: subscription.id)
             let remaining = nodes.filter { $0.provider != subscription.provider }
+            rejectUnavailableRouteNodes(&candidate, nodes: remaining)
             _ = try generateConfig(candidate)
             try commitFiles([
                 ("settings.json", try JSONEncoder().encode(candidate)),

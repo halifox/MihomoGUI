@@ -255,6 +255,7 @@ final class DeskModel: ObservableObject {
             merged[index].delayMilliseconds = previous[merged[index].id]?.delayMilliseconds
             merged[index].delayFailed = previous[merged[index].id]?.delayFailed
         }
+        rejectUnavailableRouteNodes(&updated, nodes: merged)
         try await commitSubscriptionUpdate(updated, nodes: merged, sources: updated.subscriptions, staging: staging)
         settings = updated; nodes = merged
         message = "已拉取并保存 \(nodes.count) 个节点。可在规则表修改 MATCH 的出口。"
@@ -295,6 +296,7 @@ final class DeskModel: ObservableObject {
         let entries = try await Task.detached { try readSubscriptionProxies(sourceFile).map { ConfigValue(native: $0) } }.value
         var cached = updated.subscriptionProxies ?? [:]; cached[subscription.id] = entries
         updated.subscriptionProxies = cached
+        rejectUnavailableRouteNodes(&updated, nodes: merged)
         try await commitSubscriptionUpdate(updated, nodes: merged, sources: [subscription], staging: staging)
         settings = updated; nodes = merged
         message = "订阅已保存，共 \(imported.count) 个节点。"
