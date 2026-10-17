@@ -22,7 +22,9 @@ open dist/ClashDesk.app
 2. 在“全局配置”调整端口、DNS、嗅探和 TUN。
 3. 添加代理订阅或手动出站代理。订阅只导入节点，不导入其 DNS、代理组与路由规则。
 4. 按需配置代理分组、规则集合和路由规则，并确认末尾 MATCH 的出口。
-5. 点击“启动全部”，应用校验配置并请求管理员授权安装和启动服务。
+5. 点击“启动全部”，应用校验配置；首次使用时请求管理员授权安装特权辅助服务，再启动内核。
+
+同一构建后续启停和保存运行配置通过 XPC 辅助服务执行，无需反复输入管理员密码。辅助服务只接受安装用户及当前应用签名的请求；本地临时签名随构建变化，更新应用后首次操作可能再次请求授权。退出应用不会卸载辅助服务。
 
 运行期间，全局配置与规则集合只读；节点、代理组与路由规则修改后自动应用。顶栏可查看内核日志或停止服务。退出应用不会停止服务。
 
@@ -65,6 +67,7 @@ Sources/
     …                               复用字段控件、表格和格式化函数
   ClashCore/                        配置、API、订阅、字段数据、SQLite 统计
   ClashStats/main.swift             后台采集程序入口
+  ClashHelper/main.swift            特权 XPC 服务入口
   CSQLite/                          系统 SQLite 模块声明
 scripts/build.sh                    编译、打包与本地签名
 Package.swift                       Swift Package 目标定义
@@ -83,6 +86,8 @@ Package.swift                       Swift Package 目标定义
 | 内核日志 | 数据目录内 `logs/core.log` |
 | 用户采集服务 | `~/Library/LaunchAgents/local.clashdesk.stats.plist` |
 | 系统内核服务 | `/Library/LaunchDaemons/local.clashdesk.mihomo.plist` |
+| 特权辅助服务 | `/Library/LaunchDaemons/local.clashdesk.helper.plist` |
+| 辅助服务程序 | `/Library/PrivilegedHelperTools/local.clashdesk.helper` |
 | 安装的内核 | `/Library/PrivilegedHelperTools/ClashDesk/mihomo` |
 | 系统运行配置 | `/Library/Application Support/ClashDesk/` |
 
@@ -92,7 +97,7 @@ Package.swift                       Swift Package 目标定义
 
 ## 当前限制
 
-- 服务安装通过 AppleScript 请求管理员授权，尚未采用正式签名、公证或 SMAppService / XPC helper。
+- 特权辅助服务首次安装及更新通过 AppleScript 请求管理员授权；使用本地临时签名与 hardened runtime，尚未采用正式签名、公证或 SMAppService。辅助服务权限绑定一个安装用户，其他用户使用时需重新授权。
 - 订阅仅支持 Clash YAML，不支持 Base64 / URI 转换；订阅由 GUI 更新，内核使用内联节点。
 - 流量来自连接快照，会遗漏短连接、断线与重启期间的流量；时间范围按小时分桶，结果最多显示 500 项。
 - 未设置的内核选项使用 mihomo 默认值；TUN、DNS、监听端口等由用户自行开启和配置。仅控制接口与随机密钥由应用提供，以供 GUI 和统计后台连接；已有配置保留。

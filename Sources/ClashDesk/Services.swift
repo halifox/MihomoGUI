@@ -168,7 +168,7 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     try healthText.write(to: health, atomically: true, encoding: .utf8)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: health.path)
     let command = coreInstallCommand(staging: staging, directory: directory, seedCommands: seedCommands)
-    try await administratorCommand(command)
+    try await privilegedCommand(command)
 }
 
 // Kept separate so rollback can be exercised against temporary files without administrator access.
@@ -265,7 +265,7 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
 }
 
 func stopCore() async throws {
-    try await administratorCommand("set -eu; /bin/launchctl disable system/\(coreLabel); /bin/launchctl bootout system/\(coreLabel) >/dev/null 2>&1 || true")
+    try await privilegedCommand("set -eu; /bin/launchctl disable system/\(coreLabel); /bin/launchctl bootout system/\(coreLabel) >/dev/null 2>&1 || true")
 }
 
 func servicePID(domain: String, label: String) async -> Int? {
@@ -293,6 +293,5 @@ func persistCoreConfiguration(_ config: Data) async throws {
     let staged = target + "." + UUID().uuidString
     let command = "set -e; /usr/bin/install -o root -g wheel -m 600 " + shellQuote(file.path) + " " + shellQuote(staged)
         + "; /bin/mv -f " + shellQuote(staged) + " " + shellQuote(target)
-    let script = "on run argv\n do shell script (item 1 of argv) with administrator privileges\nend run"
-    _ = try await runCommand("/usr/bin/osascript", ["-e", script, command])
+    try await privilegedCommand(command)
 }

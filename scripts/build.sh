@@ -30,6 +30,8 @@ printf '[3/7] Compiling clash-stats...\n'
 swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" -I Sources/CSQLite \
   Sources/ClashStats/*.swift "$BUILD_DIR/ClashCore.o" -lsqlite3 -o "$BUILD_DIR/clash-stats"
 printf '[4/7] Compiling ClashDesk...\n'
+swiftc "${SWIFT_FLAGS[@]}" -O -I "$BUILD_DIR" -I Sources/CSQLite \
+  Sources/ClashHelper/*.swift "$BUILD_DIR/ClashCore.o" -lsqlite3 -o "$BUILD_DIR/clash-helper"
 swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" -I Sources/CSQLite \
   Sources/ClashDesk/*.swift "$BUILD_DIR/ClashCore.o" -lsqlite3 -o "$BUILD_DIR/ClashDesk"
 printf '[5/7] Packaging application and bundled resources...\n'
@@ -37,6 +39,7 @@ APP_DIR="$PWD/dist/ClashDesk.app"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Contents/Resources/geodata"
 cp "$BUILD_DIR/ClashDesk" "$APP_DIR/Contents/MacOS/ClashDesk"
 cp "$BUILD_DIR/clash-stats" "$APP_DIR/Contents/Helpers/clash-stats"
+cp "$BUILD_DIR/clash-helper" "$APP_DIR/Contents/Helpers/clash-helper"
 cp "$CORE_FILE" "$APP_DIR/Contents/Helpers/mihomo"
 chmod 755 "$APP_DIR/Contents/Helpers/mihomo"
 for name in Country.mmdb geoip.dat geosite.dat ASN.mmdb; do
@@ -59,7 +62,8 @@ PLIST
 printf '[6/7] Signing application and helpers...\n'
 codesign --force --sign - "$APP_DIR/Contents/Helpers/clash-stats"
 codesign --force --sign - "$APP_DIR/Contents/Helpers/mihomo"
-codesign --force --sign - "$APP_DIR"
+codesign --force --sign - --options runtime "$APP_DIR/Contents/Helpers/clash-helper"
+codesign --force --sign - --options runtime "$APP_DIR"
 printf '[7/7] Build completed in %ss.\n' "$SECONDS"
 printf 'Built: %s\n' "$APP_DIR"
 printf 'If ClashDesk is already running, quit with Cmd-Q and reopen the app to load this build.\n'
