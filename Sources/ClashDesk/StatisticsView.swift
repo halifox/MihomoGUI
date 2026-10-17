@@ -45,9 +45,9 @@ struct StatisticsView: View {
             TableColumn("上传量", sortUsing: columnSort("上传量")) { row in TableUnitValue(text: bytes(row.upload)) }.width(min: 40, ideal: widths[2], max: nil)
             TableColumn("总流量", sortUsing: columnSort("总流量")) { row in TableUnitValue(text: bytes(row.upload + row.download)) }.width(min: 40, ideal: widths[3], max: nil)
             TableColumn("流量占比", sortUsing: columnSort("流量占比")) { row in TableUnitValue(text: trafficShare(row), unitSample: "%") }.width(min: 40, ideal: widths[4], max: nil)
-            TableColumn(model.trafficGrouping == .process ? "域名数" : "程序数", sortUsing: columnSort(model.trafficGrouping == .process ? "域名数" : "程序数")) { row in Text(String(model.trafficGrouping == .process ? row.domainCount : row.processCount)).monospacedDigit() }.width(min: 40, ideal: widths[5], max: nil)
-            TableColumn("目标 IP 数", sortUsing: columnSort("目标 IP 数")) { row in Text(String(row.ipCount)).monospacedDigit() }.width(min: 40, ideal: widths[6], max: nil)
-            TableColumn("出口数", sortUsing: columnSort("出口数")) { row in Text(String(row.outboundCount)).monospacedDigit() }.width(min: 40, ideal: widths[7], max: nil)
+            TableColumn(model.trafficGrouping == .process ? "域名数" : "程序数", sortUsing: columnSort(model.trafficGrouping == .process ? "域名数" : "程序数")) { row in Text(String(model.trafficGrouping == .process ? row.domainCount : row.processCount)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing) }.width(min: 40, ideal: widths[5], max: nil)
+            TableColumn("目标 IP 数", sortUsing: columnSort("目标 IP 数")) { row in Text(String(row.ipCount)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing) }.width(min: 40, ideal: widths[6], max: nil)
+            TableColumn("出口数", sortUsing: columnSort("出口数")) { row in Text(String(row.outboundCount)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing) }.width(min: 40, ideal: widths[7], max: nil)
         }
         .background(TableColumnAutoFit(widths: widths))
         .contextMenu(forSelectionType: String.self) { ids in

@@ -91,14 +91,15 @@ struct ConnectionsView: View {
                 HStack(spacing: 4) {
                     Button {
                         if let selection { model.perform { try await model.api.closeConnection(selection) } }
-                    } label: { toolbarIcon("关闭连接", systemImage: "xmark.circle") }
-                    .frame(width: 28, height: 28).disabled(model.busy || !rows.contains { $0.id == selection })
+                    } label: { Label("关闭连接", systemImage: "xmark.circle") }
+                    .disabled(model.busy || !rows.contains { $0.id == selection })
                     Button {
                         model.perform { try await model.api.closeAllConnections() }
-                    } label: { toolbarIcon("关闭所有连接", systemImage: "xmark.circle.fill") }
-                    .frame(width: 28, height: 28).disabled(model.busy || rows.isEmpty)
+                    } label: { Label("关闭所有连接", systemImage: "xmark.circle.fill") }
+                    .disabled(model.busy || rows.isEmpty)
                 }
                 .buttonStyle(.bordered)
+                .labelStyle(.titleAndIcon)
                 .controlSize(.regular)
                 .padding(.horizontal, 4)
                 .padding(.vertical, 2)

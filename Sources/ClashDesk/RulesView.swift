@@ -44,7 +44,7 @@ struct RulesView: View {
         let rows = rows
         Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
             TableColumn("序号", sortUsing: columnSort("序号")) { row in
-                Text(String(row.number)).monospacedDigit()
+                Text(String(row.number)).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
             }.width(min: 40, ideal: tableColumnWidth("序号", rows.map { String($0.number) }, numeric: true), max: nil)
             TableColumn("类型", sortUsing: columnSort("类型")) { row in
                 Text(row.rule?.kind.rawValue ?? "MATCH").monospaced()

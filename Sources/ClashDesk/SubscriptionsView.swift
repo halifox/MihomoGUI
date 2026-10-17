@@ -48,7 +48,7 @@ struct SubscriptionsView: View {
                 Text(columnText(subscription, "到期时间")).monospacedDigit()
             }.width(min: 40, ideal: contentWidth("到期时间"), max: nil)
             TableColumn("节点数", sortUsing: columnSort("节点数")) { subscription in
-                Text(columnText(subscription, "节点数")).monospacedDigit()
+                Text(columnText(subscription, "节点数")).monospacedDigit().frame(maxWidth: .infinity, alignment: .trailing)
             }.width(min: 40, ideal: contentWidth("节点数"), max: nil)
             TableColumn("上次更新时间", sortUsing: columnSort("上次更新时间")) { subscription in
                 Text(columnText(subscription, "上次更新时间")).monospacedDigit()

@@ -20,7 +20,7 @@ func bytes(_ value: Int64) -> String {
 }
 
 // Shared by traffic, subscription, and delay table cells. Reserve the same
-// unit width in every row, including rows with a missing value.
+// unit width in every numeric row; missing values align to the column edge.
 struct TableUnitValue: View {
     let text: String
     var unitSample = "MB"
@@ -30,13 +30,20 @@ struct TableUnitValue: View {
         let percent = text.hasSuffix("%")
         let number = percent ? String(text.dropLast()) : String(parts.first ?? "")
         let unit = percent ? "%" : (parts.count == 2 ? String(parts[1]) : "")
-        HStack(alignment: .firstTextBaseline, spacing: 0) {
-            Text(number)
-                .frame(maxWidth: .infinity, alignment: .trailing)
-            Text(" " + unitSample)
-                .fixedSize()
-                .hidden()
-                .overlay(alignment: .leading) { Text(unit.isEmpty ? "" : " " + unit) }
+        Group {
+            if unit.isEmpty {
+                Text(text)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(number)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text(" " + unitSample)
+                        .fixedSize()
+                        .hidden()
+                        .overlay(alignment: .leading) { Text(unit.isEmpty ? "" : " " + unit) }
+                }
+            }
         }
         .monospacedDigit()
         .lineLimit(1)

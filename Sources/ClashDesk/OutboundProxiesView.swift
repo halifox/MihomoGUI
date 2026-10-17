@@ -98,7 +98,7 @@ struct NodeDelayCell: View {
     var node: Node? { model.allNodes.first { $0.id == nodeID } }
     var body: some View {
         Group {
-            if model.testingNodes.contains(nodeID) { Text("测试中…") }
+            if model.testingNodes.contains(nodeID) { Text("测试中…").frame(maxWidth: .infinity, alignment: .trailing) }
             else if node?.delayFailed == true {
                 Text("超时")
                     .foregroundStyle(.red)
