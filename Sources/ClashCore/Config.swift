@@ -196,6 +196,7 @@ public func generalConfigurationDefaults(_ settings: Settings) -> [String: Confi
     values["dns.enable"] = .boolean(true)
     values["dns.enhanced-mode"] = .string("fake-ip")
     values["ipv6"] = .boolean(false)
+    values["tun.device"] = .string("utun1024")
     values["external-controller"] = .string("127.0.0.1:19090")
     values["secret"] = .string(settings.secret)
     if let tun = settings.tun { values["tun.enable"] = .boolean(tun) }
