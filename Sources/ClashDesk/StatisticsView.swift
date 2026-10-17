@@ -39,6 +39,11 @@ struct StatisticsView: View {
             TableColumn("目标 IP 数", sortUsing: columnSort("目标 IP 数")) { row in Text(String(row.ipCount)).monospacedDigit() }.width(min: 40, ideal: tableColumnWidth("目标 IP 数", rows.map { row in String(row.ipCount) }, numeric: true), max: nil)
             TableColumn("出口数", sortUsing: columnSort("出口数")) { row in Text(String(row.outboundCount)).monospacedDigit() }.width(min: 40, ideal: tableColumnWidth("出口数", rows.map { row in String(row.outboundCount) }, numeric: true), max: nil)
         }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if ids.count == 1, let row = rows.first(where: { ids.contains($0.id) }) {
+                trafficRoutes(row).disabled(model.busy)
+            }
+        }
         .overlay {
             if rows.isEmpty, let error = model.statisticsError {
                 Text("统计不可用：" + error)
@@ -66,12 +71,6 @@ struct StatisticsView: View {
                 .fixedSize()
                 .help("时间范围")
 
-                Menu {
-                    if let row = rows.first(where: { selection.contains($0.id) }) { trafficRoutes(row) }
-                } label: { toolbarIcon("添加路由规则", systemImage: "plus") }
-                .menuStyle(.borderedButton)
-                .menuIndicator(.hidden)
-                .disabled(selection.count != 1 || model.busy)
             }
         }
         .task(id: "\(model.trafficGrouping.rawValue)-\(model.hours)") { await model.refresh() }

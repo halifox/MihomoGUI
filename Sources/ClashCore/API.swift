@@ -144,6 +144,9 @@ public struct CoreAPI {
             _ = try await request("/providers/proxies/" + subscription.provider, method: "PUT")
         }
     }
+    public func closeAllConnections() async throws {
+        _ = try await request("/connections", method: "DELETE")
+    }
     public func closeConnection(_ id: String) async throws {
         let safe = id.addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? ""
         _ = try await request("/connections/" + safe, method: "DELETE")

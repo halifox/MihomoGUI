@@ -3,8 +3,20 @@ import AppKit
 import ClashCore
 
 func bytes(_ value: Int64) -> String {
-    if value == 0 { return "0" }
-    return ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
+    let magnitude = Double(value).magnitude
+    let divisor: Double
+    let unit: String
+    if magnitude >= 1_073_741_824 {
+        divisor = 1_073_741_824
+        unit = "GB"
+    } else if magnitude >= 1_048_576 {
+        divisor = 1_048_576
+        unit = "MB"
+    } else {
+        divisor = 1024
+        unit = "KB"
+    }
+    return String(format: "%.2f %@", Double(value) / divisor, unit)
 }
 
 func connectionChain(_ connection: Connection, proxyNames: [String: String]) -> String {

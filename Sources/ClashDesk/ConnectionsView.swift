@@ -67,6 +67,13 @@ struct ConnectionsView: View {
             TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(value(row, "类型")).help(value(row, "类型")) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map { value($0, "类型") }), max: nil)
             )
         }
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let row = rows.first(where: { $0.id == id }) {
+                Button("关闭连接") { model.perform { try await model.api.closeConnection(row.id) } }
+                    .disabled(model.busy)
+                connectionRoutes(row).disabled(model.busy)
+            }
+        }
         .overlay {
             if rows.isEmpty, let error = model.connectionsError {
                 Text(error)
@@ -79,15 +86,14 @@ struct ConnectionsView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
-                    Button(role: .destructive) {
+                    Button {
                         if let selection { model.perform { try await model.api.closeConnection(selection) } }
-                    } label: { toolbarIcon("断开", systemImage: "xmark.circle").foregroundStyle(.red) }.frame(width: 28, height: 28).tint(.red).disabled(model.busy || !rows.contains { $0.id == selection })
-                    Menu {
-                        if let row = rows.first(where: { $0.id == selection }) { connectionRoutes(row) }
-                    } label: { toolbarIcon("添加路由规则", systemImage: "plus.circle") }
-                    .menuStyle(.borderedButton)
-                    .menuIndicator(.hidden)
+                    } label: { toolbarIcon("关闭连接", systemImage: "xmark.circle") }
                     .frame(width: 28, height: 28).disabled(model.busy || !rows.contains { $0.id == selection })
+                    Button {
+                        model.perform { try await model.api.closeAllConnections() }
+                    } label: { toolbarIcon("关闭所有连接", systemImage: "xmark.circle.fill") }
+                    .frame(width: 28, height: 28).disabled(model.busy || rows.isEmpty)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
