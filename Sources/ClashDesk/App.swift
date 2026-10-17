@@ -21,7 +21,7 @@ struct ClashDeskApp: App {
     }
 }
 
-// Apply once per new window so a restored frame cannot override the requested launch size.
+// Apply during window attachment to avoid resizing after the first display.
 struct InitialWindowSize: NSViewRepresentable {
     func makeNSView(context: Context) -> NSView { LaunchSizeView() }
     func updateNSView(_ nsView: NSView, context: Context) {}
@@ -33,9 +33,7 @@ final class LaunchSizeView: NSView {
         super.viewDidMoveToWindow()
         guard !sized, let window else { return }
         sized = true
-        DispatchQueue.main.async { [weak window] in
-            window?.setContentSize(NSSize(width: 900, height: 400))
-        }
+        window.setContentSize(NSSize(width: 900, height: 400))
     }
 }
 
