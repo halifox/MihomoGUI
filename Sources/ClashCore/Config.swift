@@ -192,6 +192,10 @@ public func generalConfigurationDefaults(_ settings: Settings) -> [String: Confi
         }
     }
     collect(documentSchemas.configuration)
+    // Application defaults override mihomo defaults without replacing saved user choices.
+    values["dns.enable"] = .boolean(true)
+    values["dns.enhanced-mode"] = .string("fake-ip")
+    values["ipv6"] = .boolean(false)
     values["external-controller"] = .string("127.0.0.1:19090")
     values["secret"] = .string(settings.secret)
     if let tun = settings.tun { values["tun.enable"] = .boolean(tun) }

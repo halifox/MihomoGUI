@@ -23,6 +23,8 @@ final class DeskModel: ObservableObject {
     @Published var coreRunning = false
     @Published var lastSample: Date?
     @Published var busy = false
+    enum ServiceOperation { case starting, stopping }
+    @Published var serviceOperation: ServiceOperation?
     @Published var error: String?
     @Published var message = "退出界面后，已启动的服务继续运行。"
     @Published var hours = 24
@@ -106,6 +108,8 @@ final class DeskModel: ObservableObject {
     func toggleAllServices() {
         if !servicesActive { startAll(); return }
         perform {
+            self.serviceOperation = .stopping
+            defer { self.serviceOperation = nil }
             var failures: [String] = []
             do { try await stopCore() } catch { failures.append(error.localizedDescription) }
             do { try await stopStatistics() } catch { failures.append(error.localizedDescription) }
@@ -400,6 +404,8 @@ final class DeskModel: ObservableObject {
     func cancelDelayTests() { delayTask?.cancel() }
     func startAll() {
         perform {
+            self.serviceOperation = .starting
+            defer { self.serviceOperation = nil }
             if self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
             let snapshot = self.settings
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))

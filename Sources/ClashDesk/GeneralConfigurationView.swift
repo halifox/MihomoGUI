@@ -10,7 +10,6 @@ struct GeneralConfigurationView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.trailing, 4)
         }
-        .disabled(model.busy || model.configurationLocked)
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
@@ -27,8 +26,15 @@ struct GeneralConfigurationView: View {
                         toolbarIcon("日志预览", systemImage: "doc.text")
                     }.frame(width: 28, height: 28).disabled(model.busy).help("读取用户日志目录中的 core.log")
                     Button { model.toggleAllServices() } label: {
-                        toolbarIcon(model.servicesActive ? "停止全部" : "启动全部", systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                        if model.serviceOperation != nil {
+                            ProgressView().controlSize(.small)
+                                .frame(width: 16, height: 16)
+                                .accessibilityLabel(serviceButtonTitle)
+                        } else {
+                            toolbarIcon(serviceButtonTitle, systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                        }
                     }.frame(width: 28, height: 28).disabled(model.busy)
+                        .help(serviceButtonTitle)
                 }
                 .buttonStyle(.bordered)
                 .controlSize(.regular)
@@ -51,6 +57,14 @@ struct GeneralConfigurationView: View {
         }
         .padding(20)
     }
+
+    private var serviceButtonTitle: String {
+        switch model.serviceOperation {
+        case .starting: return "正在启动…"
+        case .stopping: return "正在停止…"
+        case nil: return model.servicesActive ? "停止全部" : "启动全部"
+        }
+    }
 }
 
 private struct ConfigurationRows: View {
@@ -68,7 +82,7 @@ private struct ConfigurationRows: View {
                     VisualField(field: field, value: Binding(get: {
                         model.settings.options?[field.path]
                     }, set: { model.setOption(field.path, value: $0) }),
-                                compact: true, inputEnabled: field.unavailableReason == nil && fieldEnabled(field.path), defaultValue: model.baseOption(field.path))
+                                compact: true, inputEnabled: !model.busy && !model.configurationLocked && field.unavailableReason == nil && fieldEnabled(field.path), defaultValue: model.baseOption(field.path))
                         .environment(\.formHelpDocument, field.document ?? "general.md")
                     if field.path == "unified-delay" {
                         formRow("延迟测试地址") {
@@ -79,7 +93,7 @@ private struct ConfigurationRows: View {
                                 guard updated != model.settings.delayTestURL else { return }
                                 model.settings.delayTestURL = updated
                                 model.scheduleConfigurationSave()
-                            }))
+                            })).disabled(model.busy || model.configurationLocked)
                         }
                         formRow("延迟超时（毫秒）") {
                             TextField("5000", text: Binding(get: {
@@ -92,7 +106,7 @@ private struct ConfigurationRows: View {
                                 guard updated != model.settings.delayTestTimeoutMilliseconds else { return }
                                 model.settings.delayTestTimeoutMilliseconds = updated
                                 model.scheduleConfigurationSave()
-                            }))
+                            })).disabled(model.busy || model.configurationLocked)
                                 .frame(width: 150)
                         }
                     }
