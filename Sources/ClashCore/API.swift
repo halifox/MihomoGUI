@@ -7,10 +7,11 @@ public struct Connection: Decodable, Identifiable {
     public let download: Int64
     public let chains: [String]?
     public let rule: String?
+    public let rulePayload: String?
     public let start: String?
     public var downloadSpeed: Int64 = 0
     public var uploadSpeed: Int64 = 0
-    private enum CodingKeys: String, CodingKey { case id, metadata, upload, download, chains, rule, start }
+    private enum CodingKeys: String, CodingKey { case id, metadata, upload, download, chains, rule, rulePayload, start }
     public struct Metadata: Decodable {
         public let sourceIP: String?
         public let sourcePort: String?

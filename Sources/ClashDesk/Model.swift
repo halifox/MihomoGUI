@@ -21,7 +21,6 @@ final class DeskModel: ObservableObject {
     @Published var serviceLogs: String?
     @Published var rulePrefill: RouteRule?
     @Published var coreRunning = false
-    @Published var lastSample: Date?
     @Published var busy = false
     enum ServiceOperation { case starting, stopping }
     @Published var serviceOperation: ServiceOperation?
@@ -118,6 +117,17 @@ final class DeskModel: ObservableObject {
         }
     }
     var activeController: String { runtimeSettings.options?["external-controller"]?.text ?? "127.0.0.1:19090" }
+    var connectionProxyNames: [String: String] {
+        var names: [String: String] = [:]
+        for (sourceIndex, subscription) in runtimeSettings.subscriptions.enumerated() {
+            for (proxyIndex, proxy) in (runtimeSettings.subscriptionProxies?[subscription.id] ?? []).enumerated() {
+                if let name = proxy.object["name"]?.text {
+                    names[subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)] = name
+                }
+            }
+        }
+        return names
+    }
     func refresh() async {
         let refreshID = UUID()
         connectionsRefreshID = refreshID
@@ -142,22 +152,29 @@ final class DeskModel: ObservableObject {
             connections = live; coreRunning = true; connectionsError = nil
         } catch {
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
+            let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
+            guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
+            if !registered { corePID = nil }
+            let stopped = !registered && serviceOperation != .starting
+                && (error as? URLError)?.code == .cannotConnectToHost
             // HTTP and decoding failures still mean the controller is reachable.
             coreRunning = error is CoreAPIError
             connections = []; connectionsDate = nil; connectionSpeedsAvailable = false
-            connectionsError = "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
+            connectionsError = stopped ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
         }
         do {
             let folder = directory; let range = hours; let grouping = trafficGrouping
-            let result = try await Task.detached {
-                let database = try TrafficDatabase(url: folder.appendingPathComponent("traffic.sqlite"), readOnly: true)
-                return (try database.groupedRows(since: Date().addingTimeInterval(-Double(range) * 3600), by: grouping), try database.lastSample())
+            let allowMissing = connectionsError == nil && !coreRunning && corePID == nil && statsPID == nil
+            let result = try await Task.detached { () -> [DomainTrafficRow] in
+                let url = folder.appendingPathComponent("traffic.sqlite")
+                if allowMissing && !FileManager.default.fileExists(atPath: url.path) { return [] }
+                let database = try TrafficDatabase(url: url, readOnly: true)
+                return try database.groupedRows(since: Date().addingTimeInterval(-Double(range) * 3600), by: grouping)
             }.value
             guard grouping == trafficGrouping, range == hours else { return }
-            if traffic != result.0 { traffic = result.0 }
-            if lastSample != result.1 { lastSample = result.1 }
+            if traffic != result { traffic = result }
             if statisticsError != nil { statisticsError = nil }
-        } catch { lastSample = nil; traffic = []; statisticsError = error.localizedDescription }
+        } catch { traffic = []; statisticsError = error.localizedDescription }
         if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
     }
     func refreshDiagnostics() async {

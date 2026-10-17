@@ -177,14 +177,6 @@ public final class TrafficDatabase {
         }
         return result
     }
-    public func lastSample() throws -> Date? {
-        let statement = try prepare("SELECT sampled_at FROM collector WHERE id=1")
-        defer { sqlite3_finalize(statement) }
-        let code = sqlite3_step(statement)
-        if code == SQLITE_DONE { return nil }
-        guard code == SQLITE_ROW else { throw failure() }
-        return Date(timeIntervalSince1970: Double(sqlite3_column_int64(statement, 0)))
-    }
     public func domainRows(since date: Date, limit: Int = 500) throws -> [DomainTrafficRow] {
         try groupedRows(since: date, by: .domain, limit: limit)
     }

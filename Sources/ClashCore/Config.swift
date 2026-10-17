@@ -6,6 +6,11 @@ public let defaultGroup = "CD.Default"
 public let rootDirectory = "/Library/Application Support/ClashDesk"
 public let installedCore = "/Library/PrivilegedHelperTools/ClashDesk/mihomo"
 
+// Both config generation and the GUI's reverse name mapping use this alias contract.
+public func subscriptionProxyAlias(sourceIndex: Int, proxyIndex: Int) -> String {
+    "CD.Proxy.\(sourceIndex).\(proxyIndex)"
+}
+
 public func dataDirectory() throws -> URL {
     let url = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/ClashDesk")
@@ -229,7 +234,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             guard let name = entry.object["name"]?.text, !name.isEmpty, names[name] == nil else {
                 throw DeskError("订阅包含空名称或重复名称节点")
             }
-            names[name] = "CD.Proxy.\(sourceIndex).\(index)"
+            names[name] = subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)
         }
         for entry in entries {
             var proxy = entry.object.mapValues(\.native)

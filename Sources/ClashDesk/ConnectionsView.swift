@@ -24,8 +24,8 @@ struct ConnectionsView: View {
         case "上传量": return bytes(row.upload)
         case "下载速度": return bytes(row.downloadSpeed) + "/s"
         case "上传速度": return bytes(row.uploadSpeed) + "/s"
-        case "链路": return row.chains?.reversed().joined(separator: " / ") ?? "—"
-        case "规则": return row.rule ?? "—"
+        case "链路": return connectionChain(row, proxyNames: model.connectionProxyNames)
+        case "规则": return connectionRule(row)
         case "进程": return row.process
         case "连接时间":
             guard let date = startDate(row) else { return "—" }

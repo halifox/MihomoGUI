@@ -3,7 +3,21 @@ import AppKit
 import ClashCore
 
 func bytes(_ value: Int64) -> String {
-    ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
+    if value == 0 { return "0" }
+    return ByteCountFormatter.string(fromByteCount: value, countStyle: .binary)
+}
+
+func connectionChain(_ connection: Connection, proxyNames: [String: String]) -> String {
+    let names = (connection.chains ?? []).reversed().map { name in
+        proxyNames[name] ?? (name == defaultGroup ? "默认代理组" : name)
+    }
+    return names.isEmpty ? "—" : names.joined(separator: " / ")
+}
+
+func connectionRule(_ connection: Connection) -> String {
+    guard let rule = connection.rule, !rule.isEmpty else { return "—" }
+    guard let payload = connection.rulePayload, !payload.isEmpty else { return rule }
+    return "\(rule)(\(payload))"
 }
 
 func optionLabel(_ value: String) -> String {
