@@ -28,7 +28,7 @@ struct OutboundProxiesView: View {
         case "类型": return TableSort(column) { $0.protocolName ?? "—" }
         case "UDP": return TableSort(column) { row in (row.provider == "manual" ? model.manualUDP[row.name] : row.supportsUDP).map { $0 ? 1 : 0 } ?? -1 }
         case "来源": return TableSort(column) { row in row.provider == "manual" ? "手动添加" : model.settings.subscriptions.first { $0.provider == row.provider }?.name ?? "—" }
-        default: return TableSort(column) { $0.delayMilliseconds ?? -1 }
+        default: return TableSort(column, optionalValue: { $0.delayFailed == true ? nil : $0.delayMilliseconds })
         }
     }
     var body: some View {

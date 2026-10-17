@@ -7,6 +7,7 @@ struct TableSort<Row>: SortComparator {
     var order: SortOrder = .forward
     let column: String
     private let comparison: (Row, Row) -> ComparisonResult
+    private var isMissing: ((Row) -> Bool)?
     init<Value: Comparable>(_ column: String, value: @escaping (Row) -> Value) {
         self.column = column
         comparison = { lhs, rhs in
@@ -14,7 +15,19 @@ struct TableSort<Row>: SortComparator {
             return a < b ? .orderedAscending : a > b ? .orderedDescending : .orderedSame
         }
     }
+    init<Value: Comparable>(_ column: String, optionalValue: @escaping (Row) -> Value?) {
+        self.column = column
+        isMissing = { optionalValue($0) == nil }
+        comparison = { lhs, rhs in
+            guard let a = optionalValue(lhs), let b = optionalValue(rhs) else { return .orderedSame }
+            return a < b ? .orderedAscending : a > b ? .orderedDescending : .orderedSame
+        }
+    }
     func compare(_ lhs: Row, _ rhs: Row) -> ComparisonResult {
+        if let isMissing {
+            let a = isMissing(lhs), b = isMissing(rhs)
+            if a != b { return a ? .orderedDescending : .orderedAscending }
+        }
         let result = comparison(lhs, rhs)
         return order == .forward ? result : result == .orderedAscending ? .orderedDescending : result == .orderedDescending ? .orderedAscending : .orderedSame
     }
