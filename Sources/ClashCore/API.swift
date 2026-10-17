@@ -1,5 +1,10 @@
 import Foundation
 
+public struct CoreLog: Decodable {
+    public let type: String
+    public let payload: String
+}
+
 public struct Connection: Decodable, Identifiable {
     public let id: String
     public let metadata: Metadata
@@ -83,6 +88,28 @@ public struct CoreAPI {
         let data = try await request("/connections")
         do { return try autoreleasepool { try JSONDecoder().decode(Connections.self, from: data).connections } }
         catch is DecodingError { throw CoreAPIError.invalidConnections }
+    }
+    public func logs(receive: (CoreLog) async -> Void) async throws {
+        let destination = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        guard (1...65535).contains(port), let url = URL(string: "http://\(destination):\(port)/logs?level=debug") else {
+            throw DeskError("日志接口地址无效")
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let response = response as? HTTPURLResponse else { throw CoreAPIError.invalidResponse }
+        guard (200..<300).contains(response.statusCode) else { throw CoreAPIError.http(response.statusCode) }
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard !line.isEmpty else { continue }
+            let log: CoreLog
+            do { log = try JSONDecoder().decode(CoreLog.self, from: Data(line.utf8)) }
+            catch { throw DeskError("内核日志格式无效") }
+            await receive(log)
+        }
+        try Task.checkCancellation()
+        throw DeskError("内核日志连接已断开")
     }
     public func nodes(providerOrder: [String] = []) async throws -> [Node] {
         struct Provider: Decodable { var proxies: [Proxy]? }

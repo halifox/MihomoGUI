@@ -61,6 +61,33 @@ public func referencedNode(_ target: String) -> Node? {
     return Node(provider: parts[0], name: parts[1])
 }
 
+// Shared by the member pickers and default-selection validation.
+public func proxyGroupTargets(_ group: ProxyGroup, settings: Settings) -> [String] {
+    var targets = group.targets
+    if group.fields["include-all-proxies"] == .boolean(true) {
+        var imported: [(target: String, name: String)] = (settings.manualProxies ?? []).map {
+            ("node:" + $0.node.id, $0.name)
+        }
+        for (sourceIndex, source) in settings.subscriptions.enumerated() {
+            for (index, entry) in (settings.subscriptionProxies?[source.id] ?? []).enumerated() {
+                guard let name = entry.object["name"]?.text else { continue }
+                imported.append(("node:" + Node(provider: source.provider, name: name).id,
+                                 subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)))
+            }
+        }
+        let filter = group.fields["filter"]?.text ?? ""
+        for entry in imported.sorted(by: { $0.name < $1.name }) {
+            if filter.isEmpty || filter.components(separatedBy: "`").contains(where: {
+                entry.name.range(of: $0, options: .regularExpression) != nil
+            }) {
+                targets.append(entry.target)
+            }
+        }
+    }
+    var seen = Set<String>()
+    return targets.filter { seen.insert($0).inserted }
+}
+
 public func validateProxyGroups(_ settings: Settings) throws {
     let groups = settings.proxyGroups ?? []
     let names = Set(groups.map(\.name))
@@ -84,7 +111,7 @@ public func validateProxyGroups(_ settings: Settings) throws {
                 }
             } else if !["builtin:DIRECT", "builtin:REJECT", "builtin:REJECT-DROP"].contains(target) { throw DeskError("代理组成员无效") }
         }
-        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty, !group.targets.contains(selected) {
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty, !proxyGroupTargets(group, settings: settings).contains(selected) {
             throw DeskError("默认成员必须在代理组成员列表中")
         }
         for key in ["interval", "timeout", "tolerance", "max-failed-times"] {

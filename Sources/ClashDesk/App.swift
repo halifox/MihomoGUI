@@ -7,11 +7,11 @@ struct ClashDeskApp: App {
     @StateObject private var model = DeskModel()
     var body: some Scene {
         WindowGroup("ClashDesk") {
-            DeskView().environmentObject(model).frame(minWidth: 800, minHeight: 600)
+            DeskView().environmentObject(model).frame(minWidth: 800, minHeight: 400)
                 .background(InitialWindowSize())
                 .task { model.startMonitor() }
         }
-        .defaultSize(width: 800, height: 600)
+        .defaultSize(width: 900, height: 400)
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .appInfo) {
@@ -34,16 +34,16 @@ final class LaunchSizeView: NSView {
         guard !sized, let window else { return }
         sized = true
         DispatchQueue.main.async { [weak window] in
-            window?.setContentSize(NSSize(width: 800, height: 600))
+            window?.setContentSize(NSSize(width: 900, height: 400))
         }
     }
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic
+    case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic, logs, settings
     var id: Int { rawValue }
-    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "流量统计"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar"][rawValue] }
+    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "流量统计", "内核日志", "应用设置"][rawValue] }
+    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "doc.text", "gearshape"][rawValue] }
 }
 
 struct DeskView: View {
@@ -66,6 +66,8 @@ struct DeskView: View {
                 case .rules: RulesView()
                 case .connections: ConnectionsView()
                 case .traffic: StatisticsView()
+                case .logs: CoreLogsView()
+                case .settings: AppSettingsView()
                 }
             }.navigationTitle((page ?? .general).title)
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
@@ -76,13 +78,6 @@ struct DeskView: View {
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
             Button("确定") { model.error = nil }
         } message: { Text(model.error ?? "") }
-        .sheet(isPresented: Binding(get: { model.serviceLogs != nil }, set: { if !$0 { model.serviceLogs = nil } })) {
-            VStack(alignment: .leading) {
-                Text("内核日志 · core.log").font(.title2)
-                ScrollView { Text(model.serviceLogs ?? "").font(.system(.body, design: .monospaced)).textSelection(.enabled).frame(maxWidth: .infinity, alignment: .leading) }
-                Button("关闭") { model.serviceLogs = nil }.keyboardShortcut(.cancelAction)
-            }.padding(20).frame(width: 760, height: 520)
-        }
         .sheet(item: $model.rulePrefill) { prefill in
             RuleEditorView(prefill: prefill)
         }

@@ -52,10 +52,10 @@ struct ConnectionsView: View {
         Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
             TableColumnBuilder<Connection, TableSort<Connection>>.buildBlock(
             TableColumn("主机", sortUsing: columnSort("主机")) { row in Text(value(row, "主机")).help(value(row, "主机")) }.width(min: 40, ideal: tableColumnWidth("主机", rows.map { value($0, "主机") }), max: nil),
-            TableColumn("下载量", sortUsing: columnSort("下载量")) { row in Text(value(row, "下载量")).help(value(row, "下载量")) }.width(min: 40, ideal: tableColumnWidth("下载量", rows.map { value($0, "下载量") }), max: nil),
-            TableColumn("上传量", sortUsing: columnSort("上传量")) { row in Text(value(row, "上传量")).help(value(row, "上传量")) }.width(min: 40, ideal: tableColumnWidth("上传量", rows.map { value($0, "上传量") }), max: nil),
-            TableColumn("下载速度", sortUsing: columnSort("下载速度")) { row in Text(value(row, "下载速度")).help(value(row, "下载速度")) }.width(min: 40, ideal: tableColumnWidth("下载速度", rows.map { value($0, "下载速度") }), max: nil),
-            TableColumn("上传速度", sortUsing: columnSort("上传速度")) { row in Text(value(row, "上传速度")).help(value(row, "上传速度")) }.width(min: 40, ideal: tableColumnWidth("上传速度", rows.map { value($0, "上传速度") }), max: nil),
+            TableColumn("下载量", sortUsing: columnSort("下载量")) { row in TableUnitValue(text: value(row, "下载量")).help(value(row, "下载量")) }.width(min: 40, ideal: tableColumnWidth("下载量", rows.map { value($0, "下载量") }), max: nil),
+            TableColumn("上传量", sortUsing: columnSort("上传量")) { row in TableUnitValue(text: value(row, "上传量")).help(value(row, "上传量")) }.width(min: 40, ideal: tableColumnWidth("上传量", rows.map { value($0, "上传量") }), max: nil),
+            TableColumn("下载速度", sortUsing: columnSort("下载速度")) { row in TableUnitValue(text: value(row, "下载速度"), unitSample: "MB/s").help(value(row, "下载速度")) }.width(min: 40, ideal: tableColumnWidth("下载速度", rows.map { value($0, "下载速度") }), max: nil),
+            TableColumn("上传速度", sortUsing: columnSort("上传速度")) { row in TableUnitValue(text: value(row, "上传速度"), unitSample: "MB/s").help(value(row, "上传速度")) }.width(min: 40, ideal: tableColumnWidth("上传速度", rows.map { value($0, "上传速度") }), max: nil),
             TableColumn("链路", sortUsing: columnSort("链路")) { row in Text(value(row, "链路")).help(value(row, "链路")) }.width(min: 40, ideal: tableColumnWidth("链路", rows.map { value($0, "链路") }), max: nil)
             )
             TableColumnBuilder<Connection, TableSort<Connection>>.buildBlock(

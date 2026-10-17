@@ -80,7 +80,7 @@ struct ResourceEditorView: View {
                                     fields["default-selected"]?.text ?? ""
                                 }, set: { fields["default-selected"] = $0.isEmpty ? nil : .string($0) })) {
                                     Text("默认（首个成员）").tag("")
-                                    ForEach(Array(Set(targets)).sorted(), id: \.self) { target in Text(memberLabel(target)).tag(target) }
+                                    ForEach(proxyGroupTargets(ProxyGroup(name: name, type: type, targets: targets, fields: fields), settings: model.settings), id: \.self) { target in Text(memberLabel(target)).tag(target) }
                                 }.labelsHidden()
                             }
                         } else {

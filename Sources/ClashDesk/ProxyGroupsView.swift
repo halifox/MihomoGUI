@@ -53,22 +53,23 @@ struct ProxyGroupsView: View {
     }
     @ViewBuilder func memberPicker(_ row: ResourceRow) -> some View {
         if let group = row.group, group.type == "select" {
+            let targets = proxyGroupTargets(group, settings: model.settings)
             Picker("选择节点", selection: Binding(get: {
                 let current = group.fields["default-selected"]?.text ?? ""
-                return current.isEmpty ? group.targets.first ?? "" : current
+                return current.isEmpty ? targets.first ?? "" : current
             }, set: { target in
                 var updated = group
                 updated.fields["default-selected"] = .string(target)
                 do { try model.saveProxyGroup(updated) }
                 catch { model.error = error.localizedDescription }
             })) {
-                if group.targets.isEmpty { Text("空（Empty）").tag("") }
-                ForEach(group.targets.reduce(into: [String]()) { if !$0.contains($1) { $0.append($1) } }, id: \.self) { target in
+                if targets.isEmpty { Text("空（Empty）").tag("") }
+                ForEach(targets, id: \.self) { target in
                     Text(memberLabel(target)).tag(target)
                 }
             }
             .labelsHidden()
-            .disabled(model.busy || group.targets.isEmpty)
+            .disabled(model.busy || targets.isEmpty)
         } else {
             Text(selectedMemberText(row))
         }
@@ -76,7 +77,7 @@ struct ProxyGroupsView: View {
     func selectedMemberText(_ row: ResourceRow) -> String {
         guard let group = row.group, group.type == "select" else { return "—" }
         let selected = group.fields["default-selected"]?.text ?? ""
-        guard let target = selected.isEmpty ? group.targets.first : selected else { return "空（Empty）" }
+        guard let target = selected.isEmpty ? proxyGroupTargets(group, settings: model.settings).first : selected else { return "空（Empty）" }
         return memberLabel(target)
     }
     func memberLabel(_ target: String) -> String {

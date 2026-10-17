@@ -33,16 +33,16 @@ struct SubscriptionsView: View {
                 Text(columnText(subscription, "名称")).textSelection(.enabled).lineLimit(1).help(subscription.name)
             }.width(min: 40, ideal: contentWidth("名称"), max: nil)
             TableColumn("上传流量", sortUsing: columnSort("上传流量")) { subscription in
-                Text(columnText(subscription, "上传流量")).monospacedDigit()
+                TableUnitValue(text: columnText(subscription, "上传流量"))
             }.width(min: 40, ideal: contentWidth("上传流量"), max: nil)
             TableColumn("下载流量", sortUsing: columnSort("下载流量")) { subscription in
-                Text(columnText(subscription, "下载流量")).monospacedDigit()
+                TableUnitValue(text: columnText(subscription, "下载流量"))
             }.width(min: 40, ideal: contentWidth("下载流量"), max: nil)
             TableColumn("剩余流量", sortUsing: columnSort("剩余流量")) { subscription in
-                Text(columnText(subscription, "剩余流量")).monospacedDigit()
+                TableUnitValue(text: columnText(subscription, "剩余流量"))
             }.width(min: 40, ideal: contentWidth("剩余流量"), max: nil)
             TableColumn("总流量", sortUsing: columnSort("总流量")) { subscription in
-                Text(columnText(subscription, "总流量")).monospacedDigit()
+                TableUnitValue(text: columnText(subscription, "总流量"))
             }.width(min: 40, ideal: contentWidth("总流量"), max: nil)
             TableColumn("到期时间", sortUsing: columnSort("到期时间")) { subscription in
                 Text(columnText(subscription, "到期时间")).monospacedDigit()

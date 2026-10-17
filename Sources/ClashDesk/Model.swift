@@ -18,7 +18,6 @@ final class DeskModel: ObservableObject {
     @Published var testingNodes: Set<String> = []
     @Published var isTestingDelays = false
     private var delayTask: Task<Void, Never>?
-    @Published var serviceLogs: String?
     @Published var rulePrefill: RouteRule?
     @Published var coreRunning = false
     @Published var busy = false

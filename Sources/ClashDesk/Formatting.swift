@@ -19,6 +19,32 @@ func bytes(_ value: Int64) -> String {
     return String(format: "%.2f %@", Double(value) / divisor, unit)
 }
 
+// Shared by traffic, subscription, and delay table cells. Reserve the same
+// unit width in every row, including rows with a missing value.
+struct TableUnitValue: View {
+    let text: String
+    var unitSample = "MB"
+
+    var body: some View {
+        let parts = text.split(separator: " ", maxSplits: 1)
+        let percent = text.hasSuffix("%")
+        let number = percent ? String(text.dropLast()) : String(parts.first ?? "")
+        let unit = percent ? "%" : (parts.count == 2 ? String(parts[1]) : "")
+        HStack(alignment: .firstTextBaseline, spacing: 0) {
+            Text(number)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+            Text(" " + unitSample)
+                .fixedSize()
+                .hidden()
+                .overlay(alignment: .leading) { Text(unit.isEmpty ? "" : " " + unit) }
+        }
+        .monospacedDigit()
+        .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+    }
+}
+
 func connectionChain(_ connection: Connection, proxyNames: [String: String]) -> String {
     let names = (connection.chains ?? []).reversed().map { name in
         proxyNames[name] ?? (name == defaultGroup ? "默认代理组" : name)

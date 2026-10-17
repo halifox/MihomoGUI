@@ -276,14 +276,6 @@ func servicePID(domain: String, label: String) async -> Int? {
     return Int(output[range])
 }
 
-func readCoreLog(directory: URL) async throws -> String {
-    let log = directory.appendingPathComponent("logs/core.log")
-    guard FileManager.default.fileExists(atPath: log.path) else {
-        return "暂无内核日志。更新应用后，请停止并重新启动内核，以启用用户日志。"
-    }
-    return try await runCommand("/usr/bin/tail", ["-n", "500", log.path])
-}
-
 func persistCoreConfiguration(_ config: Data) async throws {
     let file = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-config-" + UUID().uuidString)
     try config.write(to: file, options: .atomic)

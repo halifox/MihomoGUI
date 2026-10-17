@@ -99,8 +99,12 @@ struct NodeDelayCell: View {
     var body: some View {
         Group {
             if model.testingNodes.contains(nodeID) { Text("测试中…") }
-            else if node?.delayFailed == true { Text("超时").foregroundStyle(.red) }
-            else { Text(node?.delayMilliseconds.map { "\($0) ms" } ?? "") }
+            else if node?.delayFailed == true {
+                Text("超时")
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+            else { TableUnitValue(text: node?.delayMilliseconds.map { "\($0) ms" } ?? "", unitSample: "ms") }
         }
     }
 }
