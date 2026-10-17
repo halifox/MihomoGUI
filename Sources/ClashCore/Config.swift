@@ -177,6 +177,27 @@ public struct DeskError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
+// The global editor and generated YAML share these values; hints are examples, not defaults.
+public func generalConfigurationDefaults(_ settings: Settings) -> [String: ConfigValue] {
+    var values: [String: ConfigValue] = [:]
+    func collect(_ fields: [EditorField]) {
+        for field in fields where field.unavailableReason == nil {
+            if field.kind == "group" {
+                collect(field.children ?? [])
+            } else if let value = field.initialValue {
+                values[field.path] = value
+            } else if field.kind == "boolean" {
+                values[field.path] = .boolean(false)
+            }
+        }
+    }
+    collect(documentSchemas.configuration)
+    values["external-controller"] = .string("127.0.0.1:19090")
+    values["secret"] = .string(settings.secret)
+    if let tun = settings.tun { values["tun.enable"] = .boolean(tun) }
+    return values
+}
+
 public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     for subscription in settings.subscriptions {
         guard UUID(uuidString: subscription.id) != nil else { throw DeskError("订阅标识无效，请重新添加订阅") }
@@ -275,15 +296,16 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         rules.append(line)
     }
     if let defaultTarget { rules.append("MATCH,\(defaultTarget)") }
-    // The desktop and statistics collector require an authenticated local API.
-    var config: [String: Any] = [
-        "external-controller": "127.0.0.1:19090", "secret": settings.secret
-    ]
-    if let tun = settings.tun { config["tun"] = ["enable": tun] }
+    var config: [String: Any] = [:]
+    for (path, value) in generalConfigurationDefaults(settings) {
+        setConfigPath(path, value: value.native, in: &config)
+    }
     if !proxyObjects.isEmpty { config["proxies"] = proxyObjects }
     if !groups.isEmpty { config["proxy-groups"] = groups }
     if !rules.isEmpty { config["rules"] = rules }
-    for (path, value) in settings.options ?? [:] {
+    // Apply parent objects before individual fields so overlapping paths are deterministic.
+    for path in (settings.options ?? [:]).keys.sorted() {
+        guard let value = settings.options?[path] else { continue }
         guard validConfigPath(path) else { throw DeskError("配置字段路径无效") }
         // An empty visual input omits an optional field.
         let omitted = value == .string("") && path != "external-controller" && path != "secret"
