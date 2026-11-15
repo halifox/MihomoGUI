@@ -3,11 +3,13 @@ import Darwin
 import CoreFoundation
 
 public indirect enum ConfigValue: Codable, Equatable {
+    case null
     case string(String), integer(Int), number(Double), boolean(Bool)
     case array([ConfigValue]), object([String: ConfigValue])
     public init(from decoder: Decoder) throws {
         let value = try decoder.singleValueContainer()
-        if let v = try? value.decode(Bool.self) { self = .boolean(v) }
+        if value.decodeNil() { self = .null }
+        else if let v = try? value.decode(Bool.self) { self = .boolean(v) }
         else if let v = try? value.decode(Int.self) { self = .integer(v) }
         else if let v = try? value.decode(Double.self) { self = .number(v) }
         else if let v = try? value.decode(String.self) { self = .string(v) }
@@ -17,6 +19,7 @@ public indirect enum ConfigValue: Codable, Equatable {
     public func encode(to encoder: Encoder) throws {
         var value = encoder.singleValueContainer()
         switch self {
+        case .null: try value.encodeNil()
         case .string(let v): try value.encode(v)
         case .integer(let v): try value.encode(v)
         case .number(let v): try value.encode(v)
@@ -27,6 +30,7 @@ public indirect enum ConfigValue: Codable, Equatable {
     }
     public var native: Any {
         switch self {
+        case .null: return NSNull()
         case .string(let v): return v
         case .integer(let v): return v
         case .number(let v): return v
@@ -47,7 +51,8 @@ public indirect enum ConfigValue: Codable, Equatable {
     public var array: [ConfigValue] { if case .array(let v) = self { return v }; return [] }
     public var object: [String: ConfigValue] { if case .object(let v) = self { return v }; return [:] }
     public init(native: Any) {
-        if let v = native as? String { self = .string(v) }
+        if native is NSNull { self = .null }
+        else if let v = native as? String { self = .string(v) }
         else if let v = native as? NSNumber {
             if CFGetTypeID(v) == CFBooleanGetTypeID() { self = .boolean(v.boolValue) }
             else if String(cString: v.objCType) == "d" || String(cString: v.objCType) == "f" { self = .number(v.doubleValue) }

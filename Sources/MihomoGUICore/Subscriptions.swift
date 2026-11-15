@@ -31,7 +31,7 @@ public func readSubscriptionProxies(_ file: URL) throws -> [[String: Any]] {
     defer { try? handle.close() }
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
-    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], false); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); def clean(v, depth=0); abort 'YAML nesting too deep' if depth > 64; case v; when Hash; v.each_with_object({}) { |(k,x),h| h[k]=clean(x, depth+1) unless x.nil? }; when Array; v.compact.map { |x| clean(x, depth+1) }; else v; end; end; puts JSON.generate(clean(rows))"#, file.path]
+    process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], false); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); def clean(v, depth=0); abort 'YAML nesting too deep' if depth > 64; case v; when Hash; v.each_with_object({}) { |(k,x),h| h[k]=clean(x, depth+1) }; when Array; v.map { |x| clean(x, depth+1) }; else v; end; end; puts JSON.generate(clean(rows))"#, file.path]
     process.standardOutput = handle; process.standardError = FileHandle.nullDevice
     try process.run(); process.waitUntilExit()
     guard process.terminationStatus == 0,

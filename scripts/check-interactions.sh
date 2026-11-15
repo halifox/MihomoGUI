@@ -147,6 +147,16 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try expectFailure("transaction rejects removal outside data directory") {
             try commitFiles([], directory: deletionDirectory, removing: ["../outside"])
         }
+        let nullSource = directory.appendingPathComponent("null-subscription.yaml")
+        try "proxies:\n  - name: null-fixture\n    type: ss\n    explicit-null: null\n    empty-string: ''\n    zero: 0\n    disabled: false\n    values: [null, '', 0, false]\n".write(to: nullSource, atomically: true, encoding: .utf8)
+        let nullProxy = try readSubscriptionProxies(nullSource)[0]
+        let nullValue = ConfigValue(native: nullProxy)
+        try check(nullValue.object["explicit-null"] == .null && nullValue.object["missing"] == nil, "explicit null remains distinct from missing field")
+        try check(nullValue.object["values"]?.array == [.null, .string(""), .integer(0), .boolean(false)], "subscription array preserves null, empty, zero and false")
+        let nullRoundTrip = try JSONDecoder().decode(ConfigValue.self, from: JSONEncoder().encode(nullValue))
+        try check(nullRoundTrip == nullValue, "persistent values round-trip explicit null")
+        let nullYAML = String(decoding: try yamlData(["proxy": nullRoundTrip.native]), as: UTF8.self)
+        try check(nullYAML.contains("explicit-null: null") && nullYAML.contains("- null"), "generated YAML preserves explicit null")
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
