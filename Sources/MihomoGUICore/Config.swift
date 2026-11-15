@@ -189,13 +189,19 @@ public struct Settings: Codable {
 }
 
 // Used before committing subscription changes or deleting a manual proxy.
-public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node]) {
+@discardableResult
+public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node]) -> Bool {
     let available = Set(nodes + (settings.manualProxies ?? []).map(\.node))
+    var adjusted = false
+    func unavailable(_ target: String) -> Bool {
+        referencedNode(target).map { !available.contains($0) } ?? false
+    }
     for index in settings.rules.indices {
         if let node = settings.rules[index].node, !available.contains(node) {
             settings.rules[index].node = nil
             settings.rules[index].proxyGroup = nil
             settings.rules[index].builtin = "REJECT"
+            adjusted = true
         }
     }
     if let node = settings.defaultNode, !available.contains(node) {
@@ -203,7 +209,36 @@ public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node
         settings.defaultProxyGroup = nil
         settings.defaultDirect = false
         settings.defaultPolicy = "REJECT"
+        adjusted = true
     }
+    for index in (settings.proxyGroups ?? []).indices {
+        guard var group = settings.proxyGroups?[index] else { continue }
+        let missingDefault = unavailable(group.fields["default-selected"]?.text ?? "")
+        guard missingDefault || group.targets.contains(where: unavailable) else { continue }
+        var seen = Set<String>()
+        group.targets = group.targets.map { unavailable($0) ? "builtin:REJECT" : $0 }.filter { seen.insert($0).inserted }
+        if missingDefault && !group.targets.contains("builtin:REJECT") { group.targets.append("builtin:REJECT") }
+        // A filter can exclude the replacement; the implicit empty-group fallback
+        // must not silently become DIRECT. Preserve an explicitly chosen fallback.
+        if group.fields["empty-fallback"] == nil { group.fields["empty-fallback"] = .string("REJECT") }
+        if missingDefault {
+            group.fields["default-selected"] = proxyGroupTargets(group, settings: settings).contains("builtin:REJECT") ? .string("builtin:REJECT") : nil
+        }
+        settings.proxyGroups?[index] = group
+        adjusted = true
+    }
+    if var providers = settings.options?["rule-providers"]?.object {
+        var changedProviders = false
+        for name in providers.keys.sorted() {
+            guard var fields = providers[name]?.object, unavailable(fields["proxy"]?.text ?? "") else { continue }
+            fields["proxy"] = .string("builtin:REJECT")
+            providers[name] = .object(fields)
+            changedProviders = true
+            adjusted = true
+        }
+        if changedProviders { settings.options?["rule-providers"] = .object(providers) }
+    }
+    return adjusted
 }
 
 public func loadSettings(from directory: URL) throws -> Settings {

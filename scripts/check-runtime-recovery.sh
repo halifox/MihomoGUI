@@ -60,7 +60,7 @@ cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
 
-enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure, legacyAliasMigration, legacyMigrationFailure, futureFormatStop, prepareLostReply, ruleRestoreFailure, ruleCleanupFailure }
+enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure, legacyAliasMigration, legacyMigrationFailure, futureFormatStop, prepareLostReply, ruleRestoreFailure, ruleCleanupFailure, subscriptionReferences }
 @MainActor var failureMode = FailureMode.afterWrite
 @MainActor var persistCalls = 0
 @MainActor var installCalls = 0
@@ -73,6 +73,21 @@ enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFa
 @MainActor var finishCalls = 0
 @MainActor var pendingRuleID: UUID?
 @MainActor var fixtureDirectory = URL(fileURLWithPath: "/")
+
+@MainActor var fetchedRows: [String: [ConfigValue]] = [:]
+
+// Keep production parsing, reconciliation and file commits; replace only the fetch boundary.
+@MainActor func fetchSubscriptionData(_ subscriptions: [Subscription], corePath: String, directory: URL) async throws -> (nodes: [Node], subscriptions: [Subscription]) {
+    guard failureMode == .subscriptionReferences else { return try await MihomoGUICore.fetchSubscriptionData(subscriptions, corePath: corePath, directory: directory) }
+    try FileManager.default.createDirectory(at: directory.appendingPathComponent("providers"), withIntermediateDirectories: true)
+    var nodes: [Node] = []
+    for source in subscriptions {
+        let rows = fetchedRows[source.id] ?? []
+        try JSONSerialization.data(withJSONObject: ["proxies": rows.map(\.native)]).write(to: providerFile(source, directory: directory))
+        nodes += rows.compactMap { row in row.object["name"].map { Node(provider: source.provider, name: $0.text) } }
+    }
+    return (nodes, subscriptions)
+}
 
 // Replace the XPC boundary only; the production model, API and persistence run unchanged.
 @MainActor func privilegedOperation(_ operation: PrivilegedOperation) async throws {
@@ -265,6 +280,61 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
             try check(migratedChoice == stableAlias, "actual old cached choice is remapped before confirmation")
         }
 
+        failureMode = .subscriptionReferences
+        for updateAll in [false, true] {
+            let directory = root.appendingPathComponent(updateAll ? "all-subscription-references" : "single-subscription-references")
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var source = Subscription(name: "changing", url: "https://example.com/changing")
+            let other = Subscription(name: "unchanged", url: "https://example.com/other")
+            let lost = Node(provider: source.provider, name: "lost")
+            let kept = Node(provider: source.provider, name: "kept")
+            let unchanged = Node(provider: other.provider, name: "other")
+            func row(_ name: String) -> ConfigValue {
+                .object(["name": .string(name), "type": .string("ss"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
+            }
+            var settings = Settings()
+            settings.subscriptions = [source, other]
+            settings.subscriptionProxies = [source.id: [row("lost"), row("kept")], other.id: [row("other")]]
+            settings.defaultNode = lost
+            let lostTarget = "node:" + lost.id
+            let keptTarget = "node:" + kept.id
+            settings.proxyGroups = [
+                ProxyGroup(name: "changing", targets: [lostTarget, keptTarget, "builtin:REJECT"], fields: ["default-selected": .string(lostTarget)]),
+                ProxyGroup(name: "filtered", targets: [lostTarget, keptTarget], fields: ["default-selected": .string(lostTarget), "exclude-filter": .string("REJECT")]),
+                ProxyGroup(name: "empty", targets: [lostTarget], fields: ["exclude-filter": .string("REJECT")]),
+                ProxyGroup(name: "explicit-fallback", targets: [lostTarget], fields: ["exclude-filter": .string("REJECT"), "empty-fallback": .string("DIRECT")]),
+                ProxyGroup(name: "untouched", targets: ["node:" + unchanged.id]),
+                ProxyGroup(name: "dynamic", targets: [], fields: ["include-all-proxies": .boolean(true), "default-selected": .string(lostTarget)])]
+            func provider(_ proxy: String) -> ConfigValue {
+                .object(["type": .string("inline"), "behavior": .string("domain"), "payload": .array([.string("example.com")]), "proxy": .string(proxy)])
+            }
+            settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0),
+                                "rule-providers": .object(["changing": provider(lostTarget), "untouched": provider(keptTarget)])]
+            try saveSettings(settings, to: directory); try saveRuntimeSettings(settings, to: directory)
+            try saveNodeCache([lost, kept, unchanged], directory: directory)
+            fetchedRows = [source.id: [row("kept")], other.id: [row("other")]]
+            let model = MihomoGUIModel(directory: directory)
+            if updateAll { try await model.importSubscriptions(model.settings) }
+            else { source.name = "renamed"; try await model.saveSubscription(source) }
+            try check(model.settings.defaultNode == nil && model.settings.defaultPolicy == "REJECT", "disappeared default remains fail-closed")
+            try check(model.settings.proxyGroups?[0].targets == ["builtin:REJECT", keptTarget], "missing group member becomes REJECT without duplicates or loss of valid members")
+            try check(model.settings.proxyGroups?[0].fields["default-selected"] == .string("builtin:REJECT"), "missing explicit selection becomes reject")
+            try check(model.settings.proxyGroups?[1].fields["default-selected"] == nil, "selection excluded by explicit filter is unset rather than blocking update")
+            try check(proxyGroupTargets(model.settings.proxyGroups?[2] ?? ProxyGroup(name: "missing"), settings: model.settings) == ["builtin:REJECT"], "implicit empty fallback cannot silently become DIRECT")
+            try check(model.settings.proxyGroups?[3].fields["empty-fallback"] == .string("DIRECT"), "explicit user fallback is preserved")
+            try check(model.settings.proxyGroups?[4].targets == ["node:" + unchanged.id], "unrefreshed source references remain intact")
+            try check(model.settings.proxyGroups?[5].targets == ["builtin:REJECT"] && model.settings.proxyGroups?[5].fields["default-selected"] == .string("builtin:REJECT"), "missing dynamic selection gets a valid explicit reject target")
+            try check(model.settings.options?["rule-providers"]?.object["changing"]?.object["proxy"] == .string("builtin:REJECT"), "missing provider download reference becomes reject")
+            try check(model.settings.options?["rule-providers"]?.object["untouched"]?.object["proxy"] == .string(keptTarget), "valid provider reference is unchanged")
+            try check(model.nodes.map(\.id) == [kept.id, unchanged.id], "successful update replaces node inventory")
+            try check(try loadSettings(from: directory).proxyGroups?[0].targets == ["builtin:REJECT", keptTarget], "reconciled groups are committed with subscriptions")
+            try check(try readSubscriptionProxies(providerFile(source, directory: directory)).map { $0["name"] as? String } == ["kept"], "new provider file is committed")
+            try check(model.message.contains("失效节点引用"), "reference adjustment is visible in update result")
+            var repeated = model.settings
+            try check(!rejectUnavailableRouteNodes(&repeated, nodes: model.nodes), "reference reconciliation is idempotent")
+            try generateConfig(model.settings).write(to: root.appendingPathComponent(updateAll ? "reconciled-all.yaml" : "reconciled-single.yaml"))
+        }
+
         for mode in [FailureMode.prepareLostReply, .ruleRestoreFailure] {
             failureMode = mode; prepareCalls = 0; restoreCalls = 0; persistCalls = 0
             let directory = root.appendingPathComponent(mode.rawValue)
@@ -421,7 +491,7 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
             }
             try check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path), "stop does not create a configuration update transaction")
         }
-        print("PASS: persistence, durable rule recovery, startup, cleanup, selectors, alias migration and future-format stop preserve runtime invariants")
+        print("PASS: persistence, subscription reference reconciliation, durable rule recovery, startup, cleanup, selectors, alias migration and future-format stop preserve runtime invariants")
     }
 }
 SWIFT
@@ -433,3 +503,7 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
     -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
     "${SOURCES[@]}" "$CHECK_DIR/RecoveryChecks.swift" .build/manual/MihomoGUICore.o -o "$CHECK_DIR/checks"
 "$CHECK_DIR/checks" "$CHECK_DIR"
+
+for config in reconciled-single reconciled-all; do
+  "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/$config.yaml"
+done
