@@ -10,7 +10,7 @@
 
 [发布工作流](../.github/workflows/release-please.yml) 在推送 `main` 或手动触发时运行。合并发布 PR 后创建标签与草稿 GitHub Release，再调用 arm64 构建工作流。`draft` 与 `force-tag-creation` 同时启用，确保草稿阶段已有可构建的标签。工作流也会为新建或更新的发布 PR 主动触发分支构建。
 
-仓库 Settings → Actions → General 需要允许 GitHub Actions 创建和批准 Pull Request。工作流使用内置 `GITHUB_TOKEN`；默认构建使用本地临时签名；可选 Developer ID 签名和公证流程见下文。未启用正式签名时，附件仍是临时签名构建。
+仓库 Settings → Actions → General 已允许 GitHub Actions 创建和批准 Pull Request；默认令牌仍为只读，写权限仅由相应 job 显式声明，配置与回读方式见[仓库设置](repository-settings.md)。工作流使用内置 `GITHUB_TOKEN`；默认构建使用本地临时签名；可选 Developer ID 签名和公证流程见下文。未启用正式签名时，附件仍是临时签名构建。
 
 ## 构建与附件上传
 
