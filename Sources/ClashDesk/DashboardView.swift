@@ -43,17 +43,20 @@ struct DashboardView: View {
                     Text(error).font(.caption).foregroundStyle(.red)
                 }
             }
-            Section("配置") {
-                Button("查看配置文件") {
-                    do { configurationText = String(decoding: try generateConfig(model.settings), as: UTF8.self) }
-                    catch { model.error = error.localizedDescription }
-                }
-                .disabled(model.busy)
-                .help("查看当前设置生成的完整配置文件")
-            }
         }
         .formStyle(.grouped)
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    do { configurationText = String(decoding: try generateConfig(model.settings), as: UTF8.self) }
+                    catch { model.error = error.localizedDescription }
+                } label: {
+                    Label("查看配置文件", systemImage: "doc.text")
+                }
+                .disabled(model.busy)
+                .help("查看当前设置生成的完整配置文件")
+                .labelStyle(.iconOnly)
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { model.toggleCore() } label: {
                     Label {
