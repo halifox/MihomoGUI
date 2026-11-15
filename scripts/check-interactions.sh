@@ -191,6 +191,21 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
             try check(error.message.contains("请求超时"), "XPC timeout reports unknown operation outcome")
         }
         expiredRequest?.finish() // A late reply must not resume the continuation twice.
+        let cancelledDirectory = directory.appendingPathComponent("cancelled-subscription")
+        try FileManager.default.createDirectory(at: cancelledDirectory, withIntermediateDirectories: true)
+        let cancelledModel = MihomoGUIModel(directory: cancelledDirectory)
+        let cancelledBefore = try Data(contentsOf: cancelledDirectory.appendingPathComponent("settings.json"))
+        cancelledModel.startSubscriptionUpdate(Subscription(name: "cancelled", url: "https://example.invalid/subscription"))
+        cancelledModel.cancelSubscriptionUpdate()
+        for _ in 0..<100 {
+            if !cancelledModel.busy { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        try check(!cancelledModel.busy && cancelledModel.subscriptionUpdatePhase == nil && cancelledModel.error == nil,
+                  "subscription cancellation releases task and busy state without error")
+        let cancelledAfter = try Data(contentsOf: cancelledDirectory.appendingPathComponent("settings.json"))
+        try check(cancelledModel.settings.subscriptions.isEmpty && cancelledAfter == cancelledBefore,
+                  "cancelled subscription cannot mutate persisted settings")
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)

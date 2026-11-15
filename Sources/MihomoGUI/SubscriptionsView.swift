@@ -82,6 +82,13 @@ struct SubscriptionsView: View {
             Text("确定删除订阅“\(deleting?.name ?? "")”及其节点吗？此操作无法撤销。")
         }
         .toolbar {
+            if let phase = model.subscriptionUpdatePhase {
+                ToolbarItem(placement: .primaryAction) {
+                    Button(phase == .saving ? "正在保存…" : phase == .cancelling ? "正在取消…" : "取消拉取") {
+                        model.cancelSubscriptionUpdate()
+                    }.disabled(phase != .fetching)
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { model.refreshSubscriptions() } label: {
                     Label("全部更新", systemImage: "arrow.clockwise")
@@ -146,15 +153,18 @@ struct SubscriptionEditorView: View {
             HStack {
                 Spacer()
                 if model.busy { ProgressView().controlSize(.small) }
-                Button("取消") { dismiss() }.keyboardShortcut(.cancelAction).disabled(model.busy)
+                Button(model.subscriptionUpdatePhase == .cancelling ? "正在取消…" : "取消") {
+                    if model.subscriptionUpdatePhase != nil { model.cancelSubscriptionUpdate() }
+                    else { dismiss() }
+                }.keyboardShortcut(.cancelAction)
+                    .disabled(model.subscriptionUpdatePhase == .saving || model.subscriptionUpdatePhase == .cancelling)
                 Button(model.busy ? "正在拉取…" : "拉取并保存") {
                     var subscription = Subscription(name: name, url: url)
                     if let original { subscription.id = original.id }
-                    model.busy = true; error = nil
-                    Task {
-                        defer { model.busy = false }
-                        do { try await model.saveSubscription(subscription); dismiss() }
-                        catch { self.error = error.localizedDescription }
+                    error = nil
+                    model.startSubscriptionUpdate(subscription) { failure in
+                        if failure == nil || failure is CancellationError { dismiss() }
+                        else { self.error = failure?.localizedDescription }
                     }
                 }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)

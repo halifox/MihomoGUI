@@ -19,6 +19,10 @@ final class MihomoGUIModel: ObservableObject {
     @Published var testingNodes: Set<String> = []
     @Published var isTestingDelays = false
     private var delayTask: Task<Void, Never>?
+    enum SubscriptionUpdatePhase { case fetching, cancelling, saving }
+    @Published var subscriptionUpdatePhase: SubscriptionUpdatePhase?
+    private var subscriptionTask: Task<Void, Never>?
+
     @Published var rulePrefill: RouteRule?
     @Published var coreRunning = false
     @Published var busy = false
@@ -224,6 +228,7 @@ final class MihomoGUIModel: ObservableObject {
     }
     func save() throws { try saveSettings(settings, to: directory) }
     func importSubscriptions(_ candidate: MihomoGUICore.Settings) async throws {
+        try Task.checkCancellation()
         let staging = FileManager.default.temporaryDirectory.appendingPathComponent("MihomoGUI-update-" + UUID().uuidString)
         try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: staging) }
@@ -254,6 +259,7 @@ final class MihomoGUIModel: ObservableObject {
         message = "已拉取并保存 \(nodes.count) 个节点。可在规则表修改 MATCH 的出口。"
     }
     func saveSubscription(_ subscription: Subscription) async throws {
+        try Task.checkCancellation()
         flushConfigurationSave()
         var subscription = subscription
         subscription.name = subscription.name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -296,20 +302,54 @@ final class MihomoGUIModel: ObservableObject {
     }
     private func commitSubscriptionUpdate(_ updated: MihomoGUICore.Settings, nodes: [Node], sources: [Subscription], staging: URL) async throws {
         let folder = directory
-        try await Task.detached {
+        let files = try await Task.detached {
             _ = try generateConfig(updated)
             var files = try sources.map { ("providers/" + $0.id + ".yaml", try Data(contentsOf: providerFile($0, directory: staging))) }
             files.append(("nodes.json", try JSONEncoder().encode(nodes)))
             files.append(("settings.json", try JSONEncoder().encode(updated)))
-            try commitFiles(files, directory: folder)
+            return files
         }.value
+        try Task.checkCancellation()
+        // Once the atomic file transaction begins, finish it before accepting cancellation.
+        if subscriptionUpdatePhase != nil { subscriptionUpdatePhase = .saving }
+        try await Task.detached { try commitFiles(files, directory: folder) }.value
     }
-    func refreshSubscription(_ subscription: Subscription) {
-        perform { try await self.saveSubscription(subscription) }
-    }
-    func refreshSubscriptions() {
+    func refreshSubscription(_ subscription: Subscription) { startSubscriptionUpdate(subscription) }
+    func refreshSubscriptions() { startSubscriptionUpdate() }
+
+    func startSubscriptionUpdate(_ subscription: Subscription? = nil, completion: ((Error?) -> Void)? = nil) {
+        guard !busy else { return }
+        flushConfigurationSave()
+        busy = true
+        subscriptionUpdatePhase = .fetching
         let candidate = settings
-        perform { try await self.importSubscriptions(candidate) }
+        subscriptionTask = Task {
+            var failure: Error?
+            defer {
+                busy = false
+                subscriptionUpdatePhase = nil
+                subscriptionTask = nil
+                completion?(failure)
+            }
+            do {
+                try Task.checkCancellation()
+                if let subscription { try await saveSubscription(subscription) }
+                else { try await importSubscriptions(candidate) }
+            } catch {
+                if Task.isCancelled {
+                    failure = CancellationError()
+                    message = "已取消订阅拉取，未保存修改。"
+                } else {
+                    failure = error
+                    if completion == nil { self.error = error.localizedDescription }
+                }
+            }
+        }
+    }
+    func cancelSubscriptionUpdate() {
+        guard subscriptionUpdatePhase == .fetching else { return }
+        subscriptionUpdatePhase = .cancelling
+        subscriptionTask?.cancel()
     }
     @Published var manualUDP: [String: Bool] = [:]
     func refreshManualUDP() async {

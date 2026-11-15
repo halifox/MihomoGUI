@@ -219,6 +219,7 @@ public func fetchSubscriptions(_ subscriptions: [Subscription], corePath: String
 }
 
 public func fetchSubscriptionData(_ subscriptions: [Subscription], corePath: String, directory: URL) async throws -> (nodes: [Node], subscriptions: [Subscription]) {
+    try Task.checkCancellation()
     guard !subscriptions.isEmpty else { throw MihomoGUIError("请先添加订阅地址") }
     guard FileManager.default.isExecutableFile(atPath: corePath) else { throw MihomoGUIError("请先配置 mihomo 二进制文件路径") }
     let staging = FileManager.default.temporaryDirectory.appendingPathComponent("MihomoGUI-fetch-" + UUID().uuidString)
@@ -227,6 +228,7 @@ public func fetchSubscriptionData(_ subscriptions: [Subscription], corePath: Str
     var providers: [(String, URL)] = []
     var updated = subscriptions
     for (index, subscription) in subscriptions.enumerated() {
+        try Task.checkCancellation()
         guard let url = URL(string: subscription.url), url.scheme == "https", url.host != nil else { throw MihomoGUIError("订阅必须是 HTTPS 地址") }
         var request = URLRequest(url: url)
         request.timeoutInterval = 30; request.cachePolicy = .reloadIgnoringLocalCacheData
@@ -246,7 +248,11 @@ public func fetchSubscriptionData(_ subscriptions: [Subscription], corePath: Str
     var nodes = try await withProviderCore(corePath: corePath, providers: providers) { api in
         try await api.nodes(providerOrder: subscriptions.map(\.provider))
     }
-    for provider in providers { try populateNodeEndpoints(&nodes, provider: provider.0, file: provider.1) }
+    for provider in providers {
+        try Task.checkCancellation()
+        try populateNodeEndpoints(&nodes, provider: provider.0, file: provider.1)
+    }
+    try Task.checkCancellation()
     let cache = directory.appendingPathComponent("providers")
     try FileManager.default.createDirectory(at: cache, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
     for (index, subscription) in subscriptions.enumerated() {
