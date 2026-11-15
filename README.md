@@ -1,6 +1,8 @@
 <div align="center">
 
-# ClashDesk
+<img src="resources/AppIcon.png" width="160" height="160">
+
+# mihomo.GUI
 
 一款使用 SwiftUI 构建的 macOS 原生 mihomo 客户端。
 
@@ -18,7 +20,7 @@
 
 ## 项目初衷
 
-订阅更新应当更新节点，自己的 DNS、代理分组和分流规则则应由自己维护。ClashDesk 将节点来源与网络策略分开管理，让更换订阅不必意味着重新整理整套配置。
+订阅更新应当更新节点，自己的 DNS、代理分组和分流规则则应由自己维护。Mihomo 将节点来源与网络策略分开管理，让更换订阅不必意味着重新整理整套配置。
 
 通过原生界面编辑 mihomo 配置、查看字段说明与生成结果，减少日常维护 YAML 的负担，同时保留对具体参数的控制。草稿与已确认运行配置分别保存，启动前交由内核校验，让界面上的设置与实际运行行为有据可查。
 
@@ -27,7 +29,7 @@
 ## 功能概览
 
 - **全局配置**：编辑端口、DNS、嗅探和 TUN 等参数，自动保存，字段旁提供说明与上游文档链接。
-- **代理订阅**：添加、编辑、更新和删除 Clash YAML 订阅，查看流量与到期信息；仅导入节点。
+- **代理订阅**：添加、编辑、更新和删除 mihomo YAML 订阅，查看流量与到期信息；仅导入节点。
 - **出站代理**：管理手动节点与订阅节点，执行延迟测试，自定义测速地址与超时。
 - **代理分组**：管理 `select`、`url-test`、`fallback`、`load-balance` 分组及有序成员。
 - **规则集合**：管理 HTTP、本地文件和内嵌规则来源。
@@ -38,7 +40,7 @@
 
 ## 安装
 
-当前可按下文从源码构建，产物为 `dist/ClashDesk.app`。应用需要 macOS 13 或更高版本，构建时分别支持 Apple Silicon 与 Intel，单次构建生成当前机器架构的应用。
+当前可按下文从源码构建，产物为 `dist/mihomo.app`。应用需要 macOS 13 或更高版本，构建时分别支持 Apple Silicon 与 Intel，单次构建生成当前机器架构的应用。
 
 构建完成后可直接打开应用，也可将整个 `.app` 复制到“应用程序”目录。mihomo 内核与 GEO 数据随应用打包，无需另行指定内核路径。
 
@@ -52,8 +54,8 @@
 1. 在“全局配置”中按需设置端口、DNS、嗅探和 TUN。默认启用 DNS，使用 `fake-ip` 模式，默认关闭接受 IPv6 流量；已保存的用户设置优先。
 2. 添加代理订阅或手动出站代理。订阅只导入节点，不导入其 DNS、代理组与路由规则。
 3. 配置代理分组、规则集合和路由规则，确认末尾 MATCH 的出口。
-4. 在“仪表盘”点击“启动 Clash 内核”。应用校验配置，并在需要时请求管理员授权。
-5. 通过仪表盘、活动连接与日志页面检查运行情况；需要停止服务时，在仪表盘明确点击“停止 Clash 内核”。
+4. 在“仪表盘”点击“启动 mihomo 内核”。应用校验配置，并在需要时请求管理员授权。
+5. 通过仪表盘、活动连接与日志页面检查运行情况；需要停止服务时，在仪表盘明确点击“停止 mihomo 内核”。
 
 ### 配置与运行边界
 
@@ -61,7 +63,7 @@
 - 全局配置中显示的已定义默认值和布尔开关会明确写入 YAML，界面、配置预览与运行配置使用同一份默认值；已编辑值优先。
 - 未填写且没有默认值的可选字段继续省略，文档示例不会自动写入，其他平台专用字段不会自动补值。
 - TUN 和代理监听端口需要用户自行开启和配置。应用提供控制接口与随机密钥以供 GUI 连接，已有配置保留。
-- 订阅仅支持 Clash YAML，不支持 Base64 / URI 转换；订阅由 GUI 更新，内核使用内联节点。
+- 订阅仅支持 mihomo YAML，不支持 Base64 / URI 转换；订阅由 GUI 更新，内核使用内联节点。
 - 字段是否可用取决于打包的 mihomo 版本，复杂配置最终以内核校验结果为准。
 - 真实 TUN 的 IPv6、其他 VPN 并存、休眠恢复与网络切换仍需实际环境验证。
 - 退出应用不会停止内核，也不会卸载特权辅助服务。辅助服务权限绑定一个安装用户，其他用户使用时需重新授权。
@@ -78,8 +80,8 @@
 ### 获取源码与准备资源
 
 ```bash
-git clone https://github.com/halifox/macos_clash.git
-cd macos_clash
+git clone https://github.com/halifox/macos_clash.git mihomo
+cd mihomo
 ```
 
 按照 [内置资源说明](resources/README.md) 准备以下文件：
@@ -104,10 +106,10 @@ resources/
 
 ```bash
 bash scripts/build.sh
-open dist/ClashDesk.app
+open dist/mihomo.app
 ```
 
-脚本直接调用 `swiftc`，编译 GUI 与特权辅助程序，打包内核和 GEO 数据，然后进行本地临时签名。中间文件位于 `.build/manual/`，最终交付整个 `dist/ClashDesk.app`，无需另外交付 `resources/`。
+脚本直接调用 `swiftc`，编译 GUI 与特权辅助程序，打包内核和 GEO 数据，然后进行本地临时签名。中间文件位于 `.build/manual/`，最终交付整个 `dist/mihomo.app`，无需另外交付 `resources/`。
 
 重新构建后，请先用 Cmd-Q 退出旧应用，再打开新构建。也可通过 [Package.swift](Package.swift) 在支持 Swift Package 的开发环境中打开项目；完整编译、打包与签名仍使用上述脚本。
 
@@ -135,22 +137,22 @@ bash scripts/check-interactions.sh
 
 ```text
 Sources/
-  ClashDesk/           页面、共享状态、配置协调与服务管理
-  ClashCore/           配置类型、API、订阅解析及字段文档
-  ClashHelper/         特权 XPC 服务入口
+  Mihomo/           页面、共享状态、配置协调与服务管理
+  MihomoCore/           配置类型、API、订阅解析及字段文档
+  MihomoHelper/         特权 XPC 服务入口
 scripts/
   build.sh             编译、打包与本地签名
   check-interactions.sh
 resources/             构建所需的内核与 GEO 数据
 ```
 
-沿用一个页面一个 Swift 文件的组织方式，页面专用表单与辅助逻辑留在页面文件中。`ClashCore` 供 GUI 与特权辅助服务共用；`DocSchemas.swift` 保存字段定义，`HelpDocs.swift` 保存字段说明。
+沿用一个页面一个 Swift 文件的组织方式，页面专用表单与辅助逻辑留在页面文件中。`MihomoCore` 供 GUI 与特权辅助服务共用；`DocSchemas.swift` 保存字段定义，`HelpDocs.swift` 保存字段说明。
 
 ## 数据与隐私
 
 ### 本地数据
 
-用户数据保存在 `~/Library/Application Support/ClashDesk/`：
+用户数据保存在 `~/Library/Application Support/Mihomo/`：
 
 | 内容 | 文件或目录 |
 | --- | --- |
@@ -163,17 +165,17 @@ resources/             构建所需的内核与 GEO 数据
 
 草稿与已确认配置分开保存，重新打开 GUI 时使用已确认运行配置连接现有内核，避免尚未应用的编辑影响重连。
 
-当前不安装流量统计后台，也不写入统计数据库。旧版升级后首次打开 GUI 会停用并移除旧统计 LaunchAgent 和采集程序，已有 `traffic.sqlite` 保留。内核日志通过 API 实时查看，应用不再额外采集落盘。
+当前不安装流量统计后台，也不写入统计数据库。内核日志通过 API 实时查看，应用不再额外采集落盘。
 
 ### 系统服务
 
 | 内容 | 位置 |
 | --- | --- |
-| 内核 LaunchDaemon | `/Library/LaunchDaemons/local.clashdesk.mihomo.plist` |
-| 辅助服务 LaunchDaemon | `/Library/LaunchDaemons/local.clashdesk.helper.plist` |
-| 特权辅助程序 | `/Library/PrivilegedHelperTools/local.clashdesk.helper` |
-| 安装的内核 | `/Library/PrivilegedHelperTools/ClashDesk/mihomo` |
-| 系统运行配置 | `/Library/Application Support/ClashDesk/` |
+| 内核 LaunchDaemon | `/Library/LaunchDaemons/local.mihomo.core.plist` |
+| 辅助服务 LaunchDaemon | `/Library/LaunchDaemons/local.mihomo.helper.plist` |
+| 特权辅助程序 | `/Library/PrivilegedHelperTools/local.mihomo.helper` |
+| 安装的内核 | `/Library/PrivilegedHelperTools/Mihomo/mihomo` |
+| 系统运行配置 | `/Library/Application Support/Mihomo/` |
 
 辅助服务只接受安装用户及当前应用签名的请求。关闭窗口、退出或重新打开 GUI 均不会停止或重启内核。
 
@@ -196,3 +198,5 @@ mihomo 内核、GEO 数据及其他第三方资源遵循各自的许可证与使
 欢迎提交问题、改进建议和 Pull Request。修改代码前，请阅读 [AGENTS.md](AGENTS.md) 中的工程规范。
 
 反馈问题时，请提供构建版本或提交号、macOS 版本、机器架构、复现步骤和实际现象；涉及网络、TUN 或服务启停问题时，请补充相关配置与环境，并在分享前脱敏。
+
+应用按全新安装使用 `Mihomo` 数据目录及 `local.mihomo.*` 服务标识，不迁移或清理旧版数据与后台服务。

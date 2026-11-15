@@ -2,30 +2,30 @@
 # Run after bash scripts/build.sh. Uses isolated settings fixtures only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ ! -s .build/manual/ClashCore.o ]; then
+if [ ! -s .build/manual/MihomoCore.o ]; then
   printf 'Run bash scripts/build.sh first.\n' >&2
   exit 1
 fi
-CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/clash-interactions.XXXXXX")"
+CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mihomo-interactions.XXXXXX")"
 trap 'rm -rf "$CHECK_DIR"' EXIT
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
 import SwiftUI
-import ClashCore
+import MihomoCore
 
 func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
-    if try !condition() { throw DeskError("CHECK FAILED: " + message) }
+    if try !condition() { throw MihomoError("CHECK FAILED: " + message) }
 }
 func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
     do { try operation() } catch { return }
-    throw DeskError("EXPECTED FAILURE: " + message)
+    throw MihomoError("EXPECTED FAILURE: " + message)
 }
 @main struct InteractionChecks {
     @MainActor static func main() async throws {
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("fixture")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let model = DeskModel(directory: directory)
+        let model = MihomoModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
@@ -116,7 +116,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         core.standardOutput = FileHandle.nullDevice; core.standardError = FileHandle.nullDevice
         try core.run()
         defer { if core.isRunning { core.terminate(); core.waitUntilExit() } }
-        var first: DeskModel? = DeskModel(directory: directory)
+        var first: MihomoModel? = MihomoModel(directory: directory)
         for _ in 0..<30 {
             await first?.refresh()
             if first?.coreRunning == true { break }
@@ -185,7 +185,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         let pid = core.processIdentifier
         first = nil
         try check(core.isRunning && core.processIdentifier == pid, "releasing GUI model leaves core running")
-        let reopened = DeskModel(directory: directory)
+        let reopened = MihomoModel(directory: directory)
         await reopened.refresh()
         try check(reopened.coreRunning && core.processIdentifier == pid, "reopened GUI reconnects without restarting core")
         reopened.startCore()
@@ -196,12 +196,12 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
 }
 SWIFT
 SOURCES=()
-for source in Sources/ClashDesk/*.swift; do
-  if [ "$source" != Sources/ClashDesk/App.swift ]; then SOURCES+=("$source"); fi
+for source in Sources/Mihomo/*.swift; do
+  if [ "$source" != Sources/Mihomo/App.swift ]; then SOURCES+=("$source"); fi
 done
 swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
-  "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/ClashCore.o \
+  "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/MihomoCore.o \
   -o "$CHECK_DIR/checks"
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"

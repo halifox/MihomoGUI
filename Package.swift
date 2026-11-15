@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "ClashDesk", platforms: [.macOS(.v13)],
-    products: [.executable(name: "ClashDesk", targets: ["ClashDesk"]),
-               .executable(name: "clash-helper", targets: ["ClashHelper"])],
+    name: "mihomo", platforms: [.macOS(.v13)],
+    products: [.executable(name: "mihomo", targets: ["Mihomo"]),
+               .executable(name: "mihomo-helper", targets: ["MihomoHelper"])],
     targets: [
-        .target(name: "ClashCore"),
-        .executableTarget(name: "ClashHelper", dependencies: ["ClashCore"]),
-        .executableTarget(name: "ClashDesk", dependencies: ["ClashCore"])
+        .target(name: "MihomoCore"),
+        .executableTarget(name: "MihomoHelper", dependencies: ["MihomoCore"]),
+        .executableTarget(name: "Mihomo", dependencies: ["MihomoCore"])
     ])
