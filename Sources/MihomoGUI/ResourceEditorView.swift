@@ -28,7 +28,14 @@ struct ResourceEditorView: View {
         _fields = State(initialValue: original?.fields ?? (groups ? [:] : ["behavior": .string("domain"), "format": .string("yaml"), "interval": .integer(600)]))
         _targets = State(initialValue: original?.group?.targets ?? [])
     }
-    var schema: [EditorField] { groups ? groupEditorFields(type) : ruleProviderEditorFields(type) }
+    var schema: [EditorField] {
+        if groups { return groupEditorFields(type) }
+        return ruleProviderEditorFields(type).map { field in
+            var field = field
+            if field.path == "url" { field.kind = "secret" }
+            return field
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集")).font(.title2.bold())

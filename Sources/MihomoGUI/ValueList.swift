@@ -7,6 +7,7 @@ struct ValueList: View {
     @Binding var value: ConfigValue
     var compact = false
     var addTitle = "添加一项"
+    @State private var secretVisibilityID = UUID()
     var item: EditorField {
         EditorField("item", kind: field.elementKind ?? "string", children: field.children)
     }
@@ -29,6 +30,10 @@ struct ValueList: View {
                 var array = value.array; array.append(emptyValue(item)); value = .array(array)
             } label: { Label(addTitle, systemImage: "plus") }.controlSize(.regular)
         }
+        // Positional rows must not carry a revealed state onto another secret after deletion.
+        .onChange(of: value.array.count) { _ in
+            if item.kind == "secret" { secretVisibilityID = UUID() }
+        }
     }
     func element(_ index: Int) -> some View {
         VisualValue(field: item, value: Binding(get: {
@@ -37,5 +42,6 @@ struct ValueList: View {
             var array = value.array; guard array.indices.contains(index) else { return }
             array[index] = $0; value = .array(array)
         }), compact: compact)
+        .id(item.kind == "secret" ? secretVisibilityID : nil)
     }
 }

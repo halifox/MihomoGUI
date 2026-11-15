@@ -82,6 +82,20 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         try check(try FileManager.default.attributesOfItem(atPath: geoTarget.path)[.posixPermissions] as? NSNumber == NSNumber(value: 0o600), "refreshed GEO cache stays owner-only")
         let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
+        let ruleAddress = "https://user:fixture-secret@example.com/private-rules?token=fixture-token"
+        let ruleRow = ResourceRow(id: "private", name: "private", type: "http", fields: ["url": .string(ruleAddress)])
+        let ruleView = RuleProvidersView()
+        try check(ruleView.source(ruleRow) == "••••••••", "rule provider table, tooltip and width use masked URL by default")
+        let fileRow = ResourceRow(id: "file", name: "file", type: "file", fields: ["path": .string("/tmp/rules.yaml")])
+        try check(ruleView.source(fileRow) == "/tmp/rules.yaml", "file provider paths remain readable")
+        let ruleEditor = ResourceEditorView(groups: false, original: ruleRow)
+        try check(ruleEditor.schema.first(where: { $0.path == "url" })?.kind == "secret", "rule URL editor uses secret control")
+        for path in ["header", "headers", "ws-opts.headers"] {
+            for elementKind in ["list", "string"] {
+                let headerEditor = ValueMap(field: EditorField(path, kind: "map", elementKind: elementKind), value: .constant(.object([:])))
+                try check(headerEditor.item.kind == "secret", "all header values including custom authentication names default to secret controls")
+            }
+        }
         let damaged = directory.appendingPathComponent("damaged")
         try FileManager.default.createDirectory(at: damaged, withIntermediateDirectories: true)
         let original = Data("broken settings fixture".utf8)
