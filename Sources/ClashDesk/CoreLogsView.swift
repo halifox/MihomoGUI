@@ -31,18 +31,40 @@ struct CoreLogsView: View {
         let rows = filtered
         let widths = [
             tableColumnWidth("接收时间", rows.map { $0.date.formatted(date: .omitted, time: .standard) }),
-            tableColumnWidth("等级", rows.map { $0.log.type.uppercased() }),
-            tableColumnWidth("日志", rows.map { $0.log.payload }, monospaced: true)
+            tableColumnWidth("等级", rows.map { $0.log.type.uppercased() })
         ]
-        Table(rows) {
-            TableColumn("接收时间") { entry in Text(entry.date.formatted(date: .omitted, time: .standard)) }.width(min: 40, ideal: widths[0], max: nil)
-            TableColumn("等级") { entry in Text(entry.log.type.uppercased()) }.width(min: 40, ideal: widths[1], max: nil)
-            TableColumn("日志") { entry in
-                Text(entry.log.payload).font(.system(.body, design: .monospaced))
-                    .textSelection(.enabled).help(entry.log.payload)
-            }.width(min: 40, ideal: widths[2], max: nil)
+        VStack(spacing: 0) {
+            HStack(alignment: .top, spacing: 12) {
+                Text("接收时间").frame(width: widths[0], alignment: .leading)
+                Text("等级").frame(width: widths[1], alignment: .leading)
+                Text("日志").frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .fontWeight(.semibold)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 8)
+            Divider()
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 0) {
+                    ForEach(rows) { entry in
+                        HStack(alignment: .top, spacing: 12) {
+                            Text(entry.date.formatted(date: .omitted, time: .standard))
+                                .frame(width: widths[0], alignment: .leading)
+                            Text(entry.log.type.uppercased())
+                                .frame(width: widths[1], alignment: .leading)
+                            Text(entry.log.payload)
+                                .font(.system(.body, design: .monospaced))
+                                .lineLimit(nil)
+                                .fixedSize(horizontal: false, vertical: true)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .textSelection(.enabled).help(entry.log.payload)
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        Divider()
+                    }
+                }
+            }
         }
-        .background(TableColumnAutoFit(widths: widths))
         .overlay {
             if rows.isEmpty && !entries.isEmpty {
                 Text("没有匹配的日志")
