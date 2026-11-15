@@ -194,7 +194,9 @@ public struct ManualProxy: Codable, Identifiable {
            ((fields["uuid"]?.text ?? "").isEmpty || (fields["password"]?.text ?? "").isEmpty) { throw MihomoGUIError("TUIC 需要 token，或 uuid 与 password") }
         if type == "hysteria2", fields["obfs"] != nil, (fields["obfs-password"]?.text ?? "").isEmpty { throw MihomoGUIError("启用 Hysteria2 混淆需要 obfs-password") }
         var object: [String: Any] = ["type": type]
-        for (path, value) in fields {
+        // Match global configuration: parent maps first, explicit child paths override.
+        for path in fields.keys.sorted() {
+            guard let value = fields[path] else { continue }
             guard validConfigPath(path) else { throw MihomoGUIError("额外字段路径无效，请使用点号分隔非空字段名") }
             setConfigPath(path, value: value.native, in: &object)
         }

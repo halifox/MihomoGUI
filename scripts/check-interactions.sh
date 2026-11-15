@@ -168,6 +168,19 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         compatibleSettings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0)]
         compatibleSettings.manualProxies = [reservedProxy]
         try generateConfig(compatibleSettings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("compatible.yaml"))
+        let overlapping: [(String, ConfigValue)] = [
+            ("smux", .object(["enabled": .boolean(false), "protocol": .string("smux"), "padding": .boolean(true)])),
+            ("smux.enabled", .boolean(true)), ("smux.protocol", .string("yamux"))]
+        for insertion in 0..<24 {
+            var fields = reservedProxy.fields
+            for (path, value) in insertion.isMultiple(of: 2) ? overlapping : overlapping.reversed() { fields[path] = value }
+            let proxy = ManualProxy(type: "ss", fields: fields)
+            let smux = try proxy.configuration()["smux"] as? [String: Any]
+            try check(smux?["enabled"] as? Bool == true && smux?["protocol"] as? String == "yamux" && smux?["padding"] as? Bool == true,
+                      "explicit child paths override parent values and preserve siblings regardless of dictionary order")
+            compatibleSettings.manualProxies = [proxy]
+        }
+        try generateConfig(compatibleSettings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("overlapping-fields.yaml"))
         try check(replacingSubRuleTarget("DOMAIN,example.com,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,renamed", "option-like proxy name remains a target")
         try check(replacingSubRuleTarget("DOMAIN,example.com,other,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,other,no-resolve", "option is not mistaken for a proxy reference")
         try check(replacingSubRuleTarget("SUB-RULE,(NETWORK,tcp),old", old: "old", new: "new") == "SUB-RULE,(NETWORK,tcp),old", "sub-rule names are not proxy references")
@@ -712,6 +725,7 @@ for index in 0 1 2; do
 done
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-dispatch.yaml"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/compatible.yaml"
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/overlapping-fields.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
 import Darwin
