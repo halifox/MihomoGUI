@@ -45,6 +45,12 @@ swiftc "${SWIFT_FLAGS[@]}" -O -parse-as-library -I "$BUILD_DIR" \
   Sources/MihomoGUI/*.swift "$BUILD_DIR/MihomoGUICore.o" -o "$BUILD_DIR/MihomoGUI"
 printf '[4/6] Packaging application and bundled resources...\n'
 APP_DIR="$PWD/dist/MihomoGUI.app"
+if [ -L "$PWD/dist" ]; then
+  printf 'Build output directory must not be a symbolic link.\n' >&2
+  exit 1
+fi
+# Recreate the ignored bundle so removed resources and executables cannot survive.
+rm -rf "$APP_DIR"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Contents/Resources/geodata"
 cp "$BUILD_DIR/MihomoGUI" "$APP_DIR/Contents/MacOS/MihomoGUI"
 cp resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
