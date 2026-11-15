@@ -35,7 +35,8 @@ private final class PrivilegedRequest {
     }
 }
 
-func privilegedCommand(_ command: String) async throws {
+func privilegedOperation(_ operation: PrivilegedOperation) async throws {
+    let payload = try JSONEncoder().encode(operation)
     let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/MihomoGUIHelper")
     var applicationCode: SecCode?
     var applicationStaticCode: SecStaticCode?
@@ -123,7 +124,7 @@ func privilegedCommand(_ command: String) async throws {
             failed()
             return
         }
-        proxy.execute(command) { status in
+        proxy.execute(payload) { status in
             request.finish(status == 0 ? nil : MihomoGUIError("特权操作失败（\(status)），请检查内核状态和日志"))
         }
     }

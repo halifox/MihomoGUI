@@ -233,3 +233,40 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -o "$CHECK_DIR/checks"
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"
+cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
+import Foundation
+import MihomoGUICore
+
+@main struct PrivilegedChecks {
+    static func main() throws {
+        let decoder = JSONDecoder()
+        do {
+            _ = try decoder.decode(PrivilegedOperation.self, from: Data(#"{"execute":{"command":"touch /tmp/forbidden"}}"#.utf8))
+            throw MihomoGUIError("arbitrary command accepted")
+        } catch is DecodingError {}
+        let source = URL(fileURLWithPath: CommandLine.arguments[1])
+        for name in ["../config.yaml", "set-0.yaml\n/bin/false", "/tmp/other"] {
+            do {
+                _ = try executeOperation(.prepareRules(staging: source.path, id: UUID(), filenames: [name]), owner: getuid())
+                throw MihomoGUIError("unsafe rule filename accepted")
+            } catch let error as MihomoGUIError {
+                guard error.message == "规则文件标识无效" else { throw error }
+            }
+        }
+        let target = source.appendingPathComponent("mihomo")
+        try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: "/bin/sh")
+        do {
+            _ = try executeOperation(.install(staging: source.path, settings: Settings()), owner: getuid())
+            throw MihomoGUIError("symlink input accepted")
+        } catch let error as MihomoGUIError {
+            guard error.message == "无法读取操作输入" else { throw error }
+        }
+        print("PASS: privileged boundary rejects arbitrary commands, path traversal and symlink inputs")
+    }
+}
+SWIFT
+swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
+  -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
+  Sources/MihomoGUIHelper/Operations.swift "$CHECK_DIR/PrivilegedChecks.swift" .build/manual/MihomoGUICore.o \
+  -o "$CHECK_DIR/privileged-checks"
+"$CHECK_DIR/privileged-checks" "$CHECK_DIR"

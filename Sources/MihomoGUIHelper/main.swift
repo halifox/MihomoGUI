@@ -22,21 +22,16 @@ final class Service: NSObject, NSXPCListenerDelegate, PrivilegedService {
         return true
     }
 
-    func execute(_ command: String, reply: @escaping (Int32) -> Void) {
+    func execute(_ payload: Data, reply: @escaping (Int32) -> Void) {
         queue.async {
-            let process = Process()
-            process.executableURL = URL(fileURLWithPath: "/bin/sh")
-            process.arguments = ["-c", command]
-            // Commands may contain credentials. Never forward them to system logs.
-            process.standardOutput = FileHandle.nullDevice
-            process.standardError = FileHandle.nullDevice
             do {
-                try process.run()
-                process.waitUntilExit()
-                reply(process.terminationStatus)
+                guard payload.count <= 32 * 1024 * 1024 else { reply(64); return }
+                let operation = try JSONDecoder().decode(PrivilegedOperation.self, from: payload)
+                reply(try executeOperation(operation, owner: self.owner))
             } catch { reply(-1) }
         }
     }
+
 }
 
 guard getuid() == 0, CommandLine.arguments.count == 3,
