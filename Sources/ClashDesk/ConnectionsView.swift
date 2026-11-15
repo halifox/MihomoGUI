@@ -5,14 +5,9 @@ import ClashCore
 struct ConnectionsView: View {
     @State private var selection: String?
     @State private var search = ""
-    @State private var searchField = "全部"
-    @State private var outbound = ""
-    @State private var pausedRows: [Connection]?
-    @State private var pausedSpeedsAvailable = false
     @State private var details: Connection?
     @State private var confirmingCloseAll = false
     @State private var closing = false
-    @State private var operationStatus: String?
     @State private var sortOrder: [TableSort<Connection>] = []
     @EnvironmentObject var model: DeskModel
     func address(_ ip: String?, _ port: String?) -> String {
@@ -31,8 +26,8 @@ struct ConnectionsView: View {
         case "主机": return address(row.domain, row.metadata.destinationPort)
         case "下载量": return bytes(row.download)
         case "上传量": return bytes(row.upload)
-        case "下载速度": return (pausedRows == nil ? model.connectionSpeedsAvailable : pausedSpeedsAvailable) ? bytes(row.downloadSpeed) + "/s" : "—"
-        case "上传速度": return (pausedRows == nil ? model.connectionSpeedsAvailable : pausedSpeedsAvailable) ? bytes(row.uploadSpeed) + "/s" : "—"
+        case "下载速度": return model.connectionSpeedsAvailable ? bytes(row.downloadSpeed) + "/s" : "—"
+        case "上传速度": return model.connectionSpeedsAvailable ? bytes(row.uploadSpeed) + "/s" : "—"
         case "链路": return connectionChain(row, proxyNames: model.connectionProxyNames)
         case "规则": return connectionRule(row)
         case "进程": return row.process
@@ -56,22 +51,13 @@ struct ConnectionsView: View {
         default: return TableSort(column) { value($0, column) }
         }
     }
-    var displayedRows: [Connection] { pausedRows ?? model.connections }
     var filteredRows: [Connection] {
-        displayedRows.filter { row in
-            guard outbound.isEmpty || row.outbound == outbound else { return false }
+        model.connections.filter { row in
             guard !search.isEmpty else { return true }
-            let fields: [String]
-            switch searchField {
-            case "域名": fields = [row.metadata.host ?? ""]
-            case "进程": fields = [row.process]
-            case "IP": fields = [row.metadata.sourceIP ?? "", row.metadata.destinationIP ?? ""]
-            default: fields = [row.domain, row.process, row.metadata.sourceIP ?? "", row.metadata.destinationIP ?? "", value(row, "规则"), value(row, "链路"), row.metadata.destinationPort ?? ""]
-            }
+            let fields = [row.domain, row.process, row.metadata.sourceIP ?? "", row.metadata.destinationIP ?? "", value(row, "规则"), value(row, "链路"), row.metadata.destinationPort ?? ""]
             return fields.contains { $0.localizedCaseInsensitiveContains(search) }
         }
     }
-    var selectedRow: Connection? { filteredRows.first { $0.id == selection } }
     var body: some View {
         let rows = filteredRows
         Table(rows.sorted(using: sortOrder), selection: $selection, sortOrder: tableSortBinding($sortOrder)) {
@@ -110,14 +96,19 @@ struct ConnectionsView: View {
         } message: {
             Text("将关闭执行时的全部活动连接（当前 \(model.connections.count) 条），包括未显示的连接。应用可能自动重新建立连接。")
         }
-        .safeAreaInset(edge: .top, spacing: 0) { filters }
-        .safeAreaInset(edge: .bottom, spacing: 0) { status }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let error = model.connectionsError, !model.connections.isEmpty {
+                Text(error + "；当前显示上次成功读取的数据。")
+                    .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    .padding(8).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+            }
+        }
         .overlay {
             if rows.isEmpty {
-                if !model.connectionsLoaded && pausedRows == nil {
+                if !model.connectionsLoaded {
                     ProgressView("正在读取连接…")
-                } else if model.connectionsError != nil || !displayedRows.isEmpty {
-                    Text(model.connectionsError != nil ? "连接读取失败，请查看下方提示。" : "没有符合筛选条件的连接")
+                } else if model.connectionsError != nil || !model.connections.isEmpty {
+                    Text(model.connectionsError ?? "没有符合筛选条件的连接")
                         .foregroundStyle(.secondary).allowsHitTesting(false)
                 }
             }
@@ -129,15 +120,32 @@ struct ConnectionsView: View {
                                 : ["下载量", "上传量"].contains(column) ? "MB" : nil)
         }))
         .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button {
-                        confirmingCloseAll = true
-                    } label: { Label("关闭所有连接", systemImage: "xmark.circle.fill") }
-                    .accessibilityLabel("关闭所有连接")
-                    .help("关闭全部活动连接，包括未显示的连接")
-                    .disabled(model.busy || model.connections.isEmpty || model.connectionsError != nil)
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .primaryAction) {
+                    ToolbarSearchField(text: $search, prompt: "搜索连接")
+                        .frame(width: 220)
                 }
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    ToolbarSearchField(text: $search, prompt: "搜索连接")
+                        .frame(width: 220)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    confirmingCloseAll = true
+                } label: {
+                    Label {
+                        Text("关闭所有连接")
+                    } icon: {
+                        if closing { ProgressView().controlSize(.small) }
+                        else { Image(systemName: "xmark.circle.fill") }
+                    }
+                }
+                .accessibilityLabel("关闭所有连接")
+                .help("关闭全部活动连接，包括未显示的连接")
+                .disabled(model.busy || model.connections.isEmpty || model.connectionsError != nil)
                 .buttonStyle(.bordered)
                 .labelStyle(.titleAndIcon)
                 .controlSize(.regular)
@@ -167,70 +175,23 @@ struct ConnectionsView: View {
             }
         }
     }
-    var filters: some View {
-        HStack {
-            TextField("搜索连接", text: $search).textFieldStyle(.roundedBorder)
-                .accessibilityLabel("搜索连接")
-            Picker("搜索字段", selection: $searchField) {
-                ForEach(["全部", "域名", "进程", "IP"], id: \.self) { Text($0).tag($0) }
-            }.labelsHidden().frame(width: 90)
-            Picker("出口", selection: $outbound) {
-                Text("全部出口").tag("")
-                ForEach(Array(Set(displayedRows.map(\.outbound))).sorted(), id: \.self) { key in
-                    Text(model.connectionProxyNames[key] ?? key).tag(key)
-                }
-                if !outbound.isEmpty, !displayedRows.contains(where: { $0.outbound == outbound }) {
-                    Text(model.connectionProxyNames[outbound] ?? outbound).tag(outbound)
-                }
-            }.labelsHidden().frame(maxWidth: 160)
-            Menu {
-                if let row = selectedRow { connectionRoutes(row) }
-            } label: { Label("添加规则", systemImage: "plus") }
-                .disabled(selectedRow == nil || model.busy)
-            Button { if let row = selectedRow { details = row } } label: { Label("详情", systemImage: "info.circle") }
-                .disabled(selectedRow == nil)
-            Button {
-                pausedSpeedsAvailable = model.connectionSpeedsAvailable
-                pausedRows = pausedRows == nil ? model.connections : nil
-            } label: { Label(pausedRows == nil ? "暂停" : "继续", systemImage: pausedRows == nil ? "pause" : "play") }
-        }.labelStyle(.titleAndIcon).padding(8)
-    }
-    @ViewBuilder var status: some View {
-        if closing || operationStatus != nil || model.connectionsError != nil {
-            VStack(alignment: .leading, spacing: 4) {
-                if closing {
-                    HStack { ProgressView().controlSize(.small); Text("正在关闭连接…") }
-                } else if let operationStatus { Text(operationStatus) }
-                if let error = model.connectionsError {
-                    Text(error + (displayedRows.isEmpty ? "" : "；当前显示上次成功读取的数据。"))
-                        .foregroundStyle(.orange).textSelection(.enabled)
-                }
-            }.font(.caption).padding(8).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
-        }
-    }
     func canClose(_ id: String?) -> Bool {
         !model.busy && model.connectionsError == nil && model.connections.contains { $0.id == id }
     }
     func closeConnection(_ id: String) {
         guard canClose(id) else { return }
-        closing = true; operationStatus = nil
+        closing = true
         model.perform {
             defer { closing = false }
-            do {
-                try await model.api.closeConnection(id)
-                operationStatus = "已关闭所选连接。"
-            } catch { operationStatus = "关闭失败。"; throw error }
+            try await model.api.closeConnection(id)
         }
     }
     func closeAllConnections() {
         guard !model.busy, model.connectionsError == nil else { return }
-        closing = true; operationStatus = nil
+        closing = true
         model.perform {
             defer { closing = false }
-            do {
-                try await model.api.closeAllConnections()
-                operationStatus = "已关闭全部连接；应用可能自动重连。"
-            } catch { operationStatus = "关闭失败。"; throw error }
+            try await model.api.closeAllConnections()
         }
     }
     func combinedRule(_ row: Connection, withPort: Bool) -> RouteRule? {

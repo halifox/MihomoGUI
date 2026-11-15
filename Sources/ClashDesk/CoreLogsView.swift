@@ -1,11 +1,9 @@
 import SwiftUI
-import AppKit
 import ClashCore
 
 struct CoreLogsView: View {
     @EnvironmentObject var model: DeskModel
     @State private var entries: [Entry] = []
-    @State private var level = "all"
     @State private var search = ""
     @State private var streamError: String?
     @State private var connected = false
@@ -23,8 +21,7 @@ struct CoreLogsView: View {
 
     private var filtered: [Entry] {
         entries.filter {
-            (level == "all" || $0.log.type == level) &&
-            (search.isEmpty || $0.log.payload.localizedCaseInsensitiveContains(search) || $0.log.type.localizedCaseInsensitiveContains(search))
+            search.isEmpty || $0.log.payload.localizedCaseInsensitiveContains(search) || $0.log.type.localizedCaseInsensitiveContains(search)
         }
     }
 
@@ -72,33 +69,32 @@ struct CoreLogsView: View {
                     .foregroundStyle(.secondary).allowsHitTesting(false)
             }
         }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            HStack(spacing: 12) {
-                Spacer(minLength: 0)
-                Picker("日志等级", selection: $level) {
-                    Text("全部等级").tag("all")
-                    Text("Debug").tag("debug")
-                    Text("Info").tag("info")
-                    Text("Warning").tag("warning")
-                    Text("Error").tag("error")
+        .toolbar {
+            if #available(macOS 26.0, *) {
+                ToolbarItem(placement: .primaryAction) {
+                    ToolbarSearchField(text: $search, prompt: "搜索日志")
+                        .frame(width: 220)
                 }
-                .pickerStyle(.menu)
-                .frame(width: 140)
-                LogSearchField(text: $search)
-                    .frame(minWidth: 100, idealWidth: 180, maxWidth: 240)
+                .sharedBackgroundVisibility(.hidden)
+            } else {
+                ToolbarItem(placement: .primaryAction) {
+                    ToolbarSearchField(text: $search, prompt: "搜索日志")
+                        .frame(width: 220)
+                }
+            }
+            ToolbarItem(placement: .primaryAction) {
                 Button { entries.removeAll() } label: {
                     Label("清空日志", systemImage: "trash")
                 }
                 .disabled(entries.isEmpty)
                 .help("清空当前页面已接收的日志")
+                .accessibilityLabel("清空日志")
                 .buttonStyle(.bordered)
                 .labelStyle(.titleAndIcon)
-                .fixedSize()
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
             }
-            .controlSize(.regular)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .background(.bar)
         }
         .task(id: endpoint) {
             let source = endpoint
@@ -122,37 +118,6 @@ struct CoreLogsView: View {
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) }
                 catch { return }
             }
-        }
-    }
-}
-
-// Use the native search control so toolbar rendering, focus and clearing stay
-// consistent with macOS instead of layering a custom border over a text field.
-private struct LogSearchField: NSViewRepresentable {
-    @Binding var text: String
-
-    func makeNSView(context: Context) -> NSSearchField {
-        let field = NSSearchField(frame: .zero)
-        field.placeholderString = "搜索日志"
-        field.setAccessibilityLabel("搜索日志")
-        field.sendsSearchStringImmediately = true
-        field.delegate = context.coordinator
-        return field
-    }
-
-    func updateNSView(_ field: NSSearchField, context: Context) {
-        context.coordinator.parent = self
-        if field.stringValue != text { field.stringValue = text }
-    }
-
-    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
-
-    final class Coordinator: NSObject, NSSearchFieldDelegate {
-        var parent: LogSearchField
-        init(parent: LogSearchField) { self.parent = parent }
-        func controlTextDidChange(_ notification: Notification) {
-            guard let field = notification.object as? NSSearchField else { return }
-            parent.text = field.stringValue
         }
     }
 }
