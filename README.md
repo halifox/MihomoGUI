@@ -107,6 +107,8 @@
 
 从 [GitHub Releases](https://github.com/halifox/mihomoGUI/releases) 下载 `MihomoGUI-v版本号-macos-arm64.zip`，解压后将 `MihomoGUI.app` 放入“应用程序”目录。自动发布包仅提供 Apple Silicon 版本。
 
+GitHub Actions 固定使用 Xcode 26.5 / macOS 26.5 SDK 构建，最低支持 macOS 13；在 macOS 26 上采用系统新外观。
+
 - **Apple Silicon（M 系列芯片）**：选择 `arm64` 安装包。
 - **Intel 芯片**：需要自行准备对应内核并从源码构建。
 

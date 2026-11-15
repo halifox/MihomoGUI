@@ -22,11 +22,19 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    runs-on: macos-15
+    runs-on: macos-26
+    env:
+      DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ inputs.release_tag || github.ref }}
+      - name: Verify build toolchain
+        run: |
+          xcodebuild -version
+          swiftc --version
+          xcrun --sdk macosx --show-sdk-version
+          test "$(xcrun --sdk macosx --show-sdk-version)" = "26.5"
       - name: Check architecture and release version
         env:
           RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
@@ -46,6 +54,8 @@ jobs:
       - name: Verify and archive application
         run: |
           codesign --verify --deep --strict dist/MihomoGUI.app
+          xcrun vtool -show-build dist/MihomoGUI.app/Contents/MacOS/MihomoGUI
+          test "$(xcrun vtool -show-build dist/MihomoGUI.app/Contents/MacOS/MihomoGUI | awk '$1 == "sdk" {print $2}')" = "26.5"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/MihomoGUI.app/Contents/Info.plist)" = "$(cat VERSION)"
           ditto -c -k --sequesterRsrc --keepParent dist/MihomoGUI.app "dist/MihomoGUI-v$(cat VERSION)-macos-arm64.zip"
       - uses: actions/upload-artifact@v4
