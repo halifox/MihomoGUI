@@ -41,3 +41,5 @@ jobs:
     uses: ./.github/workflows/build.yml
     with:
       release_tag: ${{ needs.release-please.outputs.tag_name }}
+      signed_release: ${{ vars.ENABLE_SIGNED_RELEASES == 'true' }}
+    secrets: inherit

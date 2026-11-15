@@ -10,11 +10,20 @@ on:
         description: Existing release tag (empty means build only)
         required: false
         type: string
+      signed_release:
+        description: Sign with Developer ID and notarize (requires configured secrets)
+        required: false
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       release_tag:
         required: true
         type: string
+      signed_release:
+        required: false
+        default: false
+        type: boolean
 permissions:
   contents: read
 concurrency:
@@ -25,6 +34,7 @@ jobs:
     runs-on: macos-26
     env:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
+      SIGNED_BUILD: ${{ github.event_name != 'pull_request' && (inputs.signed_release || ((inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')) && vars.ENABLE_SIGNED_RELEASES == 'true')) }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -47,10 +57,40 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: python3 scripts/resources.py download
+      - name: Prepare signing credentials
+        if: env.SIGNED_BUILD == 'true'
+        env:
+          CERTIFICATE: ${{ secrets.MACOS_SIGNING_CERTIFICATE }}
+          CERTIFICATE_PASSWORD: ${{ secrets.MACOS_SIGNING_CERTIFICATE_PASSWORD }}
+          CERTIFICATE_IDENTITY: ${{ secrets.MACOS_SIGNING_IDENTITY }}
+          NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY_P8 }}
+          NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          NOTARY_ISSUER: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          umask 077
+          test -n "$CERTIFICATE"
+          [[ "$CERTIFICATE_IDENTITY" =~ ^[[:xdigit:]]{40}$ ]]
+          test -n "$NOTARY_KEY" && test -n "$NOTARY_KEY_ID" && test -n "$NOTARY_ISSUER"
+          signing_keychain="$RUNNER_TEMP/MihomoGUI-signing.keychain-db"
+          signing_password="$(openssl rand -base64 32)"
+          printf '%s' "$CERTIFICATE" | /usr/bin/base64 -D > "$RUNNER_TEMP/signing.p12"
+          printf '%s' "$NOTARY_KEY" > "$RUNNER_TEMP/notary-key.p8"
+          security create-keychain -p "$signing_password" "$signing_keychain"
+          security set-keychain-settings -lut 21600 "$signing_keychain"
+          security unlock-keychain -p "$signing_password" "$signing_keychain"
+          security import "$RUNNER_TEMP/signing.p12" -k "$signing_keychain" -P "$CERTIFICATE_PASSWORD" -T /usr/bin/codesign -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$signing_password" "$signing_keychain"
+          security list-keychains -d user -s "$signing_keychain"
+          xcrun notarytool store-credentials MihomoGUI-CI --key "$RUNNER_TEMP/notary-key.p8" --key-id "$NOTARY_KEY_ID" --issuer "$NOTARY_ISSUER" --keychain "$signing_keychain"
+          printf 'SIGNING_IDENTITY=%s\nNOTARY_PROFILE=MihomoGUI-CI\nNOTARY_KEYCHAIN=%s\n' "$CERTIFICATE_IDENTITY" "$signing_keychain" >> "$GITHUB_ENV"
       - name: Build application
         run: bash scripts/build.sh
       - name: Run interaction checks
         run: bash scripts/check-interactions.sh
+      - name: Notarize validated application
+        if: env.SIGNED_BUILD == 'true'
+        run: bash scripts/notarize.sh
       - name: Verify and archive application
         run: |
           codesign --verify --deep --strict dist/MihomoGUI.app
@@ -58,6 +98,11 @@ jobs:
           test "$(xcrun vtool -show-build dist/MihomoGUI.app/Contents/MacOS/MihomoGUI | awk '$1 == "sdk" {print $2}')" = "26.5"
           test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/MihomoGUI.app/Contents/Info.plist)" = "$(cat VERSION)"
           ditto -c -k --sequesterRsrc --keepParent dist/MihomoGUI.app "dist/MihomoGUI-v$(cat VERSION)-macos-arm64.zip"
+      - name: Remove temporary signing credentials
+        if: always() && env.SIGNED_BUILD == 'true'
+        run: |
+          security delete-keychain "$RUNNER_TEMP/MihomoGUI-signing.keychain-db" || true
+          rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/notary-key.p8"
       - uses: actions/upload-artifact@v4
         with:
           name: MihomoGUI-macos-arm64

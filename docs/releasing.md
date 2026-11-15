@@ -10,7 +10,7 @@
 
 [发布工作流](../.github/workflows/release-please.yml) 在推送 `main` 或手动触发时运行。合并发布 PR 后创建标签与 GitHub Release，再调用 arm64 构建工作流。工作流也会为新建或更新的发布 PR 主动触发分支构建。
 
-仓库 Settings → Actions → General 需要允许 GitHub Actions 创建和批准 Pull Request。工作流使用内置 `GITHUB_TOKEN`；当前应用使用本地临时签名，不需要 Apple 签名证书，也未进行 Apple 公证。
+仓库 Settings → Actions → General 需要允许 GitHub Actions 创建和批准 Pull Request。工作流使用内置 `GITHUB_TOKEN`；默认构建使用本地临时签名；可选 Developer ID 签名和公证流程见下文。未启用正式签名时，附件仍是临时签名构建。
 
 ## 构建与重新上传
 
@@ -40,3 +40,27 @@ Release 可能在构建完成前已创建。构建失败时先查明原因；若
 确认版本、变更说明和附件对应同一标签，检查 CI 结果，并在实际 macOS 环境验证本次改动涉及的功能。管理员授权、TUN、其他 VPN 并存、休眠恢复与网络切换不由 CI 完整覆盖。
 
 分发时保留应用内的第三方许可文本与资源清单，项目源代码许可见 [LICENSE](../LICENSE)。
+
+## Developer ID 签名与公证
+
+本地开发继续使用 `bash scripts/build.sh`。正式构建需在钥匙串安装可用的 Developer ID Application 证书及私钥，然后执行：
+
+```bash
+SIGNING_IDENTITY="Developer ID Application: YOUR_NAME (TEAM_ID)" bash scripts/build.sh
+bash scripts/check-interactions.sh
+NOTARY_PROFILE="your-stored-profile" bash scripts/notarize.sh
+```
+
+公证凭据通过 `xcrun notarytool store-credentials` 存入钥匙串，勿将证书、私钥或密码写入仓库。使用自定义钥匙串时再设置 `NOTARY_KEYCHAIN`。构建对 GUI、辅助服务及内核启用 hardened runtime；正式签名附加安全时间戳。公证脚本检查 Developer ID 签名，提交后要求状态为 `Accepted`，再执行 stapler 和 Gatekeeper 验证；报告保存在忽略目录 `.build/notarization-result.json`。公证成功后应重新生成分发 ZIP，以包含 stapled ticket。具体要求见 [Apple 公证工作流文档](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
+
+CI 可通过手动输入 `signed_release: true` 启用。自动发布需设置仓库变量 `ENABLE_SIGNED_RELEASES=true`，并在 GitHub Actions Secrets 中配置：
+
+- `MACOS_SIGNING_CERTIFICATE`：包含私钥的 P12 文件的 Base64 内容。
+- `MACOS_SIGNING_CERTIFICATE_PASSWORD`：P12 导出密码。
+- `MACOS_SIGNING_IDENTITY`：Developer ID Application 身份的 40 位十六进制 SHA-1 标识。
+- `APPLE_NOTARY_KEY_P8`：App Store Connect Team API 私钥内容。
+- `APPLE_NOTARY_KEY_ID`、`APPLE_NOTARY_ISSUER_ID`：该 Team API 密钥的 ID 与 issuer。
+
+CI 在临时钥匙串导入身份，仅在非 PR 构建中使用签名凭据，完成交互检查后才提交公证，归档前完成 stapling，并在结束时删除临时钥匙串及私钥文件。缺少凭据或公证失败时，正式构建失败，不会静默退回临时签名。
+
+启用自动正式分发前，应使用实际发布身份验证 Developer ID 签名、公证提交、stapling 和 Gatekeeper 接受结果。

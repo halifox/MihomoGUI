@@ -2,6 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SECONDS=0
+SIGNING_IDENTITY="${SIGNING_IDENTITY:--}"
+if [ -n "${NOTARY_PROFILE:-}" ] && [ "$SIGNING_IDENTITY" = - ]; then
+  printf 'Notarization requires a Developer ID signing identity.\n' >&2
+  exit 1
+fi
 VERSION="$(cat VERSION)"
 if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
   printf 'Invalid VERSION: expected major.minor.patch\n' >&2
@@ -65,9 +70,12 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 </dict></plist>
 PLIST
 printf '[5/6] Signing application and helpers...\n'
-codesign --force --sign - "$APP_DIR/Contents/Helpers/mihomo"
-codesign --force --sign - --options runtime "$APP_DIR/Contents/Helpers/MihomoGUIHelper"
-codesign --force --sign - --options runtime "$APP_DIR"
+SIGNING_FLAGS=(--force --sign "$SIGNING_IDENTITY" --options runtime)
+if [ "$SIGNING_IDENTITY" != - ]; then SIGNING_FLAGS+=(--timestamp); fi
+codesign "${SIGNING_FLAGS[@]}" "$APP_DIR/Contents/Helpers/mihomo"
+codesign "${SIGNING_FLAGS[@]}" "$APP_DIR/Contents/Helpers/MihomoGUIHelper"
+codesign "${SIGNING_FLAGS[@]}" "$APP_DIR"
+codesign --verify --deep --strict "$APP_DIR"
 printf '[6/6] Build completed in %ss.\n' "$SECONDS"
 printf 'Built: %s\n' "$APP_DIR"
 printf 'If MihomoGUI is already running, quit with Cmd-Q and reopen the app to load this build.\n'
