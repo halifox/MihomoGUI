@@ -4,11 +4,10 @@ import ClashCore
 struct GeneralConfigurationView: View {
     var body: some View {
         ScrollView {
-            ConfigurationRows(fields: documentSchemas.configuration).padding(6)
+            ConfigurationRows(fields: documentSchemas.configuration)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.trailing, 4)
+                .padding(20)
         }
-        .padding(20)
     }
 
 
