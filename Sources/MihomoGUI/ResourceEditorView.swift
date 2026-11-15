@@ -216,7 +216,7 @@ extension MihomoGUIModel {
                       !candidate.rules.contains(where: { $0.proxyGroup == row.name }),
                       !(candidate.proxyGroups ?? []).contains(where: { $0.id != row.id && $0.targets.contains("group:" + row.name) }),
                       !(candidate.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("group:" + row.name) || $0.object["proxy"] == .string(row.name) }) ?? false),
-                      !subRules.contains(where: { $0.hasSuffix("," + row.name) }) else { throw MihomoGUIError("代理组仍被引用，请先调整引用") }
+                      !subRules.contains(where: { replacingSubRuleTarget($0, old: row.name, new: row.name + ".reference-check") != $0 }) else { throw MihomoGUIError("代理组仍被引用，请先调整引用") }
                 candidate.proxyGroups?.removeAll { $0.id == row.id }
             } else {
                 guard !candidate.rules.contains(where: { ($0.kind == .ruleSet && $0.value == row.name) || replacingProvider($0.value, old: row.name, new: "__check__") != $0.value }),

@@ -171,6 +171,44 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         referenceModel.deleteManualProxy(referencedProxy)
         try check(referenceModel.error != nil && referenceModel.settings.manualProxies?.count == 1, "sub-rule references prevent proxy deletion")
         try generateConfig(referenceModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("subrule-renamed.yaml"))
+        for (index, options) in [",no-resolve", ",no-resolve,src", ",src,no-resolve"].enumerated() {
+            let folder = directory.appendingPathComponent("group-subrule-\(index)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let referencedGroup = ProxyGroup(name: index == 1 ? "__reference_check__" : "referenced-group", targets: ["builtin:DIRECT"])
+            var settings = Settings()
+            settings.defaultPolicy = "DIRECT"
+            settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0),
+                                "sub-rules": .object(["fixture": .array([.string("IP-CIDR,192.0.2.0/24," + referencedGroup.name + options)])])]
+            settings.proxyGroups = [referencedGroup]
+            var dispatch = RouteRule(kind: .subRule, value: "(NETWORK,tcp)", node: nil)
+            dispatch.subRuleTarget = "fixture"; settings.rules = [dispatch]
+            try saveSettings(settings, to: folder)
+            let groupModel = MihomoGUIModel(directory: folder)
+            let before = try Data(contentsOf: folder.appendingPathComponent("settings.json"))
+            let row = ResourceRow(id: referencedGroup.id, name: referencedGroup.name, type: referencedGroup.type, fields: referencedGroup.fields, group: referencedGroup)
+            groupModel.deleteResource(row, groups: true)
+            try check(groupModel.error != nil && groupModel.settings.proxyGroups?.count == 1, "option-bearing sub-rule references block group deletion")
+            try check(try Data(contentsOf: folder.appendingPathComponent("settings.json")) == before, "blocked group deletion leaves persisted settings unchanged")
+            try generateConfig(groupModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("group-reference-\(index).yaml"))
+            groupModel.settings.options?["sub-rules"] = .object(["fixture": .array([.string("MATCH,DIRECT")])])
+            groupModel.error = nil
+            groupModel.deleteResource(row, groups: true)
+            try check(groupModel.error == nil && groupModel.settings.proxyGroups?.isEmpty == true, "group can be deleted after removing its actual reference")
+        }
+        let dispatchFolder = directory.appendingPathComponent("subrule-dispatch")
+        try FileManager.default.createDirectory(at: dispatchFolder, withIntermediateDirectories: true)
+        var dispatchSettings = Settings()
+        let dispatchGroup = ProxyGroup(name: "same-name", targets: ["builtin:DIRECT"])
+        dispatchSettings.defaultPolicy = "DIRECT"
+        dispatchSettings.proxyGroups = [dispatchGroup]
+        dispatchSettings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0),
+                                   "sub-rules": .object(["same-name": .array([.string("MATCH,DIRECT")]), "outer": .array([.string("SUB-RULE,(NETWORK,tcp),same-name")])])]
+        try saveSettings(dispatchSettings, to: dispatchFolder)
+        let dispatchModel = MihomoGUIModel(directory: dispatchFolder)
+        dispatchModel.deleteResource(ResourceRow(id: dispatchGroup.id, name: dispatchGroup.name, type: dispatchGroup.type, fields: dispatchGroup.fields, group: dispatchGroup), groups: true)
+        try check(dispatchModel.error == nil && dispatchModel.settings.proxyGroups?.isEmpty == true, "SUB-RULE dispatch names are not group references")
+        try generateConfig(dispatchModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("subrule-dispatch.yaml"))
+
         let deletionDirectory = directory.appendingPathComponent("subscription-deletion")
         try FileManager.default.createDirectory(at: deletionDirectory.appendingPathComponent("providers"), withIntermediateDirectories: true)
         let deletionModel = MihomoGUIModel(directory: deletionDirectory)
@@ -624,6 +662,10 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-renamed.yaml"
+for index in 0 1 2; do
+  "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/group-reference-$index.yaml"
+done
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-dispatch.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
 import Security
