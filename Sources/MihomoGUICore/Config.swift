@@ -285,7 +285,15 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     for group in settings.proxyGroups ?? [] {
         var object = group.fields.filter { $0.value != .string("") }.mapValues(\.native)
         object["name"] = group.name; object["type"] = group.type
-        object["proxies"] = try group.targets.map(resolve)
+        if group.fields["include-all-proxies"] == .boolean(true) {
+            // Match display names before translating subscription nodes into unique runtime aliases.
+            let targets = try proxyGroupTargets(group, settings: settings).map(resolve)
+            object["proxies"] = targets.isEmpty ? [group.fields["empty-fallback"]?.text ?? "COMPATIBLE"] : targets
+            object.removeValue(forKey: "include-all-proxies")
+            object.removeValue(forKey: "filter")
+        } else {
+            object["proxies"] = try group.targets.map(resolve)
+        }
         if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try resolve(selected) }
         groups.append(object)
     }

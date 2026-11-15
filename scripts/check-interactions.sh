@@ -206,6 +206,25 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         }
         try check(first?.coreRunning == true, "GUI model connects to real existing core")
         let controller = try CoreAPI(settings: runtime)
+        var filteredSettings = Settings()
+        filteredSettings.options = runtime.options
+        filteredSettings.options?["dns.enable"] = .boolean(false)
+        filteredSettings.options?["tun.enable"] = .boolean(false)
+        filteredSettings.options?["mixed-port"] = .integer(0)
+        let filterSource = Subscription(name: "fixture", url: "https://example.com/sub")
+        filteredSettings.subscriptions = [filterSource]
+        func filterProxy(_ name: String) -> ConfigValue {
+            .object(["name": .string(name), "type": .string("ss"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
+        }
+        filteredSettings.subscriptionProxies = [filterSource.id: [filterProxy("HongKong-01"), filterProxy("Tokyo-01")]]
+        let filteredGroup = ProxyGroup(name: "HK", fields: ["include-all-proxies": .boolean(true), "filter": .string("^HongKong")])
+        filteredSettings.proxyGroups = [filteredGroup]
+        try check(proxyGroupTargets(filteredGroup, settings: filteredSettings) == ["node:" + Node(provider: filterSource.provider, name: "HongKong-01").id], "group filtering matches original subscription name")
+        try await controller.reload(generateConfig(filteredSettings))
+        let filteredResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
+        try check(filteredResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 0)], "real core group contains matching original-name alias only")
+        filteredSettings.proxyGroups?[0].fields["filter"] = .string("[")
+        try expectFailure("invalid original-name filter is reported") { _ = try generateConfig(filteredSettings) }
         var providerSettings = Settings()
         providerSettings.options = runtime.options
         providerSettings.options?["mixed-port"] = .integer(0)

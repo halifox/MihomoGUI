@@ -68,11 +68,11 @@ public func proxyGroupTargets(_ group: ProxyGroup, settings: Settings) -> [Strin
         var imported: [(target: String, name: String)] = (settings.manualProxies ?? []).map {
             ("node:" + $0.node.id, $0.name)
         }
-        for (sourceIndex, source) in settings.subscriptions.enumerated() {
-            for (index, entry) in (settings.subscriptionProxies?[source.id] ?? []).enumerated() {
+        for source in settings.subscriptions {
+            for entry in settings.subscriptionProxies?[source.id] ?? [] {
                 guard let name = entry.object["name"]?.text else { continue }
                 imported.append(("node:" + Node(provider: source.provider, name: name).id,
-                                 subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)))
+                                 name))
             }
         }
         let filter = group.fields["filter"]?.text ?? ""
@@ -100,6 +100,12 @@ public func validateProxyGroups(_ settings: Settings) throws {
               !manualNames.contains(group.name) else { throw MihomoGUIError("代理组名称无效或与代理名称重复") }
         guard ["select", "url-test", "fallback", "load-balance"].contains(group.type) else { throw MihomoGUIError("不支持的代理组类型") }
         try validateFieldValues(group.fields, schema: groupEditorFields(group.type))
+        if group.fields["include-all-proxies"] == .boolean(true), let filter = group.fields["filter"]?.text, !filter.isEmpty {
+            for expression in filter.components(separatedBy: "`") {
+                guard (try? NSRegularExpression(pattern: expression)) != nil else { throw MihomoGUIError("节点筛选表达式不受支持或语法无效") }
+            }
+        }
+
         guard !group.targets.isEmpty || group.fields["include-all-proxies"] == .boolean(true) else { throw MihomoGUIError("代理组至少需要一个成员") }
         guard Set(group.targets).count == group.targets.count else { throw MihomoGUIError("代理组成员不能重复") }
         for target in group.targets {
