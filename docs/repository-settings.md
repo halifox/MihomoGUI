@@ -33,3 +33,14 @@ gh api repos/halifox/mihomoGUI/actions/permissions/workflow
 ```
 
 API 参数依据：[Actions 仓库默认工作流权限](https://docs.github.com/en/rest/actions/permissions#set-default-workflow-permissions-for-a-repository)。
+
+## 私密漏洞报告
+
+2026-11-15 已启用 GitHub Private Vulnerability Reporting，并独立回读确认 `enabled=true`。公开安全政策和 Issue 联系入口直接指向 [私密表单](https://github.com/halifox/MihomoGUI/security/advisories/new)，不再要求先创建公开联系 Issue。不公布未经验证的邮箱或处理时限。
+
+```bash
+gh api --method PUT repos/halifox/mihomoGUI/private-vulnerability-reporting
+gh api repos/halifox/mihomoGUI/private-vulnerability-reporting
+```
+
+本次验证为实际开关回读和入口配置一致性检查，未提交测试漏洞报告。

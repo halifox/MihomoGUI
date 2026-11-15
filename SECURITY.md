@@ -4,11 +4,11 @@
 
 ## 报告渠道
 
-优先检查仓库的 [Security 页面](https://github.com/halifox/MihomoGUI/security)。当维护者启用 GitHub Private Vulnerability Reporting 后，可使用 [Report a vulnerability](https://github.com/halifox/MihomoGUI/security/advisories/new) 私下提交。
+本仓库已启用 GitHub Private Vulnerability Reporting，2026-11-15 已通过 API 独立回读确认。请登录 GitHub，使用 [Report a vulnerability 私密表单](https://github.com/halifox/MihomoGUI/security/advisories/new) 直接报告；也可从仓库 [Security 页面](https://github.com/halifox/MihomoGUI/security) 进入。
 
-2026-11-15 通过 GitHub API 核对时，该仓库尚未启用私密漏洞报告；本项目也尚未公布经过验证的安全联系邮箱。因此，目前不要将上述表单当作已可用的私密渠道。如果入口不可用，请仅创建标题为 `Request a private security contact` 的 [Issue](https://github.com/halifox/MihomoGUI/issues/new)，请求维护者提供私密联系方式，正文不要包含漏洞描述、影响组件、复现步骤或附件。获得私密渠道后再提供完整报告。此回退方式遵循 [GitHub 官方报告指引](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)。
+报告请通过该私密表单提交，不要先在公开 Issue 中描述漏洞、影响组件、复现过程或上传附件。若暂时无法使用入口，先确认登录状态，并等待私密渠道恢复；不要改用公开讨论披露细节。这里不公布未经验证的邮箱、PGP 密钥或响应时限承诺。
 
-维护者启用私密报告或公布可验证的安全联系方式后，应同步更新本文件和 Issue 联系入口。不要在没有验证的情况下添加邮箱、PGP 密钥或响应时间承诺。
+维护者更改渠道时，应同步更新本文件和 Issue 联系入口。启用与回读方式见[仓库设置](docs/repository-settings.md)，平台使用说明见 [GitHub 私密漏洞报告文档](https://docs.github.com/en/code-security/how-tos/report-and-fix-vulnerabilities/report-privately)。
 
 ## 私密报告内容
 
