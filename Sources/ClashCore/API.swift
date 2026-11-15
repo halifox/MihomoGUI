@@ -36,15 +36,24 @@ public struct Connection: Decodable, Identifiable {
     public var outbound: String { chains?.first ?? "未知出口" }
 }
 
+public struct CoreTraffic: Decodable {
+    public let up: Int64
+    public let down: Int64
+}
+
 public struct Connections: Decodable {
     public let connections: [Connection]
-    private enum CodingKeys: String, CodingKey { case connections }
+    public let uploadTotal: Int64?
+    public let downloadTotal: Int64?
+    private enum CodingKeys: String, CodingKey { case connections, uploadTotal, downloadTotal }
     public init(from decoder: Decoder) throws {
         let values = try decoder.container(keyedBy: CodingKeys.self)
         guard values.contains(.connections) else {
             throw DecodingError.keyNotFound(CodingKeys.connections,
                 .init(codingPath: decoder.codingPath, debugDescription: "Missing connections field"))
         }
+        uploadTotal = try values.decodeIfPresent(Int64.self, forKey: .uploadTotal)
+        downloadTotal = try values.decodeIfPresent(Int64.self, forKey: .downloadTotal)
         // mihomo can encode an empty Go slice as null; the field must still be present.
         connections = try values.decodeIfPresent([Connection].self, forKey: .connections) ?? []
     }
@@ -85,9 +94,34 @@ public struct CoreAPI {
         return data
     }
     public func connections() async throws -> [Connection] {
+        try await connectionSnapshot().connections
+    }
+    public func connectionSnapshot() async throws -> Connections {
         let data = try await request("/connections")
-        do { return try autoreleasepool { try JSONDecoder().decode(Connections.self, from: data).connections } }
+        do { return try autoreleasepool { try JSONDecoder().decode(Connections.self, from: data) } }
         catch is DecodingError { throw CoreAPIError.invalidConnections }
+    }
+    public func traffic(receive: (CoreTraffic) async -> Void) async throws {
+        let destination = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host
+        guard let url = URL(string: "http://\(destination):\(port)/traffic") else {
+            throw DeskError("流量接口地址无效")
+        }
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
+        request.cachePolicy = .reloadIgnoringLocalCacheData
+        let (bytes, response) = try await URLSession.shared.bytes(for: request)
+        guard let response = response as? HTTPURLResponse else { throw CoreAPIError.invalidResponse }
+        guard (200..<300).contains(response.statusCode) else { throw CoreAPIError.http(response.statusCode) }
+        for try await line in bytes.lines {
+            try Task.checkCancellation()
+            guard !line.isEmpty else { continue }
+            let sample: CoreTraffic
+            do { sample = try JSONDecoder().decode(CoreTraffic.self, from: Data(line.utf8)) }
+            catch { throw DeskError("内核流量数据格式无效") }
+            await receive(sample)
+        }
+        try Task.checkCancellation()
+        throw DeskError("流量连接已断开")
     }
     public func logs(receive: (CoreLog) async -> Void) async throws {
         let destination = host.contains(":") && !host.hasPrefix("[") ? "[\(host)]" : host

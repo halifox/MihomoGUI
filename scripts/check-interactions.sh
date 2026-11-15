@@ -93,6 +93,25 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
             try await Task.sleep(nanoseconds: 100_000_000)
         }
         try check(first?.coreRunning == true, "GUI model connects to real existing core")
+        let controller = try CoreAPI(settings: runtime)
+        let snapshot = try await controller.connectionSnapshot()
+        try check(snapshot.uploadTotal == 0 && snapshot.downloadTotal == 0, "real core reports zero cumulative traffic")
+        try check(first?.uploadTotal == snapshot.uploadTotal && first?.downloadTotal == snapshot.downloadTotal, "model exposes core totals")
+        let memory = try await controller.memory()
+        try check(memory >= 0, "real core memory response")
+        var sample: CoreTraffic?
+        let trafficTask = Task {
+            try await controller.traffic { sample = $0 }
+        }
+        for _ in 0..<30 {
+            if sample != nil { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        trafficTask.cancel()
+        _ = await trafficTask.result
+        try check(sample != nil, "real core traffic stream receives data and cancels")
+        let missing = try JSONDecoder().decode(Connections.self, from: Data(#"{"connections":null}"#.utf8))
+        try check(missing.uploadTotal == nil && missing.downloadTotal == nil, "missing counters remain unavailable")
         let pid = core.processIdentifier
         first = nil
         try check(core.isRunning && core.processIdentifier == pid, "releasing GUI model leaves core running")
@@ -102,7 +121,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         reopened.startCore()
         try check(!reopened.busy && core.isRunning, "existing core start is a no-op")
         try check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("traffic.sqlite").path), "monitoring creates no statistics database")
-        print("PASS: routing prefill, priority, atomic batch persistence, duplicate/busy guards, existing service detection, start guard, real-core reconnect and GUI model release")
+        print("PASS: routing prefill, priority, atomic batch persistence, duplicate/busy guards, existing service detection, start guard, real-core reconnect, GUI model release, dashboard counters, memory and cancellable traffic")
     }
 }
 SWIFT

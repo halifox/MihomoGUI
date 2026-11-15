@@ -38,15 +38,15 @@ final class LaunchSizeView: NSView {
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, subscriptions, outbound, groups, ruleSets, rules, connections, logs, settings
+    case dashboard, general, subscriptions, outbound, groups, ruleSets, rules, connections, logs
     var id: Int { rawValue }
-    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "内核日志", "应用设置"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "doc.text", "gearshape"][rawValue] }
+    var title: String { ["仪表盘", "全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "内核日志"][rawValue] }
+    var icon: String { ["gauge", "slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "doc.text"][rawValue] }
 }
 
 struct DeskView: View {
     @EnvironmentObject var model: DeskModel
-    @State private var page: DeskPage? = .general
+    @State private var page: DeskPage? = .dashboard
     var body: some View {
         NavigationSplitView {
             List(DeskPage.allCases, selection: $page) { page in
@@ -55,7 +55,7 @@ struct DeskView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             Group {
-                switch page ?? .general {
+                switch page ?? .dashboard {
                 case .general: GeneralConfigurationView()
                 case .subscriptions: SubscriptionsView()
                 case .outbound: OutboundProxiesView()
@@ -64,11 +64,11 @@ struct DeskView: View {
                 case .rules: RulesView()
                 case .connections: ConnectionsView()
                 case .logs: CoreLogsView()
-                case .settings: AppSettingsView()
+                case .dashboard: DashboardView()
                 }
-            }.navigationTitle((page ?? .general).title)
+            }.navigationTitle((page ?? .dashboard).title)
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
-                .id(page ?? .general)
+                .id(page ?? .dashboard)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.flushConfigurationSave() }
         .onDisappear { model.flushConfigurationSave() }

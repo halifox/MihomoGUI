@@ -9,6 +9,8 @@ final class DeskModel: ObservableObject {
     @Published var connections: [Connection] = []
     @Published var connectionsError: String?
     @Published var connectionsLoaded = false
+    @Published var uploadTotal: Int64?
+    @Published var downloadTotal: Int64?
     private var connectionsRefreshID = UUID()
     private var udpRefreshID = UUID()
     @Published var runtimeConfigurationUncertain = false
@@ -132,7 +134,8 @@ final class DeskModel: ObservableObject {
         let refreshID = UUID()
         connectionsRefreshID = refreshID
         do {
-            var live = try await api.connections()
+            let snapshot = try await api.connectionSnapshot()
+            var live = snapshot.connections
             try Task.checkCancellation()
             guard connectionsRefreshID == refreshID else { return }
             let now = Date()
@@ -149,6 +152,7 @@ final class DeskModel: ObservableObject {
             }
             connectionSpeedsAvailable = connectionsDate != nil
             connectionsDate = now
+            uploadTotal = snapshot.uploadTotal; downloadTotal = snapshot.downloadTotal
             connections = live; coreRunning = true; connectionsError = nil; connectionsLoaded = true
         } catch {
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
@@ -160,6 +164,7 @@ final class DeskModel: ObservableObject {
                 && (error as? URLError)?.code == .cannotConnectToHost
             // HTTP and decoding failures still mean the controller is reachable.
             coreRunning = error is CoreAPIError
+            uploadTotal = nil; downloadTotal = nil
             if stopped { connections = [] }
             connectionsDate = nil; connectionSpeedsAvailable = false; connectionsLoaded = true
             connectionsError = stopped ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)

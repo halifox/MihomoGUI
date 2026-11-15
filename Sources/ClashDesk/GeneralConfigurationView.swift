@@ -2,43 +2,16 @@ import SwiftUI
 import ClashCore
 
 struct GeneralConfigurationView: View {
-    @EnvironmentObject var model: DeskModel
     var body: some View {
         ScrollView {
             ConfigurationRows(fields: documentSchemas.configuration).padding(6)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.trailing, 4)
         }
-        .toolbar {
-            ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { model.toggleCore() } label: {
-                        if model.serviceOperation != nil {
-                            ProgressView().controlSize(.small)
-                                .frame(width: 16, height: 16)
-                                .accessibilityLabel(serviceButtonTitle)
-                        } else {
-                            toolbarIcon(serviceButtonTitle, systemImage: model.coreActive ? "stop.fill" : "play.fill")
-                        }
-                    }.frame(width: 28, height: 28).disabled(model.busy)
-                        .help(serviceButtonTitle)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
-            }
-        }
         .padding(20)
     }
 
-    private var serviceButtonTitle: String {
-        switch model.serviceOperation {
-        case .starting: return "正在启动…"
-        case .stopping: return "正在停止…"
-        case nil: return model.coreActive ? "停止 Clash 内核" : "启动 Clash 内核"
-        }
-    }
+
 }
 
 private struct ConfigurationRows: View {
