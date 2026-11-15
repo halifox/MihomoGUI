@@ -67,7 +67,12 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     }
     let stagedRules = staging.appendingPathComponent("rules")
     _ = try await Task.detached { try stageRuleProviderFiles(settings, directory: stagedRules) }.value
-    _ = try await runCommand(binary.path, ["-v"])
+    let versionOutput = try await runCommand(binary.path, ["-v"])
+    let versionParts = versionOutput.split(whereSeparator: \.isWhitespace)
+    guard versionParts.count >= 3, versionParts[0] == "Mihomo", versionParts[1] == "Meta" else {
+        throw MihomoGUIError("无法识别内置 mihomo 版本，请重新安装应用")
+    }
+    try validateConfigurationCoreVersion(String(versionParts[2]))
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
     try await privilegedOperation(.install(staging: staging.path, settings: settings))
     try saveRuntimeSettings(settings, to: directory)

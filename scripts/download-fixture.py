@@ -7,11 +7,25 @@ import time
 
 
 class Handler(BaseHTTPRequestHandler):
+    put_count = 0
+
+    def do_PUT(self):
+        Handler.put_count += 1
+        self.send_response(204)
+        self.end_headers()
+
     def log_message(self, *_args):
         pass
 
     def do_GET(self):
         route = self.path.split("?", 1)[0]
+        if route in ("/version", "/put-count"):
+            body = b'{"version":"v1.19.32"}' if route == "/version" else str(Handler.put_count).encode()
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         self.send_response(503 if route == "/error" else 200)
         if route == "/exact":
             self.send_header("Content-Length", "1024")

@@ -199,6 +199,7 @@ public struct CoreAPI {
         return try JSONDecoder().decode(Response.self, from: await request("/version")).version
     }
     public func reload(_ config: Data) async throws {
+        try validateConfigurationCoreVersion(await version())
         guard let payload = String(data: config, encoding: .utf8) else { throw MihomoGUIError("配置编码错误") }
         let body = try JSONSerialization.data(withJSONObject: ["payload": payload])
         _ = try await request("/configs?force=true", method: "PUT", body: body)

@@ -28,6 +28,7 @@ if ! /usr/bin/lipo "$CORE_FILE" -verify_arch "$ARCH" >/dev/null 2>&1; then
   exit 1
 fi
 python3 scripts/resources.py verify "$ARCH"
+python3 scripts/check-core-version.py "$ARCH"
 BUILD_DIR="$PWD/.build/manual"
 mkdir -p "$BUILD_DIR"
 export CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache"

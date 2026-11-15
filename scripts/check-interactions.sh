@@ -36,6 +36,11 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("fixture")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
+        try validateConfigurationCoreVersion("v" + configurationCoreVersion)
+        try validateConfigurationCoreVersion(configurationCoreVersion)
+        for version in ["v1.19.32", "v1.19.35", "v1.19.34-dirty", "", "unexpected"] {
+            try expectFailure("unreviewed core version is rejected") { try validateConfigurationCoreVersion(version) }
+        }
         let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
         let damaged = directory.appendingPathComponent("damaged")
@@ -84,6 +89,15 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         }
         guard named == 0 else { throw MihomoGUIError("fixture port failed") }
         let lostResponse = Task.detached {
+            // The schema gate must receive a matching version before reload.
+            let versionPeer = accept(listener, nil, nil)
+            guard versionPeer >= 0 else { return }
+            var request = [UInt8](repeating: 0, count: 4096)
+            _ = read(versionPeer, &request, request.count)
+            let body = "{\"version\":\"v" + configurationCoreVersion + "\"}"
+            let response = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n" + body
+            _ = response.withCString { write(versionPeer, $0, response.utf8.count) }
+            close(versionPeer)
             let peer = accept(listener, nil, nil)
             guard peer >= 0 else { return }
             var bytes = [UInt8](repeating: 0, count: 4096)
@@ -276,6 +290,16 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
             }
             try check(try FileManager.default.contentsOfDirectory(atPath: downloadDirectory.path).isEmpty, "failed download removes partial file")
         }
+        guard let fixturePort = Int(downloadPort) else { throw MihomoGUIError("invalid fixture port") }
+        let oldCore = CoreAPI(secret: "fixture", port: fixturePort)
+        do {
+            try await oldCore.reload(Data("mixed-port: 0".utf8))
+            throw MihomoGUIError("unreviewed API version accepted a reload")
+        } catch let failure as MihomoGUIError {
+            try check(failure.message.contains("版本与配置字段不匹配"), "mismatched running version reports compatibility error")
+        }
+        let putCount = try await oldCore.request("/put-count")
+        try check(String(data: putCount, encoding: .utf8) == "0", "mismatched running core receives no mutation")
         let cancelRequest = try downloadRequest("/cancel")
         let activeDownload = Task { try await downloadLimited(cancelRequest, maximumBytes: 1024 * 1024, directory: downloadDirectory) }
         for _ in 0..<100 {

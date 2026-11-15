@@ -1,6 +1,15 @@
 // Configuration fields reviewed against local Meta-Docs; maintain directly after semantic review.
-// Typed defaults follow bundled mihomo v1.19.32; hints remain documentation examples.
+// Existing fields reviewed through mihomo v1.19.34; hints remain documentation examples.
 import Foundation
+
+// Updating the bundled core requires a field/default compatibility review first.
+public let configurationCoreVersion = "1.19.34"
+
+public func validateConfigurationCoreVersion(_ version: String) throws {
+    guard version == configurationCoreVersion || version == "v" + configurationCoreVersion else {
+        throw MihomoGUIError("内核版本与配置字段不匹配；当前仅支持 mihomo v" + configurationCoreVersion + "，请安装匹配版本的应用并重新启动服务")
+    }
+}
 
 let docSchemaJSON = #"""
 {
@@ -433,11 +442,11 @@ let docSchemaJSON = #"""
           "title": "global-ua",
           "kind": "string",
           "hint": "clash.meta",
-          "description": "下载外部资源时使用的 User-Agent，内核默认值为 clash.meta。",
+          "description": "下载外部资源时使用的 User-Agent，当前内核默认值为 clash.meta/v1.19.34。",
           "required": false,
           "document": "general.md",
           "defaultHint": "clash.meta",
-          "defaultValue": "clash.meta/v1.19.32"
+          "defaultValue": "clash.meta/v1.19.34"
         },
         {
           "path": "etag-support",
@@ -5255,7 +5264,7 @@ let docSchemaJSON = #"""
           "title": "reuse",
           "kind": "boolean",
           "hint": "false",
-          "description": "Snell 复用选项，仅版本 4、5 支持，默认 false。",
+          "description": "Snell 复用选项，版本 4、5、6 可选，默认 false；版本 2 固定启用。",
           "required": false,
           "document": "proxies/snell.md",
           "defaultValue": false
@@ -5388,7 +5397,7 @@ let docSchemaJSON = #"""
           "title": "version",
           "kind": "integer",
           "hint": "4",
-          "description": "Snell 协议版本，支持 1、2、3、4、5；仅 3、4、5 支持 UDP。文档未声明默认版本。",
+          "description": "Snell 协议版本，支持 1、2、3、4、5、6；3、4、5、6 支持 UDP。版本 6 的 PSK 须为 12–255 字节，不支持 http/tls 混淆。",
           "required": false,
           "document": "proxies/snell.md"
         }
@@ -12003,11 +12012,11 @@ let docSchemaJSON = #"""
       "title": "global-ua",
       "kind": "string",
       "hint": "clash.meta",
-      "description": "下载外部资源时使用的 User-Agent，内核默认值为 clash.meta。",
+      "description": "下载外部资源时使用的 User-Agent，当前内核默认值为 clash.meta/v1.19.34。",
       "required": false,
       "defaultHint": "clash.meta",
       "document": "general.md",
-      "defaultValue": "clash.meta/v1.19.32"
+      "defaultValue": "clash.meta/v1.19.34"
     },
     {
       "path": "etag-support",
