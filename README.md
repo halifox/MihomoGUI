@@ -12,7 +12,7 @@
 [![macOS 13+](https://img.shields.io/badge/macOS-13%2B-000000)](#安装)
 [![Apple Silicon / Intel](https://img.shields.io/badge/architecture-arm64%20%2F%20x86__64-555555)](#环境要求)
 
-[项目初衷](#项目初衷) · [功能](#功能概览) · [安装](#安装) · [构建](#从源码运行与构建) · [数据与隐私](#数据与隐私)
+[项目初衷](#项目初衷) · [功能](#功能概览) · [预览](#界面预览) · [安装](#安装) · [构建](#从源码运行与构建) · [数据与隐私](#数据与隐私)
 
 </div>
 
@@ -37,6 +37,71 @@
 - **运行监控**：查看内核版本、内存、实时速率、累计流量、活动连接和配置预览，按需断开连接。
 - **实时日志**：在日志页面查看内核日志，仅在页面打开时接收。
 - **独立服务**：通过特权辅助服务管理内核，退出 GUI 后继续运行。
+
+## 界面预览
+
+默认展示全局配置与新建表单，每行三张，点击截图可查看原图。表单截图同时包含完整应用主窗口、侧栏和页面背景，保留默认尺寸与滚动方式，未填入真实凭据；路由规则使用 `example.com` 演示，未保存。
+
+<table>
+  <tr>
+    <th>全局配置</th>
+    <th>新建出站代理 · Hysteria2</th>
+    <th>新建出站代理 · VLESS</th>
+  </tr>
+  <tr>
+    <td width="33%"><a href="screenshots/general-configuration.jpg"><img src="screenshots/general-configuration.jpg" alt="全局配置" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/new-outbound-proxy.jpg"><img src="screenshots/new-outbound-proxy.jpg" alt="新建出站代理 · Hysteria2" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/new-outbound-vless.jpg"><img src="screenshots/new-outbound-vless.jpg" alt="新建出站代理 · VLESS" width="100%" /></a></td>
+  </tr>
+  <tr>
+    <th>新建代理分组</th>
+    <th>新建规则集合</th>
+    <th>新建路由规则</th>
+  </tr>
+  <tr>
+    <td width="33%"><a href="screenshots/new-proxy-group.jpg"><img src="screenshots/new-proxy-group.jpg" alt="新建代理分组" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/new-rule-provider.jpg"><img src="screenshots/new-rule-provider.jpg" alt="新建规则集合" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/new-route-rule.jpg"><img src="screenshots/new-route-rule.jpg" alt="新建路由规则" width="100%" /></a></td>
+  </tr>
+</table>
+
+<details>
+<summary>展开更多截图（全部主页面）</summary>
+
+以下为其他主页面的完整窗口截图。内核未连接，代理分组与规则集合尚未添加，活动连接与日志为空。截图不展示订阅 URL、节点凭据或 API 密钥。
+
+<table>
+  <tr>
+    <th>仪表盘</th>
+    <th>代理订阅</th>
+    <th>出站代理</th>
+  </tr>
+  <tr>
+    <td width="33%"><a href="screenshots/dashboard.jpg"><img src="screenshots/dashboard.jpg" alt="仪表盘" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/subscriptions.jpg"><img src="screenshots/subscriptions.jpg" alt="代理订阅" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/outbound-proxies.jpg"><img src="screenshots/outbound-proxies.jpg" alt="出站代理" width="100%" /></a></td>
+  </tr>
+  <tr>
+    <th>代理分组</th>
+    <th>规则集合</th>
+    <th>路由规则</th>
+  </tr>
+  <tr>
+    <td width="33%"><a href="screenshots/proxy-groups.jpg"><img src="screenshots/proxy-groups.jpg" alt="代理分组" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/rule-providers.jpg"><img src="screenshots/rule-providers.jpg" alt="规则集合" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/rules.jpg"><img src="screenshots/rules.jpg" alt="路由规则" width="100%" /></a></td>
+  </tr>
+  <tr>
+    <th>活动连接</th>
+    <th>内核日志</th>
+  </tr>
+  <tr>
+    <td width="33%"><a href="screenshots/connections.jpg"><img src="screenshots/connections.jpg" alt="活动连接" width="100%" /></a></td>
+    <td width="33%"><a href="screenshots/core-logs.jpg"><img src="screenshots/core-logs.jpg" alt="内核日志" width="100%" /></a></td>
+  </tr>
+</table>
+
+</details>
 
 ## 安装
 
