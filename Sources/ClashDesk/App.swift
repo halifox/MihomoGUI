@@ -4,6 +4,7 @@ import ClashCore
 
 @main
 struct ClashDeskApp: App {
+    @NSApplicationDelegateAdaptor(DeskAppDelegate.self) private var appDelegate
     @StateObject private var model = DeskModel()
     var body: some Scene {
         WindowGroup("ClashDesk") {
@@ -18,6 +19,12 @@ struct ClashDeskApp: App {
                 Button("启动 Clash 内核") { model.startCore() }.disabled(model.busy || model.coreActive)
             }
         }
+    }
+}
+
+final class DeskAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
+        true
     }
 }
 
