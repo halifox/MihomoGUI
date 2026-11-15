@@ -107,6 +107,8 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         let confirmed = MihomoGUIModel(directory: uncertainDirectory)
         try check(!confirmed.runtimeConfigurationUncertain, "confirmed configuration needs no recovery marker")
 
+        let commaProxy = ManualProxy(type: "ss", fields: ["name": .string("node,comma"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
+        try expectFailure("manual proxy names cannot break CSV rule targets") { _ = try commaProxy.configuration() }
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
