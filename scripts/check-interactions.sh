@@ -159,6 +159,53 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
                             removing: ["providers/" + deletedSource.id + ".yaml"], write: { _, _ in throw MihomoGUIError("injected failure") })
         }
         try check(try Data(contentsOf: credentialFile) == credential, "failed transaction restores deleted credentials")
+        // Fail each write boundary after deleting a credential cache. Both old bytes
+        // and newly-created files must recover as one transaction.
+        let transactionDirectory = directory.appendingPathComponent("transaction-boundaries")
+        try FileManager.default.createDirectory(at: transactionDirectory, withIntermediateDirectories: true)
+        let oldSettings = Data("old-settings".utf8)
+        let oldCache = Data("old-cache".utf8)
+        for failureIndex in 0..<3 {
+            try oldSettings.write(to: transactionDirectory.appendingPathComponent("settings.json"))
+            try oldCache.write(to: transactionDirectory.appendingPathComponent("cache.yaml"))
+            var writeIndex = 0
+            try expectFailure("transaction failure at write boundary") {
+                try commitFiles([("new.yaml", Data("new".utf8)), ("settings.json", Data("changed".utf8)),
+                                 ("last.yaml", Data("last".utf8))], directory: transactionDirectory,
+                                removing: ["cache.yaml"], write: { data, destination in
+                    defer { writeIndex += 1 }
+                    if writeIndex == failureIndex { throw MihomoGUIError("injected boundary failure") }
+                    try data.write(to: destination, options: .atomic)
+                })
+            }
+            try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("settings.json")) == oldSettings,
+                      "every failure boundary restores existing settings bytes")
+            try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("cache.yaml")) == oldCache,
+                      "every failure boundary restores deleted cache bytes")
+            for name in ["new.yaml", "last.yaml", "file-commit"] {
+                try check(!FileManager.default.fileExists(atPath: transactionDirectory.appendingPathComponent(name).path),
+                          "failed transaction removes new files and completed journal")
+            }
+        }
+        // Reproduce the on-disk state left by an interrupted process, then recover
+        // through the public recovery path twice to verify restart idempotence.
+        let journal = transactionDirectory.appendingPathComponent("file-commit")
+        try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false)
+        try oldSettings.write(to: journal.appendingPathComponent("old-0"))
+        try oldCache.write(to: journal.appendingPathComponent("old-2"))
+        try JSONEncoder().encode(["settings.json", "new.yaml", "cache.yaml"]).write(to: journal.appendingPathComponent("manifest.json"))
+        try Data().write(to: journal.appendingPathComponent("ready"))
+        try Data("partial".utf8).write(to: transactionDirectory.appendingPathComponent("settings.json"))
+        try Data("new".utf8).write(to: transactionDirectory.appendingPathComponent("new.yaml"))
+        try FileManager.default.removeItem(at: transactionDirectory.appendingPathComponent("cache.yaml"))
+        try recoverFileCommit(directory: transactionDirectory)
+        try recoverFileCommit(directory: transactionDirectory)
+        try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("settings.json")) == oldSettings,
+                  "restart restores original settings")
+        try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("cache.yaml")) == oldCache,
+                  "restart restores removed credential cache")
+        try check(!FileManager.default.fileExists(atPath: transactionDirectory.appendingPathComponent("new.yaml").path),
+                  "restart removes partially committed new file")
         deletionModel.deleteSubscription(deletedSource)
         try check(deletionModel.error == nil && deletionModel.settings.subscriptions.isEmpty,
                   "subscription deletion commits settings")
