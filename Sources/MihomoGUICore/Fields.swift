@@ -265,6 +265,13 @@ public func controllerEndpoint(_ settings: Settings) throws -> (host: String, po
     let destination = host == "0.0.0.0" ? "127.0.0.1" : host == "::" || host == "[::]" ? "::1" : host
     let secret = settings.options?["secret"]?.text ?? settings.secret
     guard !secret.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw MihomoGUIError("secret 不能包含控制字符") }
+    // Only numeric loopback addresses are trusted without authentication; hostnames can resolve elsewhere.
+    let numericHost = host.trimmingCharacters(in: CharacterSet(charactersIn: "[]"))
+    var ipv4 = in_addr()
+    let loopback = numericHost == "::1" || (inet_pton(AF_INET, numericHost, &ipv4) == 1 && UInt32(bigEndian: ipv4.s_addr) >> 24 == 127)
+    guard loopback || !secret.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        throw MihomoGUIError("非回环控制接口必须设置非空 secret")
+    }
     return (destination, port, secret)
 }
 

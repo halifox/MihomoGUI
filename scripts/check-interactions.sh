@@ -42,6 +42,19 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
             let overridden = ManualProxy(type: "ss", fields: [path: .string("direct")])
             try expectFailure("extra fields cannot override protocol") { _ = try overridden.configuration() }
         }
+        var controllerSettings = Settings()
+        controllerSettings.options = ["secret": .string("")]
+        for host in ["127.0.0.1", "127.2.3.4", "[::1]"] {
+            controllerSettings.options?["external-controller"] = .string(host + ":19090")
+            _ = try controllerEndpoint(controllerSettings)
+        }
+        for host in ["0.0.0.0", "[::]", "192.0.2.1", "localhost"] {
+            controllerSettings.options?["external-controller"] = .string(host + ":19090")
+            try expectFailure("non-loopback controller requires authentication") { _ = try controllerEndpoint(controllerSettings) }
+            controllerSettings.options?["secret"] = .string("fixture-secret")
+            _ = try controllerEndpoint(controllerSettings)
+            controllerSettings.options?["secret"] = .string("")
+        }
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
