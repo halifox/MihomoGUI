@@ -40,7 +40,7 @@ feat: add connection details
 docs: clarify installation requirements
 ```
 
-Issue 表单与 PR 模板提供必要信息提示。`.github/CODEOWNERS` 将评审请求分配给仓库所有者；该文件本身不强制审批，是否要求批准由仓库规则控制。
+Issue 表单与 PR 模板提供必要信息提示。`.github/CODEOWNERS` 将评审请求分配给仓库所有者；该文件本身不强制审批，是否要求批准由仓库规则控制。`main` 的保护要求与管理方式见[仓库设置](docs/repository-settings.md)；合入必须走 PR 并通过必需检查。
 
 PR 说明应包含问题、变更后的行为、验证方式及必要限制。界面变更可提供截图；修改配置生成或请求语义时，应说明对未设置值、空值和默认值的影响。
 
