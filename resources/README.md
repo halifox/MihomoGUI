@@ -1,5 +1,20 @@
 # 内置资源
 
+## 自动下载与更新
+
+CI 使用 `manifest.json` 固定 mihomo arm64 内核和四份 GEO 数据的上游资产 ID、来源与 SHA-256。已安装 GitHub CLI 并设置 `GH_TOKEN` 后，可执行：
+
+```sh
+python3 scripts/resources.py download
+bash scripts/build.sh
+```
+
+内核与数据下载到下述现有目录，不提交 Git。更新清单使用 `python3 scripts/resources.py update`，定时工作流也会执行此命令并创建 PR。清单摘要针对上游原始文件（内核为 gzip 文件），下载校验后才解压。
+
+上游使用可变的 `latest` 发布时，资产 ID 可以防止下载被替换的文件，但不能保证上游永久保留旧资产。旧资产被删除时构建会失败，需要更新清单；不会自动回退到未经确认的新资源。清单中的 URL 用于追溯来源，实际通过 GitHub API 按资产 ID 下载。
+
+发布前须核对所选内核和数据的许可证及归属要求；自动下载不会改变这些要求。
+
 `AppIcon.png` 是应用图标的 1024 × 1024 PNG 源图，也用于 README 展示；
 `AppIcon.icns` 包含 macOS 所需的多尺寸图标，由构建脚本复制到应用资源目录。
 

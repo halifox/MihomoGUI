@@ -1,0 +1,20 @@
+Bundled third-party resources
+
+mihomo: MetaCubeX/mihomo and its contributors, GPL-3.0.
+Source: https://github.com/MetaCubeX/mihomo
+The exact bundled release tag is recorded in resources-manifest.json.
+License: mihomo-GPL-3.0.txt
+
+Country.mmdb, geoip.dat, geosite.dat: MetaCubeX/meta-rules-dat and its
+upstream data contributors, GPL-3.0 repository license.
+Source and upstream attribution: https://github.com/MetaCubeX/meta-rules-dat
+License: meta-rules-dat-GPL-3.0.txt
+
+ASN.mmdb: xishang0128/geoip and its upstream data contributors,
+CC BY-SA 4.0 repository license. Renamed from GeoLite2-ASN.mmdb;
+the downloaded data is otherwise unmodified.
+Source and upstream attribution: https://github.com/xishang0128/geoip
+License: geoip-CC-BY-SA-4.0.txt
+
+The included resource manifest records asset identities, digests and source
+URLs. Upstream repositories document additional data sources and attribution.

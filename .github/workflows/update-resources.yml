@@ -1,0 +1,38 @@
+name: Update bundled resources
+on:
+  schedule:
+    - cron: '0 3 * * 1'
+  workflow_dispatch:
+permissions:
+  contents: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: update-resources
+  cancel-in-progress: false
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+      - name: Check upstream releases
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/resources.py update
+      - uses: peter-evans/create-pull-request@v7
+        id: pr
+        with:
+          branch: automation/update-resources
+          commit-message: 'fix(deps): update bundled mihomo and GEO resources'
+          title: 'fix(deps): update bundled mihomo and GEO resources'
+          body: |
+            Updates pinned upstream resource assets and SHA-256 digests.
+            Review mihomo compatibility and upstream resource licensing before merging.
+          add-paths: resources/manifest.json
+      - name: Validate resource update branch
+        if: steps.pr.outputs.pull-request-operation == 'created' || steps.pr.outputs.pull-request-operation == 'updated'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --ref automation/update-resources

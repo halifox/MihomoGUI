@@ -1,0 +1,76 @@
+name: Build macOS arm64
+on:
+  pull_request:
+    branches: [main]
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: Existing release tag (empty means build only)
+        required: false
+        type: string
+  workflow_call:
+    inputs:
+      release_tag:
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: build-${{ inputs.release_tag || github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.release_tag || github.ref }}
+      - name: Check architecture and release version
+        env:
+          RELEASE_TAG: ${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || '' }}
+        run: |
+          test "$(uname -m)" = arm64
+          if [ -n "$RELEASE_TAG" ]; then
+            test "$RELEASE_TAG" = "v$(cat VERSION)"
+          fi
+      - name: Download bundled resources
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: python3 scripts/resources.py download
+      - name: Build application
+        run: bash scripts/build.sh
+      - name: Run interaction checks
+        run: bash scripts/check-interactions.sh
+      - name: Verify and archive application
+        run: |
+          codesign --verify --deep --strict dist/mihomo.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/mihomo.app/Contents/Info.plist)" = "$(cat VERSION)"
+          ditto -c -k --sequesterRsrc --keepParent dist/mihomo.app "dist/mihomo-v$(cat VERSION)-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mihomo-macos-arm64
+          path: dist/*.zip
+          if-no-files-found: error
+          retention-days: 7
+  upload:
+    needs: build
+    if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mihomo-macos-arm64
+          path: release
+      - name: Upload release archive
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
+        run: |
+          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"; then
+            gh release create "$RELEASE_TAG" --verify-tag --generate-notes --repo "$GITHUB_REPOSITORY"
+          fi
+          gh release upload "$RELEASE_TAG" release/*.zip --clobber --repo "$GITHUB_REPOSITORY"

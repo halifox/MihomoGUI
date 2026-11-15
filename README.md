@@ -105,10 +105,10 @@
 
 ### macOS
 
-从 [GitHub Packages](https://github.com/halifox/macos_clash/packages) 下载适合自己 Mac 架构的安装包，打开后将 `mihomo.app` 放入“应用程序”目录。
+从 [GitHub Releases](https://github.com/halifox/macos_clash/releases) 下载 `mihomo-v版本号-macos-arm64.zip`，解压后将 `mihomo.app` 放入“应用程序”目录。自动发布包仅提供 Apple Silicon 版本。
 
 - **Apple Silicon（M 系列芯片）**：选择 `arm64` 安装包。
-- **Intel 芯片**：选择 `x86_64` 安装包。
+- **Intel 芯片**：需要自行准备对应内核并从源码构建。
 
 需要 macOS 13 或更高版本。应用已包含 mihomo 内核与 GEO 数据，无需另行下载。
 
@@ -259,6 +259,18 @@ resources/             构建所需的内核与 GEO 数据
 mihomo 内核、GEO 数据及其他第三方资源遵循各自的许可证与使用条件，不因随应用打包而改变。分发应用时，应保留所使用内核及数据要求的许可和归属说明，资源准备要求见 [resources/README.md](resources/README.md)。
 
 ## 参与贡献
+
+### 自动构建与发布
+
+版本由根目录 `VERSION` 管理，首次自动发布为 `v1.0.0`。提交使用 Conventional Commits：`fix:` 触发补丁发布，`feat:` 触发功能发布，破坏性变更使用 `!` 或 `BREAKING CHANGE:`。推送 `main` 后 Release Please 维护版本与 CHANGELOG 发布 PR；合并后创建 Release 并直接调用 arm64 构建工作流。
+
+仓库 Settings → Actions → General 需要允许 GitHub Actions 创建和批准 Pull Request。工作流使用内置 `GITHUB_TOKEN`，无需配置签名证书；应用继续使用临时签名，未进行 Apple 公证。首次启用自动化的提交建议使用 `feat: add automated macOS releases`，使其进入首次发布。
+
+`Build macOS arm64` 支持手动运行：`release_tag` 留空只构建，填写已有 `v版本号` 标签则为该版本构建并上传 ZIP；标签必须与 `VERSION` 一致。手动推送 `v*` 标签也会构建并上传。两个触发方式均构建标签对应源码，产物在 Actions 保留 7 天。
+
+Dependabot 每周创建 Actions 更新 PR；`Update bundled resources` 每周一 UTC 03:00 检查内核和 GEO 更新，创建资源清单更新 PR，并主动触发其分支构建。资源更新不自动合并。Release Please 创建或更新发布 PR 后也会主动触发分支构建，补足内置令牌创建 PR 不触发 `pull_request` 工作流的限制。
+
+发布构建检查资源摘要、arm64 架构、交互回归、应用版本和签名后上传 ZIP，不生成 SHA256SUMS 附件。CI 无法替代真实环境下的管理员授权、TUN 和网络切换验证。构建失败时 Release 可能已经创建，可修复后为相应标签重新构建。
 
 欢迎提交问题、改进建议和 Pull Request。修改代码前，请阅读 [AGENTS.md](AGENTS.md) 中的工程规范。
 

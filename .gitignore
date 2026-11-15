@@ -1,3 +1,5 @@
 .build/
 dist/
 .DS_Store
+resources/core/
+resources/geodata/

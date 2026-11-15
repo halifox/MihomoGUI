@@ -2,6 +2,11 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 SECONDS=0
+VERSION="$(cat VERSION)"
+if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+  printf 'Invalid VERSION: expected major.minor.patch\n' >&2
+  exit 1
+fi
 trap 'printf "Build failed after %ss (line %s).\n" "$SECONDS" "$LINENO" >&2' ERR
 printf '[1/6] Checking bundled resources and architecture...\n'
 ARCH="$(uname -m)"
@@ -36,13 +41,15 @@ APP_DIR="$PWD/dist/mihomo.app"
 mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Contents/Resources/geodata"
 cp "$BUILD_DIR/mihomo-app" "$APP_DIR/Contents/MacOS/mihomo-app"
 cp resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
+cp -R resources/licenses "$APP_DIR/Contents/Resources/"
+cp resources/manifest.json "$APP_DIR/Contents/Resources/resources-manifest.json"
 cp "$BUILD_DIR/mihomo-helper" "$APP_DIR/Contents/Helpers/mihomo-helper"
 cp "$CORE_FILE" "$APP_DIR/Contents/Helpers/mihomo"
 chmod 755 "$APP_DIR/Contents/Helpers/mihomo"
 for name in Country.mmdb geoip.dat geosite.dat ASN.mmdb; do
   cp "$GEO_DIR/$name" "$APP_DIR/Contents/Resources/geodata/$name"
 done
-cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
+cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0"><dict>
@@ -51,8 +58,8 @@ cat > "$APP_DIR/Contents/Info.plist" <<'PLIST'
 <key>CFBundleName</key><string>mihomo</string>
 <key>CFBundleIconFile</key><string>AppIcon</string>
 <key>CFBundlePackageType</key><string>APPL</string>
-<key>CFBundleShortVersionString</key><string>0.5.0</string>
-<key>CFBundleVersion</key><string>5</string>
+<key>CFBundleShortVersionString</key><string>$VERSION</string>
+<key>CFBundleVersion</key><string>$VERSION</string>
 <key>LSMinimumSystemVersion</key><string>13.0</string>
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>

@@ -1,0 +1,43 @@
+name: Prepare and publish release
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+permissions:
+  contents: write
+  issues: write
+  pull-requests: write
+  actions: write
+concurrency:
+  group: release-please-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  release-please:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    outputs:
+      release_created: ${{ steps.release.outputs.release_created }}
+      tag_name: ${{ steps.release.outputs.tag_name }}
+    steps:
+      - uses: googleapis/release-please-action@v4
+        id: release
+        with:
+          target-branch: main
+          config-file: release-please-config.json
+          manifest-file: .release-please-manifest.json
+      - name: Validate release PR branches
+        if: steps.release.outputs.prs_created == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh pr list --repo "$GITHUB_REPOSITORY" --state open --label 'autorelease: pending' \
+            --json headRefName --jq '.[].headRefName' > "$RUNNER_TEMP/release-branches"
+          while IFS= read -r branch; do
+            gh workflow run build.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          done < "$RUNNER_TEMP/release-branches"
+  build-release:
+    needs: release-please
+    if: needs.release-please.outputs.release_created == 'true'
+    uses: ./.github/workflows/build.yml
+    with:
+      release_tag: ${{ needs.release-please.outputs.tag_name }}
