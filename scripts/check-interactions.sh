@@ -223,6 +223,24 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try await controller.reload(generateConfig(filteredSettings))
         let filteredResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
         try check(filteredResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 0)], "real core group contains matching original-name alias only")
+        filteredSettings.proxyGroups?[0].fields = ["include-all-proxies": .boolean(true), "exclude-filter": .string("^HongKong")]
+        try await controller.reload(generateConfig(filteredSettings))
+        var exclusionResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
+        try check(exclusionResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 1)], "real core excludes subscription original name")
+        filteredSettings.proxyGroups?[0].fields["default-selected"] = .string("node:" + Node(provider: filterSource.provider, name: "HongKong-01").id)
+        try expectFailure("excluded default selection is rejected") { _ = try generateConfig(filteredSettings) }
+        filteredSettings.proxyGroups?[0].fields["default-selected"] = nil
+        filteredSettings.proxyGroups?[0].fields["exclude-type"] = .string("sHaDoWsOcKs")
+        try check(proxyGroupTargets(filteredSettings.proxyGroups![0], settings: filteredSettings) == ["builtin:COMPATIBLE"], "type exclusion exposes actual empty fallback in GUI")
+        try await controller.reload(generateConfig(filteredSettings))
+        exclusionResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
+        try check(exclusionResponse?["all"] as? [String] == ["COMPATIBLE"], "real core matches excluded-type fallback")
+        filteredSettings.proxyGroups?[0].targets = ["node:" + Node(provider: filterSource.provider, name: "Tokyo-01").id]
+        filteredSettings.proxyGroups?[0].fields = ["exclude-filter": .string("Tokyo"), "empty-fallback": .string("REJECT")]
+        try await controller.reload(generateConfig(filteredSettings))
+        exclusionResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
+        try check(exclusionResponse?["all"] as? [String] == ["REJECT"], "explicit members obey name exclusion and configured fallback")
+        filteredSettings.proxyGroups?[0].fields = ["include-all-proxies": .boolean(true)]
         filteredSettings.proxyGroups?[0].fields["filter"] = .string("[")
         try expectFailure("invalid original-name filter is reported") { _ = try generateConfig(filteredSettings) }
         var providerSettings = Settings()

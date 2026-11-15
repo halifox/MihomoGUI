@@ -64,6 +64,21 @@ public func referencedNode(_ target: String) -> Node? {
 // Shared by the member pickers and default-selection validation.
 public func proxyGroupTargets(_ group: ProxyGroup, settings: Settings) -> [String] {
     var targets = group.targets
+    var metadata: [String: (name: String, type: String)] = [:]
+    func record(_ target: String, name: String, type: String) {
+        // AdapterType.String() in bundled mihomo v1.19.34.
+        let aliases = ["ss": "shadowsocks", "ssr": "shadowsocksr", "select": "selector"]
+        metadata[target] = (name, aliases[type] ?? type.lowercased().replacingOccurrences(of: "-", with: ""))
+    }
+    for proxy in settings.manualProxies ?? [] { record("node:" + proxy.node.id, name: proxy.name, type: proxy.type) }
+    for source in settings.subscriptions {
+        for entry in settings.subscriptionProxies?[source.id] ?? [] {
+            guard let name = entry.object["name"]?.text else { continue }
+            record("node:" + Node(provider: source.provider, name: name).id, name: name, type: entry.object["type"]?.text ?? "")
+        }
+    }
+    for member in settings.proxyGroups ?? [] { record("group:" + member.name, name: member.name, type: member.type) }
+    for name in ["DIRECT", "REJECT", "REJECT-DROP", "COMPATIBLE"] { record("builtin:" + name, name: name, type: name) }
     if group.fields["include-all-proxies"] == .boolean(true) {
         var imported: [(target: String, name: String)] = (settings.manualProxies ?? []).map {
             ("node:" + $0.node.id, $0.name)
@@ -84,8 +99,18 @@ public func proxyGroupTargets(_ group: ProxyGroup, settings: Settings) -> [Strin
             }
         }
     }
+    let exclude = group.fields["exclude-filter"]?.text ?? ""
+    let types = (group.fields["exclude-type"]?.text ?? "").components(separatedBy: "|").map { $0.lowercased() }
+    targets = targets.filter { target in
+        guard let member = metadata[target] else { return true } // Reference validation reports unavailable members.
+        if types.contains(member.type) { return false }
+        return exclude.isEmpty || !exclude.components(separatedBy: "`").contains {
+            member.name.range(of: $0, options: .regularExpression) != nil
+        }
+    }
     var seen = Set<String>()
-    return targets.filter { seen.insert($0).inserted }
+    targets = targets.filter { seen.insert($0).inserted }
+    return targets.isEmpty ? ["builtin:" + (group.fields["empty-fallback"]?.text ?? "COMPATIBLE")] : targets
 }
 
 public func validateProxyGroups(_ settings: Settings) throws {
@@ -100,7 +125,9 @@ public func validateProxyGroups(_ settings: Settings) throws {
               !manualNames.contains(group.name) else { throw MihomoGUIError("代理组名称无效或与代理名称重复") }
         guard ["select", "url-test", "fallback", "load-balance"].contains(group.type) else { throw MihomoGUIError("不支持的代理组类型") }
         try validateFieldValues(group.fields, schema: groupEditorFields(group.type))
-        if group.fields["include-all-proxies"] == .boolean(true), let filter = group.fields["filter"]?.text, !filter.isEmpty {
+        for key in ["filter", "exclude-filter"] {
+            guard key == "exclude-filter" || group.fields["include-all-proxies"] == .boolean(true),
+                  let filter = group.fields[key]?.text, !filter.isEmpty else { continue }
             for expression in filter.components(separatedBy: "`") {
                 guard (try? NSRegularExpression(pattern: expression)) != nil else { throw MihomoGUIError("节点筛选表达式不受支持或语法无效") }
             }
