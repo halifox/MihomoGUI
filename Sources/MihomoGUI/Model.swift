@@ -510,11 +510,9 @@ final class MihomoGUIModel: ObservableObject {
                     // A lost response cannot prove that the core kept its previous configuration.
                     self.runtimeConfigurationUncertain = true
                     try await controller.reload(config)
-                    var configurationPersisted = false
                     var runtimeSaveAttempted = false
                     do {
                         try await persistCoreConfiguration(config)
-                        configurationPersisted = true
                         runtimeSaveAttempted = true
                         try saveRuntimeSettings(snapshot, to: self.directory)
                     } catch {
@@ -526,10 +524,10 @@ final class MihomoGUIModel: ObservableObject {
                         }
                         do { try await controller.reload(previous) }
                         catch { failures.append("内核回滚失败：" + error.localizedDescription) }
-                        if configurationPersisted {
-                            do { try await persistCoreConfiguration(previous) }
-                            catch { failures.append("系统配置恢复失败：" + error.localizedDescription) }
-                        }
+                        // A transport failure can follow a successful write; always restore
+                        // the previous disk configuration before declaring rollback complete.
+                        do { try await persistCoreConfiguration(previous) }
+                        catch { failures.append("系统配置恢复失败：" + error.localizedDescription) }
                         if runtimeSaveAttempted {
                             do { try saveRuntimeSettings(previousSettings, to: self.directory) }
                             catch { failures.append("运行配置恢复失败：" + error.localizedDescription) }
