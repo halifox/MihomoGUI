@@ -41,18 +41,22 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
     var applicationCode: SecCode?
     var applicationStaticCode: SecStaticCode?
     var helperCode: SecStaticCode?
+    var coreCode: SecStaticCode?
+    let core = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo")
     guard SecCodeCopySelf([], &applicationCode) == errSecSuccess, let applicationCode,
           SecCodeCopyStaticCode(applicationCode, [], &applicationStaticCode) == errSecSuccess,
           let applicationStaticCode,
           SecStaticCodeCreateWithPath(source as CFURL, [], &helperCode) == errSecSuccess,
-          let helperCode else { throw MihomoGUIError("特权辅助服务或应用签名缺失，请使用打包后的应用") }
+          let helperCode,
+          SecStaticCodeCreateWithPath(core as CFURL, [], &coreCode) == errSecSuccess, let coreCode else { throw MihomoGUIError("特权辅助服务或应用签名缺失，请使用打包后的应用") }
     let clientRequirement = try signingRequirement(applicationStaticCode)
     let helperRequirement = try signingRequirement(helperCode)
+    let coreRequirement = try signingRequirement(coreCode)
     let installed = "/Library/PrivilegedHelperTools/" + privilegedServiceLabel
     let plistPath = "/Library/LaunchDaemons/" + privilegedServiceLabel + ".plist"
     let plist: [String: Any] = [
         "Label": privilegedServiceLabel,
-        "ProgramArguments": [installed, String(getuid()), clientRequirement],
+        "ProgramArguments": [installed, String(getuid()), clientRequirement, coreRequirement],
         "MachServices": [privilegedServiceLabel: true],
         "RunAtLoad": true, "ProcessType": "Background", "Umask": 0o077
     ]

@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import Security
 import MihomoGUICore
 
 // Read through one descriptor so a user-controlled symlink cannot redirect a root read.
@@ -29,7 +30,7 @@ private func checkDirectory(_ path: String) throws {
           info.st_mode & 0o022 == 0 else { throw MihomoGUIError("系统操作目录权限无效") }
 }
 
-func executeOperation(_ operation: PrivilegedOperation, owner: uid_t) throws -> Int32 {
+func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequirement: String) throws -> Int32 {
     let stage = URL(fileURLWithPath: "/private/tmp").appendingPathComponent("MihomoGUI-operation-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: stage) }
@@ -53,6 +54,8 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t) throws -> 
     case .install(let source, let settings):
         try write(readInput(URL(fileURLWithPath: source).appendingPathComponent("mihomo").path, owner: owner), "mihomo")
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stage.appendingPathComponent("mihomo").path)
+        try verifyCore(at: stage.appendingPathComponent("mihomo"), requirement: coreRequirement)
+
         try write(generateConfig(settings), "config.yaml")
         let plist: [String: Any] = ["Label": coreLabel,
             "ProgramArguments": [installedCore, "-d", rootDirectory, "-f", rootDirectory + "/config.yaml"],
@@ -215,3 +218,14 @@ let stopCoreCommand = """
         exit 1
     fi
     """
+
+// The requirement is fixed by the administrator-authorized launchd installation.
+func verifyCore(at url: URL, requirement: String) throws {
+    var code: SecStaticCode?
+    var expected: SecRequirement?
+    guard SecStaticCodeCreateWithPath(url as CFURL, [], &code) == errSecSuccess, let code,
+          SecRequirementCreateWithString(requirement as CFString, [], &expected) == errSecSuccess, let expected,
+          SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate), expected) == errSecSuccess else {
+        throw MihomoGUIError("暂存内核签名与授权版本不匹配，请重新安装应用")
+    }
+}

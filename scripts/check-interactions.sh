@@ -235,6 +235,7 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
+import Security
 import MihomoGUICore
 
 @main struct PrivilegedChecks {
@@ -247,7 +248,7 @@ import MihomoGUICore
         let source = URL(fileURLWithPath: CommandLine.arguments[1])
         for name in ["../config.yaml", "set-0.yaml\n/bin/false", "/tmp/other"] {
             do {
-                _ = try executeOperation(.prepareRules(staging: source.path, id: UUID(), filenames: [name]), owner: getuid())
+                _ = try executeOperation(.prepareRules(staging: source.path, id: UUID(), filenames: [name]), owner: getuid(), coreRequirement: "invalid")
                 throw MihomoGUIError("unsafe rule filename accepted")
             } catch let error as MihomoGUIError {
                 guard error.message == "规则文件标识无效" else { throw error }
@@ -256,10 +257,27 @@ import MihomoGUICore
         let target = source.appendingPathComponent("mihomo")
         try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: "/bin/sh")
         do {
-            _ = try executeOperation(.install(staging: source.path, settings: Settings()), owner: getuid())
+            _ = try executeOperation(.install(staging: source.path, settings: Settings()), owner: getuid(), coreRequirement: "invalid")
             throw MihomoGUIError("symlink input accepted")
         } catch let error as MihomoGUIError {
             guard error.message == "无法读取操作输入" else { throw error }
+        }
+        let core = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("dist/MihomoGUI.app/Contents/Helpers/mihomo")
+        var code: SecStaticCode?
+        var information: CFDictionary?
+        guard SecStaticCodeCreateWithPath(core as CFURL, [], &code) == errSecSuccess, let code,
+              SecCodeCopySigningInformation(code, [], &information) == errSecSuccess,
+              let digest = (information as? [String: Any])?[kSecCodeInfoUnique as String] as? Data else {
+            throw MihomoGUIError("missing fixture signature")
+        }
+        let requirement = "cdhash H\"" + digest.map { String(format: "%02x", $0) }.joined() + "\""
+        try verifyCore(at: core, requirement: requirement)
+        do {
+            try verifyCore(at: core, requirement: "cdhash H\"0000000000000000000000000000000000000000\"")
+            throw MihomoGUIError("mismatched core signature accepted")
+        } catch let error as MihomoGUIError {
+            guard error.message.contains("签名") else { throw error }
         }
         print("PASS: privileged boundary rejects arbitrary commands, path traversal and symlink inputs")
     }
