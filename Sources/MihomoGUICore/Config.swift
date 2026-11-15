@@ -404,26 +404,34 @@ public func recoverFileCommit(directory: URL) throws {
     try? FileManager.default.removeItem(at: retired)
 }
 
-public func commitFiles(_ files: [(String, Data)], directory: URL, write: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws {
+public func commitFiles(_ files: [(String, Data)], directory: URL, removing: [String] = [], write: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws {
     try recoverFileCommit(directory: directory)
-    for file in files {
-        let target = directory.appendingPathComponent(file.0)
+    let names = files.map { $0.0 } + removing
+    guard Set(names).count == names.count, names.allSatisfy({ name in
+        !name.hasPrefix("/") && !name.isEmpty && name.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
+    }) else { throw MihomoGUIError("文件事务包含重复或无效路径") }
+    for name in names {
+        let target = directory.appendingPathComponent(name)
         if FileManager.default.fileExists(atPath: target.path),
            try target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true {
-            throw MihomoGUIError("保存目标不是普通文件：" + file.0)
+            throw MihomoGUIError("保存目标不是普通文件：" + name)
         }
     }
     let journal = directory.appendingPathComponent("file-commit")
     if FileManager.default.fileExists(atPath: journal.path) { try FileManager.default.removeItem(at: journal) }
     try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-    for (index, file) in files.enumerated() {
-        let target = directory.appendingPathComponent(file.0)
+    for (index, name) in names.enumerated() {
+        let target = directory.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.copyItem(at: target, to: journal.appendingPathComponent("old-\(index)")) }
     }
-    try JSONEncoder().encode(files.map { $0.0 }).write(to: journal.appendingPathComponent("manifest.json"))
+    try JSONEncoder().encode(names).write(to: journal.appendingPathComponent("manifest.json"))
     try Data().write(to: journal.appendingPathComponent("ready"))
     do {
+        for name in removing {
+            let target = directory.appendingPathComponent(name)
+            if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
+        }
         for file in files {
             let target = directory.appendingPathComponent(file.0)
             try write(file.1, target)

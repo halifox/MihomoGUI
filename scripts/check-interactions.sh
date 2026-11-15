@@ -125,6 +125,28 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         referenceModel.deleteManualProxy(referencedProxy)
         try check(referenceModel.error != nil && referenceModel.settings.manualProxies?.count == 1, "sub-rule references prevent proxy deletion")
         try generateConfig(referenceModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("subrule-renamed.yaml"))
+        let deletionDirectory = directory.appendingPathComponent("subscription-deletion")
+        try FileManager.default.createDirectory(at: deletionDirectory.appendingPathComponent("providers"), withIntermediateDirectories: true)
+        let deletionModel = MihomoGUIModel(directory: deletionDirectory)
+        let deletedSource = Subscription(name: "fixture", url: "https://example.com/sub")
+        deletionModel.settings.subscriptions = [deletedSource]
+        deletionModel.settings.subscriptionProxies = [deletedSource.id: []]
+        let credentialFile = providerFile(deletedSource, directory: deletionDirectory)
+        let credential = Data("fixture credential".utf8)
+        try credential.write(to: credentialFile)
+        try expectFailure("deletion rollback on write failure") {
+            try commitFiles([("settings.json", Data())], directory: deletionDirectory,
+                            removing: ["providers/" + deletedSource.id + ".yaml"], write: { _, _ in throw MihomoGUIError("injected failure") })
+        }
+        try check(try Data(contentsOf: credentialFile) == credential, "failed transaction restores deleted credentials")
+        deletionModel.deleteSubscription(deletedSource)
+        try check(deletionModel.error == nil && deletionModel.settings.subscriptions.isEmpty,
+                  "subscription deletion commits settings")
+        try check(!FileManager.default.fileExists(atPath: credentialFile.path), "subscription deletion removes credential cache")
+        try check(try loadSettings(from: deletionDirectory).subscriptions.isEmpty, "subscription deletion persists")
+        try expectFailure("transaction rejects removal outside data directory") {
+            try commitFiles([], directory: deletionDirectory, removing: ["../outside"])
+        }
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)

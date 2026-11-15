@@ -185,7 +185,7 @@ extension MihomoGUIModel {
             try commitFiles([
                 ("settings.json", try JSONEncoder().encode(candidate)),
                 ("nodes.json", try JSONEncoder().encode(remaining))
-            ], directory: directory)
+            ], directory: directory, removing: ["providers/" + subscription.id + ".yaml"])
             settings = candidate; nodes = remaining
         } catch { self.error = error.localizedDescription }
     }
