@@ -119,19 +119,8 @@ struct ConnectionsView: View {
                              unitSample: ["下载速度", "上传速度"].contains(column) ? "MB/s"
                                 : ["下载量", "上传量"].contains(column) ? "MB" : nil)
         }))
+        .searchable(text: $search, placement: .toolbar, prompt: "搜索连接")
         .toolbar {
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .primaryAction) {
-                    ToolbarSearchField(text: $search, prompt: "搜索连接")
-                        .frame(width: 220)
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    ToolbarSearchField(text: $search, prompt: "搜索连接")
-                        .frame(width: 220)
-                }
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button {
                     confirmingCloseAll = true

@@ -69,19 +69,8 @@ struct CoreLogsView: View {
                     .foregroundStyle(.secondary).allowsHitTesting(false)
             }
         }
+        .searchable(text: $search, placement: .toolbar, prompt: "搜索日志")
         .toolbar {
-            if #available(macOS 26.0, *) {
-                ToolbarItem(placement: .primaryAction) {
-                    ToolbarSearchField(text: $search, prompt: "搜索日志")
-                        .frame(width: 220)
-                }
-                .sharedBackgroundVisibility(.hidden)
-            } else {
-                ToolbarItem(placement: .primaryAction) {
-                    ToolbarSearchField(text: $search, prompt: "搜索日志")
-                        .frame(width: 220)
-                }
-            }
             ToolbarItem(placement: .primaryAction) {
                 Button { entries.removeAll() } label: {
                     Label("清空日志", systemImage: "trash")
