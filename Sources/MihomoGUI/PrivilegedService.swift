@@ -51,6 +51,7 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
     let deadline = PrivilegedOperationDeadline()
     let payload = try encodePrivilegedOperation(operation)
     try deadline.check()
+    _ = try await runCommand("/bin/sh", ["-c", serviceOwnershipCheckCommand(owner: getuid())], timeout: min(45, deadline.remaining), expiresAt: deadline.end)
     let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/MihomoGUIHelper")
     var applicationCode: SecCode?
     var applicationStaticCode: SecStaticCode?
@@ -94,8 +95,15 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
         /bin/test ! -L \(shellQuote(installed))
         /bin/test ! -L \(shellQuote(plistPath))
         /bin/mkdir -p /Library/PrivilegedHelperTools
+        lock=\(shellQuote(installed + ".install-lock"))
+        if ! /bin/mkdir -m 700 "$lock"; then
+            echo '辅助服务安装锁已占用，请等待安装结束；若上次安装中断，请管理员检查后清理安装锁' >&2
+            exit 1
+        fi
+        trap '/bin/rmdir "$lock"' EXIT
+        \(serviceOwnershipCheckCommand(owner: getuid()))
         stage=$(/usr/bin/mktemp -d /private/tmp/MihomoGUIHelper.XXXXXX)
-        trap '/bin/rm -rf "$stage"' EXIT
+        trap '/bin/rm -rf "$stage"; /bin/rmdir "$lock"' EXIT
         /usr/bin/install -o root -g wheel -m 755 \(shellQuote(source.path)) "$stage/helper"
         /usr/bin/codesign --verify --strict -R \(shellQuote("=" + helperRequirement)) "$stage/helper"
         /usr/bin/printf '%s' \(shellQuote(String(decoding: expected, as: UTF8.self))) > "$stage/helper.plist"
@@ -124,6 +132,7 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
                 if [ "$restored" -ne 1 ]; then echo '辅助服务安装失败，恢复旧服务也失败' >&2; fi
             fi
             /bin/rm -rf "$stage"
+            /bin/rmdir "$lock"
             exit "$status"
         }
         trap rollback EXIT

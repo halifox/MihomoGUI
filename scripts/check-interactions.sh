@@ -942,6 +942,52 @@ import MihomoGUICore
         } catch let error as MihomoGUIError {
             guard error.message.contains("超时"), Date().timeIntervalSince(cumulativeStart) < 1 else { throw error }
         }
+        let ownershipRoot = source.appendingPathComponent("service-ownership")
+        try FileManager.default.createDirectory(at: ownershipRoot, withIntermediateDirectories: true)
+        let ownershipPlist = ownershipRoot.appendingPathComponent("helper.plist")
+        let ownershipHelper = ownershipRoot.appendingPathComponent("helper")
+        let ownershipCore = ownershipRoot.appendingPathComponent("core.plist")
+        let ownershipData = ownershipRoot.appendingPathComponent("data")
+        let fixtureStat = ownershipRoot.appendingPathComponent("stat")
+        let fixtureMode = ownershipRoot.appendingPathComponent("mode")
+        try Data(("#!/bin/sh\nif [ \"$2\" = %u ]; then echo 0; else cat " + shellQuote(fixtureMode.path) + "; fi\n").utf8).write(to: fixtureStat)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixtureStat.path)
+        try Data("644\n".utf8).write(to: fixtureMode)
+        func ownershipCheck(_ owner: UInt32, simulatedRoot: Bool = true) throws -> Int32 {
+            var script = serviceOwnershipCheckCommand(owner: owner, helperPlist: ownershipPlist.path, installedHelper: ownershipHelper.path, corePlist: ownershipCore.path, dataDirectory: ownershipData.path)
+            if simulatedRoot { script = script.replacingOccurrences(of: "/usr/bin/stat", with: shellQuote(fixtureStat.path)) }
+            return try runPrivilegedScript(script).status
+        }
+        var ownershipProperties: [String: Any] = ["Label": privilegedServiceLabel, "ProgramArguments": [ownershipHelper.path, "501", "client", "core"]]
+        func saveOwnership() throws {
+            try PropertyListSerialization.data(fromPropertyList: ownershipProperties, format: .xml, options: 0).write(to: ownershipPlist, options: .atomic)
+        }
+        guard try ownershipCheck(501) == 0 else { throw MihomoGUIError("clean first installation blocked") }
+        try saveOwnership()
+        guard try ownershipCheck(501) == 0, try ownershipCheck(502) != 0 else { throw MihomoGUIError("service ownership permits cross-user takeover") }
+        if getuid() != 0 {
+            guard try ownershipCheck(501, simulatedRoot: false) != 0 else { throw MihomoGUIError("user-owned ownership record was trusted") }
+        }
+        try Data("666\n".utf8).write(to: fixtureMode)
+        guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("writable ownership record was trusted") }
+        try Data("644\n".utf8).write(to: fixtureMode)
+        ownershipProperties["Label"] = "other-service"; try saveOwnership()
+        guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("unrelated service label was accepted") }
+        ownershipProperties["Label"] = privilegedServiceLabel
+        for arguments in [[ownershipHelper.path, "0", "client", "core"], [ownershipHelper.path, "unknown", "client", "core"], [ownershipHelper.path, "501", "client"], [ownershipHelper.path, "501", "client", "core", "extra"]] {
+            ownershipProperties["ProgramArguments"] = arguments; try saveOwnership()
+            guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("malformed ownership record was accepted") }
+        }
+        try FileManager.default.removeItem(at: ownershipPlist)
+        try FileManager.default.createSymbolicLink(at: ownershipPlist, withDestinationURL: fixtureMode)
+        guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("symlink ownership record was accepted") }
+        try FileManager.default.removeItem(at: ownershipPlist)
+        for leftover in [ownershipCore, ownershipHelper, ownershipData] {
+            try Data("legacy state".utf8).write(to: leftover)
+            guard try ownershipCheck(502) != 0 else { throw MihomoGUIError("unattributed system state was silently adopted") }
+            try FileManager.default.removeItem(at: leftover)
+        }
+        guard try ownershipCheck(502) == 0 else { throw MihomoGUIError("full cleanup did not permit another installation owner") }
         let target = source.appendingPathComponent("mihomo")
         try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: "/bin/sh")
         do {

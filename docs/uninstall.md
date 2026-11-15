@@ -2,6 +2,8 @@
 
 MihomoGUI 的界面、内核服务、特权辅助服务和用户数据分别存放。仅将应用移到废纸篓不会停止或删除已安装的系统服务。
 
+系统服务只属于一位安装用户。切换到另一位用户前，应由原用户停止服务并完成系统卸载，或由管理员执行以下步骤；各用户自己的草稿目录可分别保留。归属记录缺失而仍有系统文件时，应用会拒绝自动接管，需先完整清理。
+
 以下步骤按当前代码中的服务标签和安装路径编写；命令需要在终端中手动执行。它们未经过本次文档整理的实际卸载验证。删除前备份需要保留的配置，后两步的删除操作不可恢复。
 
 ## 1. 停止内核并退出应用
@@ -36,7 +38,7 @@ sudo launchctl print system/local.MihomoGUI.helper
 
 ## 3. 删除系统文件和应用
 
-确认两个服务均未加载后，删除当前版本安装的文件：
+确认两个服务均未加载、且没有正在进行的安装或管理员授权操作后，删除当前版本安装的文件：
 
 ```bash
 sudo rm -f /Library/LaunchDaemons/local.MihomoGUI.core.plist
@@ -59,3 +61,14 @@ rm -rf "$HOME/Library/Application Support/MihomoGUI"
 这里的 `~/Library/` 是用户目录，区别于前一步的系统目录 `/Library/`。多用户机器上，每个用户的数据需要分别处理。
 
 重新安装时，应用会在启动内核过程中重新安装和启用所需服务，并按系统要求请求管理员授权。
+
+## 安装锁异常
+
+安装与升级用目录锁协调多个用户，正常完成或失败会释放。若安装进程被强制杀死，锁可能残留。先确认所有用户均没有正在安装，且上次安装进程已经退出，再检查并删除空锁目录：
+
+```bash
+sudo ls -ld /Library/PrivilegedHelperTools/local.MihomoGUI.helper.install-lock
+sudo rmdir /Library/PrivilegedHelperTools/local.MihomoGUI.helper.install-lock
+```
+
+不要在安装进行中移除锁；目录不存在时无需执行删除。锁的清理不会改变安装用户归属。
