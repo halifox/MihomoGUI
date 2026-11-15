@@ -63,9 +63,9 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
             "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null", "Umask": 0o077]
         try write(PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0), coreLabel + ".plist")
         let endpoint = try controllerEndpoint(settings)
-        let host = endpoint.host.contains(":") && !endpoint.host.hasPrefix("[") ? "[\(endpoint.host)]" : endpoint.host
         func escape(_ value: String) -> String { value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") }
-        try write(Data(("url = \"" + escape("http://\(host):\(endpoint.port)/version") + "\"\nheader = \"Authorization: Bearer " + escape(endpoint.secret) + "\"\n").utf8), "health.curl")
+        try write(Data(("header = \"Authorization: Bearer " + escape(endpoint.secret) + "\"\n").utf8), "health.curl")
+        try write(JSONSerialization.data(withJSONObject: ["version": configurationCoreVersion, "port": endpoint.port]), "health.json")
         var seeds = ["/bin/test ! -L " + shellQuote(rootDirectory + "/rules"), "/bin/mkdir -p " + shellQuote(rootDirectory + "/rules"), "/bin/chmod 700 " + shellQuote(rootDirectory + "/rules")]
         let providers = settings.options?["rule-providers"]?.object ?? [:]
         var names = geoAssetsNeeded(settings)
@@ -78,7 +78,7 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
             seeds.append("/bin/test ! -L " + shellQuote(target))
             seeds.append("/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent(name).path) + " " + shellQuote(target))
         }
-        command = coreInstallCommand(staging: stage, seedCommands: seeds)
+        command = coreInstallCommand(staging: stage, seedCommands: seeds, controllerPort: endpoint.port)
     case .prepareRules(let source, let id, let filenames):
         try checkRuleNames(filenames)
         try checkDirectory(rootDirectory)
@@ -120,8 +120,90 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
     return result.status
 }
 
+// Bounded protocol and listener checks; no response body is returned in diagnostics.
+let coreHealthCheckRuby = #"""
+begin
+  spec = JSON.parse(File.binread(ARGV[0]))
+  pid = Integer(ARGV[1])
+  body_path, listeners_path, remote_path, status_path = ARGV[2, 4]
+  exit 1 unless pid > 0 && File.size(listeners_path) <= 32768
+  current_pid = nil
+  family = nil
+  addresses = []
+  File.foreach(listeners_path) do |line|
+    field = line.strip
+    case field[0]
+    when 'p' then current_pid = Integer(field[1..-1]); family = nil
+    when 't' then family = field[1..-1]
+    when 'n'
+      next unless current_pid == pid
+      match = /\A(?:\[([^\]]+)\]|([^:]+)):(\d+)\z/.match(field[1..-1])
+      next unless match && Integer(match[3]) == spec['port']
+      address = match[1] || match[2]
+      wildcard = ['*', '0.0.0.0', '::'].include?(address)
+      if wildcard
+        next unless ['IPv4', 'IPv6'].include?(family)
+        address = family == 'IPv6' ? '::1' : '127.0.0.1'
+      end
+      numeric, zone = address.split('%', 2)
+      ip = IPAddr.new(numeric).native
+      addresses << [ip, wildcard, zone]
+    end
+  end
+  exit 1 if addresses.empty?
+  if ARGV[6] == 'listener'
+    ip, _, zone = addresses.first
+    host = ip.ipv6? ? '[' + ip.to_s + (zone ? '%25' + zone : '') + ']' : ip.to_s
+    puts 'http://' + host + ':' + spec['port'].to_s + '/version'
+    exit 0
+  end
+  exit 1 unless File.binread(status_path) == '0' && File.size(body_path) <= 16384
+  body = JSON.parse(File.binread(body_path))
+  exit 1 unless body.is_a?(Hash) && body['meta'] == true && [spec['version'], 'v' + spec['version']].include?(body['version'])
+  http_status, remote_ip = File.binread(remote_path).strip.split(/\s+/, 2)
+  exit 1 unless http_status == '200' && remote_ip
+  peer = IPAddr.new(remote_ip.split('%').first).native
+  owned = addresses.any? { |ip, wildcard, _| ip == peer || (wildcard && ip.ipv4? == peer.ipv4?) }
+  exit(owned ? 0 : 1)
+rescue StandardError
+  exit 1
+end
+"""#
+
+// This body runs inside a shell function, including in unprivileged health fixtures.
+func coreHealthCommand(staging: URL, controllerPort: Int, coreLabel: String = MihomoGUICore.coreLabel) -> String {
+    let context = staging.appendingPathComponent("health.json").path
+    let response = staging.appendingPathComponent("health-response.json").path
+    let listeners = staging.appendingPathComponent("health-listeners").path
+    let remote = staging.appendingPathComponent("health-remote").path
+    let status = staging.appendingPathComponent("health-status").path
+    let health = staging.appendingPathComponent("health.curl").path
+    let service = shellQuote("system/" + coreLabel)
+    let query = "/bin/launchctl print " + service + " 2>/dev/null | /usr/bin/awk '/^[[:space:]]*pid = [0-9]+$/ {print $3; exit}'"
+    let check = "/usr/bin/ruby -rjson -ripaddr -e " + shellQuote(coreHealthCheckRuby) + " " + shellQuote(context) + " \"$pid\" " + [response, listeners, remote, status].map(shellQuote).joined(separator: " ")
+    let inspect = "/usr/sbin/lsof -nP -a -p \"$pid\" -iTCP:" + String(controllerPort) + " -sTCP:LISTEN -Fptn 2>/dev/null | /usr/bin/head -c 32769 > " + shellQuote(listeners)
+    return """
+    pid=$(\(query))
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" -gt 0 ] || return 1
+    \(inspect)
+    verified_url=$(\(check) listener 2>/dev/null) || return 1
+    {
+        if /usr/bin/curl --noproxy '*' --fail --silent --output - --write-out '%{stderr}%{http_code} %{remote_ip}' --max-time 1 --url "$verified_url" --config \(shellQuote(health)); then
+            /usr/bin/printf '0' > \(shellQuote(status))
+        else
+            /usr/bin/printf '1' > \(shellQuote(status))
+        fi
+    } 2> \(shellQuote(remote)) | /usr/bin/head -c 16385 > \(shellQuote(response))
+    \(inspect)
+    \(check) 2>/dev/null || return 1
+    confirmed_pid=$(\(query))
+    [ "$confirmed_pid" = "$pid" ]
+    """
+}
+
 // Kept separate so rollback can be exercised against temporary files without administrator access.
-func coreInstallCommand(staging: URL, seedCommands: [String],
+func coreInstallCommand(staging: URL, seedCommands: [String], controllerPort: Int,
                         rootDirectory: String = MihomoGUICore.rootDirectory, installedCore: String = MihomoGUICore.installedCore,
                         coreLabel: String = MihomoGUICore.coreLabel, destinationPlist: String? = nil) -> String {
     let helperDirectory = URL(fileURLWithPath: installedCore).deletingLastPathComponent().path
@@ -129,7 +211,6 @@ func coreInstallCommand(staging: URL, seedCommands: [String],
     let binary = staging.appendingPathComponent("mihomo")
     let configFile = staging.appendingPathComponent("config.yaml")
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
-    let health = staging.appendingPathComponent("health.curl")
     return """
     set -eu
     /bin/test ! -L \(shellQuote(rootDirectory))
@@ -192,9 +273,12 @@ func coreInstallCommand(staging: URL, seedCommands: [String],
     /usr/bin/install -o root -g wheel -m 644 \(shellQuote(plist.path)) \(shellQuote(destinationPlist))
     /bin/launchctl enable system/\(coreLabel)
     /bin/launchctl bootstrap system \(shellQuote(destinationPlist))
+    check_health() {
+        \(coreHealthCommand(staging: staging, controllerPort: controllerPort, coreLabel: coreLabel))
+    }
     ready=0
     for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        if /usr/bin/curl --noproxy '*' --fail --silent --output /dev/null --max-time 1 --config \(shellQuote(health.path)); then ready=1; break; fi
+        if check_health; then ready=1; break; fi
         /bin/sleep 1
     done
     if [ "$ready" -ne 1 ]; then

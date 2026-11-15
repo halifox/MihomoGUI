@@ -11,6 +11,7 @@ DOWNLOAD_SERVER_PID=""
 trap 'if [ -n "$DOWNLOAD_SERVER_PID" ]; then kill "$DOWNLOAD_SERVER_PID" 2>/dev/null || true; wait "$DOWNLOAD_SERVER_PID" 2>/dev/null || true; fi; rm -rf "$CHECK_DIR"' EXIT
 python3 scripts/download-fixture.py "$CHECK_DIR/download-port" &
 DOWNLOAD_SERVER_PID=$!
+printf '%s' "$DOWNLOAD_SERVER_PID" > "$CHECK_DIR/download-pid"
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
 import Darwin
@@ -668,6 +669,7 @@ done
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-dispatch.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
+import Darwin
 import Security
 import MihomoGUICore
 
@@ -728,7 +730,92 @@ import MihomoGUICore
         guard bounded.status == 7, bounded.diagnostic.contains("磁盘空间不足") else {
             throw MihomoGUIError("bounded diagnostics lost final failure")
         }
-        print("PASS: privileged boundary rejects arbitrary commands, path traversal and symlink inputs")
+        let healthStage = source.appendingPathComponent("health-checks")
+        try FileManager.default.createDirectory(at: healthStage, withIntermediateDirectories: true)
+        let healthPortText = try String(contentsOf: source.appendingPathComponent("download-port"), encoding: .utf8)
+        let healthPID = try String(contentsOf: source.appendingPathComponent("download-pid"), encoding: .utf8)
+        guard let healthPort = Int(healthPortText), let fixturePID = Int(healthPID) else { throw MihomoGUIError("invalid health fixture") }
+        let launchctl = healthStage.appendingPathComponent("launchctl")
+        func stageHealth(_ route: String, pid: Int, changingPID: Bool = false) throws -> String {
+            let state = healthStage.appendingPathComponent("queried")
+            try? FileManager.default.removeItem(at: state)
+            let program = changingPID
+                ? "#!/bin/sh\nif [ -f " + shellQuote(state.path) + " ]; then echo 'pid = \(pid + 1)'; else touch " + shellQuote(state.path) + "; echo 'pid = \(pid)'; fi\n"
+                : "#!/bin/sh\necho 'pid = \(pid)'\n"
+            try program.write(to: launchctl, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launchctl.path)
+            try JSONSerialization.data(withJSONObject: ["version": configurationCoreVersion, "port": healthPort]).write(to: healthStage.appendingPathComponent("health.json"))
+            try route.write(to: source.appendingPathComponent("health-mode"), atomically: true, encoding: .utf8)
+            try "header = \"Authorization: Bearer fixture\"\n".write(to: healthStage.appendingPathComponent("health.curl"), atomically: true, encoding: .utf8)
+            let body = coreHealthCommand(staging: healthStage, controllerPort: healthPort).replacingOccurrences(of: "/bin/launchctl", with: shellQuote(launchctl.path))
+            return "check_health() {\n" + body + "\n}\ncheck_health"
+        }
+        let installer = coreInstallCommand(staging: healthStage, seedCommands: [], controllerPort: healthPort,
+                                           rootDirectory: healthStage.appendingPathComponent("root").path,
+                                           installedCore: healthStage.appendingPathComponent("helpers/mihomo").path,
+                                           coreLabel: "local.MihomoGUI.health-fixture",
+                                           destinationPlist: healthStage.appendingPathComponent("core.plist").path)
+        let syntax = try runPrivilegedScript("/bin/sh -n -c " + shellQuote(installer))
+        guard syntax.status == 0 else { throw MihomoGUIError("generated installation and health command syntax is invalid") }
+        let healthy = try runPrivilegedScript(stageHealth("valid", pid: fixturePID))
+        guard healthy.status == 0 else { throw MihomoGUIError("valid version and listener owner rejected") }
+        for route in ["text", "version", "meta", "unauthorized", "redirect", "oversized", "timeout"] {
+            let result = try runPrivilegedScript(stageHealth(route, pid: fixturePID))
+            guard result.status != 0 else { throw MihomoGUIError("invalid health response accepted: " + route) }
+            let size = try healthStage.appendingPathComponent("health-response.json").resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size <= 16385 else { throw MihomoGUIError("health response exceeded streaming cap") }
+        }
+        let healthRequests = try Data(contentsOf: source.appendingPathComponent("health-count"))
+        let wrongOwner = try runPrivilegedScript(stageHealth("valid", pid: fixturePID + 1))
+        guard wrongOwner.status != 0 else { throw MihomoGUIError("unrelated HTTP server accepted as launchd core") }
+        guard try Data(contentsOf: source.appendingPathComponent("health-count")) == healthRequests else { throw MihomoGUIError("credentials sent before listener ownership was verified") }
+        let changed = try runPrivilegedScript(stageHealth("valid", pid: fixturePID, changingPID: true))
+        guard changed.status != 0 else { throw MihomoGUIError("changing launchd PID accepted as healthy") }
+        for bindHost in ["127.0.0.1", "0.0.0.0", "[::1]", "[::]"] {
+            let reservation = socket(AF_INET, SOCK_STREAM, 0)
+            guard reservation >= 0 else { throw MihomoGUIError("health port allocation failed") }
+            var address = sockaddr_in()
+            address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_addr.s_addr = inet_addr("127.0.0.1")
+            let bound = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(reservation, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+            }
+            var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let named = withUnsafeMutablePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(reservation, $0, &length) }
+            }
+            close(reservation)
+            guard bound == 0 && named == 0 else { throw MihomoGUIError("health port allocation failed") }
+            let port = Int(UInt16(bigEndian: address.sin_port))
+            let secret = UUID().uuidString
+            let configuration = healthStage.appendingPathComponent("core.yaml")
+            try yamlData(["mixed-port": 0, "external-controller": "\(bindHost):\(port)", "secret": secret, "mode": "direct", "dns": ["enable": false], "tun": ["enable": false]]).write(to: configuration)
+            let process = Process()
+            process.executableURL = core
+            process.arguments = ["-d", healthStage.path, "-f", configuration.path]
+            process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+            try process.run()
+            defer {
+                if process.isRunning {
+                    let deadline = ProcessDeadline(process: process, timeout: 5)
+                    process.terminate(); process.waitUntilExit(); deadline.invalidate()
+                }
+            }
+            try "#!/bin/sh\necho 'pid = \(process.processIdentifier)'\n".write(to: launchctl, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launchctl.path)
+            try JSONSerialization.data(withJSONObject: ["version": configurationCoreVersion, "port": port]).write(to: healthStage.appendingPathComponent("health.json"))
+            try "header = \"Authorization: Bearer \(secret)\"\n".write(to: healthStage.appendingPathComponent("health.curl"), atomically: true, encoding: .utf8)
+            let body = coreHealthCommand(staging: healthStage, controllerPort: port).replacingOccurrences(of: "/bin/launchctl", with: shellQuote(launchctl.path))
+            var ready = false
+            for _ in 0..<30 {
+                guard process.isRunning else { break }
+                if try runPrivilegedScript("check_health() {\n" + body + "\n}\ncheck_health", timeout: 5).status == 0 { ready = true; break }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            guard ready else { throw MihomoGUIError("real core health check rejected " + bindHost) }
+        }
+        print("PASS: privileged boundary, bounded health protocol, stable listener identity and real-core IPv4/IPv6 wildcard checks")
     }
 }
 SWIFT
