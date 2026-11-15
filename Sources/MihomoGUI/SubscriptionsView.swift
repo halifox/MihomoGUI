@@ -148,7 +148,7 @@ struct SubscriptionEditorView: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
             formRow("name *", labelWidth: editorLabelWidth) { TextField("订阅名称", text: $name) }
-            formRow("url *", labelWidth: editorLabelWidth) { TextField("HTTPS mihomo YAML 订阅地址", text: $url) }
+            formRow("url *", labelWidth: editorLabelWidth) { SecretField("HTTPS mihomo YAML 订阅地址", text: $url) }
             if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
                 Spacer()

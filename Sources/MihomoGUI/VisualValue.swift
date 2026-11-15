@@ -34,7 +34,7 @@ struct VisualValue: View {
                 if !value.text.isEmpty, !(field.choices ?? []).contains(value.text) { Text(optionLabel(value.text)).tag(value.text) }
                 ForEach(field.choices ?? [], id: \.self) { Text(optionLabel($0)).tag($0) }
             }.labelsHidden())
-        case "secret": return AnyView(TextField("", text: text).textFieldStyle(.roundedBorder))
+        case "secret": return AnyView(SecretField(field.title, text: text))
         case "list": return AnyView(ValueList(field: field, value: $value, compact: compact))
         case "map": return AnyView(ValueMap(field: field, value: $value, compact: compact))
         case "object":
@@ -64,4 +64,33 @@ func setTypedPath(_ path: String, value: ConfigValue?, in object: inout [String:
     var nested = object[parts[0]]?.object ?? [:]
     setTypedPath(parts[1], value: value, in: &nested)
     object[parts[0]] = nested.isEmpty ? nil : .object(nested)
+}
+
+// Shared by schema-defined credentials and subscription URLs; visibility belongs to this field.
+struct SecretField: View {
+    let title: String
+    @Binding var text: String
+    @State private var revealed = false
+
+    init(_ title: String, text: Binding<String>) {
+        self.title = title
+        _text = text
+    }
+
+    var body: some View {
+        HStack {
+            Group {
+                if revealed { TextField(title, text: $text) }
+                else { SecureField(title, text: $text) }
+            }.textFieldStyle(.roundedBorder)
+                .privacySensitive(!revealed)
+            Button { revealed.toggle() } label: {
+                Image(systemName: revealed ? "eye.slash" : "eye")
+            }
+            .buttonStyle(.borderless)
+            .help(revealed ? "隐藏" + title : "显示" + title)
+            .accessibilityLabel(revealed ? "隐藏" + title : "显示" + title)
+        }
+        .onDisappear { revealed = false }
+    }
 }
