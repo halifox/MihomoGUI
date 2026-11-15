@@ -107,7 +107,7 @@ struct ResourceEditorView: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存") { save() }.buttonStyle(.borderedProminent).disabled(invalidMap)
+                Button("保存") { save() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(invalidMap)
             }
         }.padding(16).controlSize(.regular).frame(width: editorSheetWidth, height: 360)
         .onPreferenceChange(InvalidMapPreference.self) { invalidMap = $0 }

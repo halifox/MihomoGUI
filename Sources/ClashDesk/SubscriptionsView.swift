@@ -156,7 +156,7 @@ struct SubscriptionEditorView: View {
                         do { try await model.saveSubscription(subscription); dismiss() }
                         catch { self.error = error.localizedDescription }
                     }
-                }.buttonStyle(.borderedProminent)
+                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction)
                     .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if model.settings.corePath.isEmpty { Text("应用内置 mihomo 内核不可用，请重新安装应用。").foregroundStyle(.orange) }

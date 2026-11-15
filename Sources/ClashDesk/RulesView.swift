@@ -252,7 +252,7 @@ struct RuleEditorView: View {
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存规则") { save() }.buttonStyle(.borderedProminent).disabled(model.busy)
+                Button("保存规则") { save() }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(model.busy)
             }
         }.padding(16).controlSize(.regular).frame(width: editorSheetWidth, height: 360)
         .environment(\.formHelpDocument, "rules/index.md")

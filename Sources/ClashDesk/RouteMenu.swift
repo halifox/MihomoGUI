@@ -148,7 +148,7 @@ struct BatchRouteEditor: View {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("添加 \(additions.count) 条规则") { save() }
-                    .buttonStyle(.borderedProminent).disabled(model.busy || additions.isEmpty)
+                    .buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(model.busy || additions.isEmpty)
             }
         }.padding(16).frame(width: editorSheetWidth, height: 360)
     }

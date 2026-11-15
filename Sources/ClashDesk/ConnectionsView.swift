@@ -120,7 +120,6 @@ struct ConnectionsView: View {
                                 : ["下载量", "上传量"].contains(column) ? "MB" : nil)
         }))
         .searchable(text: $search, placement: .toolbar, prompt: "搜索连接")
-        .background(ToolbarSearchWidth(width: 180))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -220,7 +219,7 @@ struct ConnectionsView: View {
                 Spacer()
                 Button("完成") { details = nil }.keyboardShortcut(.cancelAction)
             }
-        }.padding(16).frame(width: 640, height: 460)
+        }.padding(16).frame(minWidth: 520, idealWidth: 640, minHeight: 360, idealHeight: 460)
     }
 
 }

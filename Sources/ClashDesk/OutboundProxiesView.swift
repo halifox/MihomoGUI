@@ -191,7 +191,7 @@ struct ProxyEditorView: View {
                         try model.saveManualProxy(proxy)
                         dismiss()
                     } catch { self.error = error.localizedDescription }
-                }.buttonStyle(.borderedProminent).disabled(invalidMap)
+                }.buttonStyle(.borderedProminent).keyboardShortcut(.defaultAction).disabled(invalidMap)
             }
         }.padding(16).controlSize(.regular).frame(width: editorSheetWidth, height: 360)
         .onPreferenceChange(InvalidMapPreference.self) { invalidMap = $0 }

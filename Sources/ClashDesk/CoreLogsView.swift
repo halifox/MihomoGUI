@@ -55,7 +55,6 @@ struct CoreLogsView: View {
             }
         }
         .searchable(text: $search, placement: .toolbar, prompt: "搜索日志")
-        .background(ToolbarSearchWidth(width: 180))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { entries.removeAll() } label: {

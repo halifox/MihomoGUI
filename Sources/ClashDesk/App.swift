@@ -9,7 +9,6 @@ struct ClashDeskApp: App {
     var body: some Scene {
         WindowGroup("ClashDesk") {
             DeskView().environmentObject(model).frame(minWidth: 800, minHeight: 400)
-                .background(InitialWindowSize())
                 .task { model.startMonitor() }
         }
         .defaultSize(width: 800, height: 400)
@@ -25,22 +24,6 @@ struct ClashDeskApp: App {
 final class DeskAppDelegate: NSObject, NSApplicationDelegate {
     func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
         true
-    }
-}
-
-// Apply during window attachment to avoid resizing after the first display.
-struct InitialWindowSize: NSViewRepresentable {
-    func makeNSView(context: Context) -> NSView { LaunchSizeView() }
-    func updateNSView(_ nsView: NSView, context: Context) {}
-}
-
-final class LaunchSizeView: NSView {
-    private var sized = false
-    override func viewDidMoveToWindow() {
-        super.viewDidMoveToWindow()
-        guard !sized, let window else { return }
-        sized = true
-        window.setContentSize(NSSize(width: 800, height: 400))
     }
 }
 
