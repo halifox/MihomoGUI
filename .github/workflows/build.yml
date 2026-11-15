@@ -36,7 +36,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
       SIGNED_BUILD: ${{ github.event_name != 'pull_request' && (inputs.signed_release || ((inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')) && vars.ENABLE_SIGNED_RELEASES == 'true')) }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           ref: ${{ inputs.release_tag || github.ref }}
       - name: Verify build toolchain
@@ -107,7 +107,7 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/MihomoGUI-signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/notary-key.p8"
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: MihomoGUI-macos-arm64
           path: dist/release/*
@@ -122,7 +122,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: MihomoGUI-macos-arm64
           path: release
@@ -140,7 +140,7 @@ jobs:
         env:
           ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: cp "$ATTESTATION_BUNDLE" provenance.sigstore.json
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: MihomoGUI-provenance
           path: provenance.sigstore.json
@@ -153,11 +153,11 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: MihomoGUI-macos-arm64
           path: release
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           name: MihomoGUI-provenance
           path: release
