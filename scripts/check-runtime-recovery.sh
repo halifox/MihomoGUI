@@ -43,13 +43,20 @@ cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
 
-enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure }
+enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure }
 @MainActor var failureMode = FailureMode.afterWrite
 @MainActor var persistCalls = 0
+@MainActor var installCalls = 0
+@MainActor var markerPresentAtInstallation = false
 @MainActor var fixtureDirectory = URL(fileURLWithPath: "/")
 
 // Replace the XPC boundary only; the production model, API and persistence run unchanged.
 @MainActor func privilegedOperation(_ operation: PrivilegedOperation) async throws {
+    if case .install = operation, failureMode == .startupSnapshotFailure {
+        installCalls += 1
+        markerPresentAtInstallation = FileManager.default.fileExists(atPath: fixtureDirectory.appendingPathComponent("runtime-update-pending").path)
+        return
+    }
     guard case .persist(let data) = operation else { throw MihomoGUIError("unexpected privileged operation in fixture") }
     persistCalls += 1
     if failureMode == .beforeWrite && persistCalls == 1 || failureMode == .restoreFailure && persistCalls == 2 {
@@ -65,7 +72,7 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
     @MainActor static func main() async throws {
         let root = URL(fileURLWithPath: CommandLine.arguments[1])
         let port = try String(contentsOf: root.appendingPathComponent("port"), encoding: .utf8)
-        for mode in FailureMode.allCases {
+        for mode in [FailureMode.afterWrite, .beforeWrite, .restoreFailure] {
             failureMode = mode; persistCalls = 0
             let directory = root.appendingPathComponent(mode.rawValue)
             fixtureDirectory = directory
@@ -95,7 +102,37 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
                       "recovery marker cleared only after confirmed restoration")
             try check(model.hasUnappliedChanges, "new draft remains unapplied after rollback")
         }
-        print("PASS: lost persist replies, failures before writes, and failed restoration preserve disk/runtime recovery invariants")
+        failureMode = .startupSnapshotFailure
+        let directory = root.appendingPathComponent("startup-snapshot")
+        fixtureDirectory = directory
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        var settings = Settings()
+        settings.defaultPolicy = "DIRECT"
+        // No controller is listening here before the simulated service installation.
+        settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0), "external-controller": .string("127.0.0.1:1")]
+        try saveSettings(settings, to: directory)
+        try saveRuntimeSettings(settings, to: directory)
+        let model = MihomoGUIModel(directory: directory)
+        model.settings.corePath = FileManager.default.currentDirectoryPath + "/dist/MihomoGUI.app/Contents/Helpers/mihomo"
+        // No GEO rules or DNS are enabled; these private cache seeds avoid network downloads.
+        let geodata = directory.appendingPathComponent("geodata")
+        try FileManager.default.createDirectory(at: geodata, withIntermediateDirectories: true)
+        for name in ["Country.mmdb", "geosite.dat"] { try Data("unused fixture".utf8).write(to: geodata.appendingPathComponent(name)) }
+        let runtime = directory.appendingPathComponent("runtime.json")
+        try FileManager.default.removeItem(at: runtime)
+        try FileManager.default.createDirectory(at: runtime, withIntermediateDirectories: false)
+        model.startCore()
+        for _ in 0..<400 {
+            if model.error != nil && !model.busy { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        try check(installCalls == 1 && markerPresentAtInstallation, "startup persists recovery intent before installation")
+        try check(model.error != nil && !model.busy && model.runtimeConfigurationUncertain, "runtime save failure leaves startup explicitly uncertain")
+        try check(FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path), "startup save failure keeps durable recovery marker")
+        try check(model.message != "配置已校验并启动。", "unconfirmed startup never reports success")
+        let reopened = MihomoGUIModel(directory: directory)
+        try check(reopened.runtimeConfigurationUncertain, "reopening preserves unconfirmed startup recovery state")
+        print("PASS: persist reply failures and startup runtime-save failures preserve disk/runtime recovery invariants")
     }
 }
 SWIFT

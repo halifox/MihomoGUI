@@ -467,12 +467,21 @@ final class MihomoGUIModel: ObservableObject {
             let snapshot = self.settings
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
             _ = try controllerEndpoint(snapshot)
-            try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
             let pending = self.directory.appendingPathComponent("runtime-update-pending")
-            if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
-            self.runtimeSettings = snapshot
-            self.runtimeConfigurationUncertain = false
-            self.message = "配置已校验并启动。"
+            do {
+                try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
+                if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
+                self.runtimeSettings = snapshot
+                self.runtimeConfigurationUncertain = false
+                self.message = "配置已校验并启动。"
+            } catch {
+                if FileManager.default.fileExists(atPath: pending.path) {
+                    self.runtimeConfigurationUncertain = true
+                    await self.refreshDiagnostics()
+                    throw MihomoGUIError("启动结果尚未确认：" + error.localizedDescription + "。服务可能已运行，请修复保存问题后停止并重新启动内核。")
+                }
+                throw error
+            }
         }
     }
     func retryLiveUpdate() {

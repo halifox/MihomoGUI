@@ -74,6 +74,11 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     }
     try validateConfigurationCoreVersion(String(versionParts[2]))
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
+    // Installation may succeed even if its reply or the local runtime save fails.
+    // Persist recovery intent before the first system-service side effect.
+    let pending = directory.appendingPathComponent("runtime-update-pending")
+    try Data().write(to: pending, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
     try await privilegedOperation(.install(staging: staging.path, settings: settings))
     try saveRuntimeSettings(settings, to: directory)
 }
