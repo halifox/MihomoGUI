@@ -34,6 +34,13 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
 }
 @main struct InteractionChecks {
     @MainActor static func main() async throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[2] == "command-output-probe" {
+            let script = "STDOUT.sync=true; STDERR.sync=true; STDOUT.write('prefix'); n=Integer(ARGV[0]); while n>0; size=[n,4096].min; ((n/4096).even? ? STDOUT : STDERR).write('x'*size); n-=size; end"
+            let output = try await runCommand("/usr/bin/ruby", ["-e", script, CommandLine.arguments[1]], timeout: 15)
+            let expected = CommandLine.arguments[1] == "0" ? 6 : 16_384
+            try check(output.utf8.count == expected && output.hasPrefix("prefix"), "command output retains only its bounded prefix")
+            return
+        }
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("fixture")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -399,6 +406,15 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         let nullYAML = String(decoding: try yamlData(["proxy": nullRoundTrip.native]), as: UTF8.self)
         try check(nullYAML.contains("explicit-null: null") && nullYAML.contains("- null"), "generated YAML preserves explicit null")
         let timeoutStart = Date()
+        let mergedOutput = try await runCommand("/usr/bin/ruby", ["-e", "STDOUT.sync=true; STDERR.sync=true; STDOUT.write('out'); STDERR.write('err')"])
+        try check(mergedOutput == "outerr", "bounded capture preserves merged stdout and stderr")
+        do {
+            _ = try await runCommand("/usr/bin/ruby", ["-e", "STDERR.write('fixture failure'); exit 7"])
+            throw MihomoGUIError("nonzero command accepted")
+        } catch let error as MihomoGUIError { try check(error.message == "fixture failure", "nonzero exit retains diagnostics") }
+        let inheritedWriterStarted = Date()
+        let inheritedOutput = try await runCommand("/bin/sh", ["-c", "printf parent; /bin/sleep 2 &"], timeout: 0.5)
+        try check(inheritedOutput == "parent" && Date().timeIntervalSince(inheritedWriterStarted) < 1.5, "completed parent does not await inherited output handles")
         try await expectAsyncFailure {
             _ = try await runCommand("/bin/sh", ["-c", "/bin/sleep 60; echo finished"], timeout: 0.1)
         }
@@ -769,6 +785,18 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
   "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/MihomoGUICore.o \
   -o "$CHECK_DIR/checks"
+/usr/bin/time -l "$CHECK_DIR/checks" 0 command-output-probe 2> "$CHECK_DIR/output-small.time"
+/usr/bin/time -l "$CHECK_DIR/checks" 67108864 command-output-probe 2> "$CHECK_DIR/output-large.time"
+python3 - "$CHECK_DIR" <<'PYMEM'
+from pathlib import Path
+import re
+import sys
+root = Path(sys.argv[1])
+def peak(name):
+    return int(re.search(r'(\d+)\s+maximum resident set size', (root / name).read_text())[1])
+assert peak('output-large.time') <= peak('output-small.time') + 32 * 1024 * 1024, 'command output memory grows with its full output'
+print('PASS: 64 MiB command output uses bounded capture memory')
+PYMEM
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-renamed.yaml"

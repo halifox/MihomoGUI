@@ -1,22 +1,52 @@
 import Foundation
+import Darwin
 import MihomoGUICore
 
 func runCommand(_ executable: String, _ arguments: [String], timeout: TimeInterval = 45) async throws -> String {
     try await Task.detached {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable); process.arguments = arguments
-        let output = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
-        FileManager.default.createFile(atPath: output.path, contents: nil, attributes: [.posixPermissions: 0o600])
-        let handle = try FileHandle(forWritingTo: output)
-        defer { try? handle.close(); try? FileManager.default.removeItem(at: output) }
-        process.standardOutput = handle; process.standardError = handle
+        let pipe = Pipe()
+        process.standardOutput = pipe; process.standardError = pipe
+        defer { try? pipe.fileHandleForReading.close(); try? pipe.fileHandleForWriting.close() }
         try process.run()
         let deadline = ProcessDeadline(process: process, timeout: timeout)
-        defer { deadline.invalidate() }
+        defer {
+            if process.isRunning {
+                let pid = process.processIdentifier
+                kill(getpgid(pid) == pid ? -pid : pid, SIGKILL)
+                process.waitUntilExit()
+            }
+            deadline.invalidate()
+        }
+        try pipe.fileHandleForWriting.close()
+        let descriptor = pipe.fileHandleForReading.fileDescriptor
+        let flags = fcntl(descriptor, F_GETFL)
+        guard flags >= 0, fcntl(descriptor, F_SETFL, flags | O_NONBLOCK) == 0 else { throw MihomoGUIError("无法读取子进程输出") }
+        var output = Data()
+        var buffer = [UInt8](repeating: 0, count: 4096)
+        while true {
+            var event = pollfd(fd: descriptor, events: Int16(POLLIN), revents: 0)
+            let ready = poll(&event, 1, 100)
+            if ready < 0 {
+                if errno == EINTR { continue }
+                throw MihomoGUIError("读取子进程输出失败")
+            }
+            if ready > 0 {
+                let count = Darwin.read(descriptor, &buffer, buffer.count)
+                if count == 0 { break }
+                if count > 0 {
+                    output.append(contentsOf: buffer.prefix(min(count, 16_384 - output.count)))
+                } else if errno != EAGAIN && errno != EINTR { throw MihomoGUIError("读取子进程输出失败") }
+            }
+            // A completed command may leave a descendant holding the pipe open.
+            // Retain the prefix already available, without waiting for that descendant.
+            if !process.isRunning && (ready == 0 || output.count == 16_384) { break }
+            try deadline.check()
+        }
         process.waitUntilExit()
         try deadline.check()
-        let data = try Data(contentsOf: output)
-        let text = String(decoding: data.prefix(16_384), as: UTF8.self)
+        let text = String(decoding: output, as: UTF8.self)
         guard process.terminationStatus == 0 else {
             throw MihomoGUIError(text.isEmpty ? "操作失败（\(process.terminationStatus)）" : text)
         }
