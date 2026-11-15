@@ -15,7 +15,7 @@ struct MihomoGUIApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .appInfo) {
-                Button("启动 mihomo 内核") { model.startCore() }.disabled(model.busy || model.coreActive)
+                Button("启动 mihomo 内核") { model.startCore() }.disabled(model.busy || model.coreActive || model.configurationFormatUnsupported)
             }
         }
     }
@@ -56,12 +56,16 @@ struct MihomoGUIView: View {
                 case .logs: CoreLogsView()
                 case .dashboard: DashboardView()
                 }
-            }.navigationTitle((page ?? .dashboard).title)
+            }.disabled(model.configurationFormatUnsupported)
+                .navigationTitle((page ?? .dashboard).title)
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
                 .id(page ?? .dashboard)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
-            if model.runtimeConfigurationUncertain || (model.coreActive && model.hasUnappliedChanges) {
+            if model.configurationFormatUnsupported {
+                Text("配置格式版本不受支持，已禁用编辑和服务启动。请使用对应版本应用，或备份后恢复兼容的配置文件。")
+                    .font(.caption).foregroundStyle(.orange).padding(8)
+            } else if model.runtimeConfigurationUncertain || (model.coreActive && model.hasUnappliedChanges) {
                 HStack {
                     Text(model.runtimeConfigurationUncertain
                          ? "运行配置尚未确认，请重新应用；连接不可用时请停止并重新启动内核。"

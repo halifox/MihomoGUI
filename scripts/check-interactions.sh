@@ -243,6 +243,36 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
             throw MihomoGUIError("cancelled download accepted")
         } catch is CancellationError {}
         try check(try FileManager.default.contentsOfDirectory(atPath: downloadDirectory.path).isEmpty, "cancelled streaming download removes partial file")
+        let versionDirectory = directory.appendingPathComponent("settings-version")
+        try FileManager.default.createDirectory(at: versionDirectory, withIntermediateDirectories: true)
+        guard var legacyObject = try JSONSerialization.jsonObject(with: JSONEncoder().encode(Settings())) as? [String: Any] else {
+            throw MihomoGUIError("invalid settings fixture")
+        }
+        legacyObject.removeValue(forKey: "schemaVersion")
+        let legacyData = try JSONSerialization.data(withJSONObject: legacyObject)
+        try legacyData.write(to: versionDirectory.appendingPathComponent("settings.json"))
+        try legacyData.write(to: versionDirectory.appendingPathComponent("runtime.json"))
+        let migrated = try loadSettings(from: versionDirectory)
+        try check(migrated.schemaVersion == 1, "known unversioned settings migrate in memory")
+        try saveSettings(migrated, to: versionDirectory)
+        try saveRuntimeSettings(migrated, to: versionDirectory)
+        for name in ["settings", "runtime"] {
+            try check(try Data(contentsOf: versionDirectory.appendingPathComponent(name + "-v0-backup.json")) == legacyData, "migration preserves original settings bytes")
+        }
+        legacyObject["schemaVersion"] = 99
+        let futureData = try JSONSerialization.data(withJSONObject: legacyObject)
+        try futureData.write(to: versionDirectory.appendingPathComponent("settings.json"))
+        try futureData.write(to: versionDirectory.appendingPathComponent("runtime.json"))
+        try expectFailure("future settings format is rejected") { _ = try loadSettings(from: versionDirectory) }
+        try expectFailure("future runtime format is rejected") { _ = try loadRuntimeSettings(from: versionDirectory) }
+        try expectFailure("future settings cannot be overwritten") { try saveSettings(Settings(), to: versionDirectory) }
+        try expectFailure("future runtime cannot be overwritten") { try saveRuntimeSettings(Settings(), to: versionDirectory) }
+        try check(try Data(contentsOf: versionDirectory.appendingPathComponent("settings.json")) == futureData, "future format remains untouched")
+        let unsupportedModel = MihomoGUIModel(directory: versionDirectory)
+        try check(unsupportedModel.configurationFormatUnsupported, "unknown format disables editing and service changes")
+        unsupportedModel.startCore()
+        try check(!unsupportedModel.busy, "unknown format cannot start a service")
+
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)

@@ -36,6 +36,7 @@ final class MihomoGUIModel: ObservableObject {
     @Published var corePID: Int?
     private var runtimeSettings = MihomoGUICore.Settings()
     private var diagnosticsDate = Date.distantPast
+    private(set) var configurationFormatUnsupported = false
     let directory: URL
     private var monitor: Task<Void, Never>?
     private var configurationSaveTask: Task<Void, Never>?
@@ -63,11 +64,12 @@ final class MihomoGUIModel: ObservableObject {
             try saveSettings(settings, to: directory)
             if !FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime.json").path) { try saveRuntimeSettings(runtimeSettings, to: directory) }
         } catch {
+            configurationFormatUnsupported = error is UnsupportedSettingsFormat
             self.error = error.localizedDescription
         }
     }
     func startMonitor() {
-        guard monitor == nil else { return }
+        guard monitor == nil, !configurationFormatUnsupported else { return }
         monitor = Task { [weak self] in
             if let self {
                 await self.refresh()
@@ -455,7 +457,7 @@ final class MihomoGUIModel: ObservableObject {
     }
     func cancelDelayTests() { delayTask?.cancel() }
     func startCore() {
-        guard !coreActive else { return }
+        guard !coreActive, !configurationFormatUnsupported else { return }
         perform {
             await self.refresh()
             guard !self.coreActive else { return }
@@ -478,7 +480,7 @@ final class MihomoGUIModel: ObservableObject {
         scheduleLiveUpdate()
     }
     private func scheduleLiveUpdate() {
-        guard configurationLocked else { return }
+        guard configurationLocked, !configurationFormatUnsupported else { return }
         liveUpdatePending = true
         guard liveUpdateTask == nil else { return }
         liveUpdateTask = Task { [weak self] in

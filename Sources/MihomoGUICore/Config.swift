@@ -129,6 +129,7 @@ public struct RouteRule: Codable, Identifiable {
 }
 
 public struct Settings: Codable {
+    public var schemaVersion: Int? = 1
     public var delayTestURL: String?
     public var delayTestTimeoutMilliseconds: Int?
     public var corePath = ""
@@ -183,21 +184,61 @@ public func loadSettings(from directory: URL) throws -> Settings {
     try recoverFileCommit(directory: directory)
     let url = directory.appendingPathComponent("settings.json")
     guard FileManager.default.fileExists(atPath: url.path) else { return Settings() }
-    return try JSONDecoder().decode(Settings.self, from: Data(contentsOf: url))
+    return try decodeSettingsData(Data(contentsOf: url))
+}
+
+public struct UnsupportedSettingsFormat: LocalizedError {
+    public let version: Int
+    public var errorDescription: String? { "配置格式版本不受支持（\(version)），请使用对应版本应用；原文件未修改" }
+}
+
+// Version 0 is the shipped, unversioned Settings JSON; version 1 adds this explicit marker.
+private struct SettingsFormatHeader: Decodable {
+    let schemaVersion: Int
+    enum CodingKeys: String, CodingKey { case schemaVersion }
+    init(from decoder: Decoder) throws {
+        let values = try decoder.container(keyedBy: CodingKeys.self)
+        schemaVersion = values.contains(.schemaVersion) ? try values.decode(Int.self, forKey: .schemaVersion) : 0
+    }
+}
+
+func decodeSettingsData(_ data: Data) throws -> Settings {
+    let version = try JSONDecoder().decode(SettingsFormatHeader.self, from: data).schemaVersion
+    guard version == 0 || version == 1 else { throw UnsupportedSettingsFormat(version: version) }
+    var settings = try JSONDecoder().decode(Settings.self, from: data)
+    settings.schemaVersion = 1
+    return settings
+}
+
+func prepareSettingsSave(_ url: URL) throws {
+    guard FileManager.default.fileExists(atPath: url.path) else { return }
+    let previous = try Data(contentsOf: url)
+    let version = try? JSONDecoder().decode(SettingsFormatHeader.self, from: previous).schemaVersion
+    if let version, version != 0 && version != 1 {
+        throw UnsupportedSettingsFormat(version: version)
+    }
+    let name = url.deletingPathExtension().lastPathComponent
+    var backup: URL
+    if (try? decodeSettingsData(previous)) == nil {
+        backup = url.deletingLastPathComponent().appendingPathComponent(name + "-unreadable-" + UUID().uuidString + ".json")
+    } else if version == 0 {
+        backup = url.deletingLastPathComponent().appendingPathComponent(name + "-v0-backup.json")
+        if FileManager.default.fileExists(atPath: backup.path) {
+            if try Data(contentsOf: backup) == previous { return }
+            backup = url.deletingLastPathComponent().appendingPathComponent(name + "-v0-backup-" + UUID().uuidString + ".json")
+        }
+    } else { return }
+    try previous.write(to: backup, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
 }
 
 public func saveSettings(_ settings: Settings, to directory: URL) throws {
     let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let url = directory.appendingPathComponent("settings.json")
-    // Preserve unreadable settings before an editable recovery draft replaces them.
-    if FileManager.default.fileExists(atPath: url.path) {
-        let previous = try Data(contentsOf: url)
-        if (try? JSONDecoder().decode(Settings.self, from: previous)) == nil {
-            let backup = directory.appendingPathComponent("settings-unreadable-" + UUID().uuidString + ".json")
-            try previous.write(to: backup, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
-        }
-    }
+    try prepareSettingsSave(url)
+    var settings = settings
+    guard settings.schemaVersion == nil || settings.schemaVersion == 1 else { throw MihomoGUIError("不能保存不支持的配置格式版本") }
+    settings.schemaVersion = 1
     try encoder.encode(settings).write(to: url, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }

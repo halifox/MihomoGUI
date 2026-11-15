@@ -345,12 +345,16 @@ public func validateGeneralOptions(_ config: [String: Any]) throws {
 public func loadRuntimeSettings(from directory: URL) throws -> Settings {
     let url = directory.appendingPathComponent("runtime.json")
     guard FileManager.default.fileExists(atPath: url.path) else { return try loadSettings(from: directory) }
-    return try JSONDecoder().decode(Settings.self, from: Data(contentsOf: url))
+    return try decodeSettingsData(Data(contentsOf: url))
 }
 
 public func saveRuntimeSettings(_ settings: Settings, to directory: URL) throws {
     _ = try controllerEndpoint(settings)
     let url = directory.appendingPathComponent("runtime.json")
+    try prepareSettingsSave(url)
+    var settings = settings
+    guard settings.schemaVersion == nil || settings.schemaVersion == 1 else { throw MihomoGUIError("不能保存不支持的配置格式版本") }
+    settings.schemaVersion = 1
     try JSONEncoder().encode(settings).write(to: url, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
