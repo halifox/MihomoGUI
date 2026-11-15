@@ -12,7 +12,7 @@
 
 仓库 Settings → Actions → General 需要允许 GitHub Actions 创建和批准 Pull Request。工作流使用内置 `GITHUB_TOKEN`；默认构建使用本地临时签名；可选 Developer ID 签名和公证流程见下文。未启用正式签名时，附件仍是临时签名构建。
 
-## 构建与重新上传
+## 构建与附件上传
 
 [Build macOS arm64](../.github/workflows/build.yml) 在面向 `main` 的 PR、推送 `v*` 标签或手动触发时构建。当前配置使用 `macos-26` runner、Xcode 26.5 和 macOS 26.5 SDK，并检查机器架构为 arm64。
 
@@ -21,11 +21,11 @@
 - `release_tag` 留空：构建所选分支，不上传 Release 附件。
 - `release_tag` 填写已有标签（例如 `v1.0.0`）：检出该标签，检查其与 `VERSION` 一致，构建并上传 ZIP。
 
-标签推送同样构建标签对应源码并上传。文件名为 `MihomoGUI-v版本号-macos-arm64.zip`，Actions 构建产物保留 7 天。上传时会替换同名附件；Release 不存在时会基于已有标签创建 Release。
+标签推送同样构建标签对应源码并上传。文件名为 `MihomoGUI-v版本号-macos-arm64.zip`，Actions 构建产物保留 7 天。同一发布标签的构建串行执行。上传前检查已有附件；同名冲突时失败，不覆盖或删除原文件。Release 不存在时会基于已有标签创建 Release。
 
 构建依次执行资源下载与摘要校验、应用打包、交互回归、签名验证、SDK 与应用版本检查，然后生成 ZIP。归档脚本生成 ZIP、`SHA256SUMS` 及 `BUILD-METADATA.json`。发布时额外生成 `provenance.sigstore.json`，由 GitHub OIDC 身份签署 ZIP 和构建元数据的来源证明。
 
-Release 可能在构建完成前已创建。构建失败时先查明原因；若是临时下载或 runner 故障，可重新运行原任务。源码修复需要新的提交与版本，不应移动已发布标签来替换源码。
+Release 可能在构建完成前已创建。构建失败时先查明原因；若是临时下载或 runner 故障且尚未上传附件，可重新运行原任务。已有同名附件时不得通过删除或覆盖它们来重试，应排查上传状态并使用新版本发布变更。源码修复需要新的提交与版本，不应移动已发布标签来替换源码。
 
 ## 资源与工作流更新
 

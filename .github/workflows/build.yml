@@ -27,7 +27,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: build-${{ inputs.release_tag || github.ref }}
+  group: build-${{ inputs.release_tag || (startsWith(github.ref, 'refs/tags/') && github.ref_name) || github.ref }}
   cancel-in-progress: false
 jobs:
   build:
@@ -165,4 +165,14 @@ jobs:
           if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"; then
             gh release create "$RELEASE_TAG" --verify-tag --generate-notes --repo "$GITHUB_REPOSITORY"
           fi
-          gh release upload "$RELEASE_TAG" release/* --clobber --repo "$GITHUB_REPOSITORY"
+          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name]' > "$RUNNER_TEMP/release-assets.json"
+          python3 - "$RUNNER_TEMP/release-assets.json" release/* <<'PYTHON'
+          import json
+          from pathlib import Path
+          import sys
+          existing = set(json.loads(Path(sys.argv[1]).read_text()))
+          collisions = sorted(existing.intersection(Path(path).name for path in sys.argv[2:]))
+          if collisions:
+              raise SystemExit('Release assets are immutable; use a new version. Conflicts: ' + ', '.join(collisions))
+          PYTHON
+          gh release upload "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY"
