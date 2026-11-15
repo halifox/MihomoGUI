@@ -98,6 +98,16 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try check(uncertainModel.error != nil && uncertainModel.runtimeConfigurationUncertain,
                   "lost reload response leaves running configuration uncertain")
         await lostResponse.value
+        uncertainModel.error = nil
+        try check(uncertainModel.hasUnappliedChanges, "dismissing an error preserves unapplied state")
+        uncertainModel.retryLiveUpdate()
+        for _ in 0..<200 {
+            if uncertainModel.error != nil && !uncertainModel.busy { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try check(uncertainModel.error != nil && uncertainModel.runtimeConfigurationUncertain,
+                  "explicit retry submits again and retains uncertainty on failure")
+
         let pendingUpdate = uncertainDirectory.appendingPathComponent("runtime-update-pending")
         try check(FileManager.default.fileExists(atPath: pendingUpdate.path), "unconfirmed reload persists recovery marker")
         let recovered = MihomoGUIModel(directory: uncertainDirectory)

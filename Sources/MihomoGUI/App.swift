@@ -60,6 +60,20 @@ struct MihomoGUIView: View {
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
                 .id(page ?? .dashboard)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if model.runtimeConfigurationUncertain || (model.coreActive && model.hasUnappliedChanges) {
+                HStack {
+                    Text(model.runtimeConfigurationUncertain
+                         ? "运行配置尚未确认，请重新应用；连接不可用时请停止并重新启动内核。"
+                         : model.busy ? "正在执行操作；本地修改尚未确认应用。" : "本地修改尚未应用到运行内核。")
+                        .font(.caption).foregroundStyle(.orange)
+                    Spacer()
+                    Button("重新应用") { model.retryLiveUpdate() }
+                        .disabled(model.busy || !model.coreActive)
+                }
+                .padding(8).background(.bar)
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.willTerminateNotification)) { _ in model.flushConfigurationSave() }
         .onDisappear { model.flushConfigurationSave() }
         .alert("操作未完成", isPresented: Binding(get: { model.error != nil }, set: { if !$0 { model.error = nil } })) {
