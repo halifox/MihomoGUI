@@ -98,6 +98,15 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try check(uncertainModel.error != nil && uncertainModel.runtimeConfigurationUncertain,
                   "lost reload response leaves running configuration uncertain")
         await lostResponse.value
+        let pendingUpdate = uncertainDirectory.appendingPathComponent("runtime-update-pending")
+        try check(FileManager.default.fileExists(atPath: pendingUpdate.path), "unconfirmed reload persists recovery marker")
+        let recovered = MihomoGUIModel(directory: uncertainDirectory)
+        try check(recovered.runtimeConfigurationUncertain && recovered.hasUnappliedChanges,
+                  "reopened GUI preserves interrupted reload recovery state")
+        try FileManager.default.removeItem(at: pendingUpdate)
+        let confirmed = MihomoGUIModel(directory: uncertainDirectory)
+        try check(!confirmed.runtimeConfigurationUncertain, "confirmed configuration needs no recovery marker")
+
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)

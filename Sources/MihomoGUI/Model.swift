@@ -43,6 +43,7 @@ final class MihomoGUIModel: ObservableObject {
     init(directory: URL? = nil) {
         self.directory = directory ?? ((try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MihomoGUI"))
         let directory = self.directory
+        runtimeConfigurationUncertain = FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path)
         do {
             settings = try loadSettings(from: directory)
             let bundledCore = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo")
@@ -425,6 +426,8 @@ final class MihomoGUIModel: ObservableObject {
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
             _ = try controllerEndpoint(snapshot)
             try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
+            let pending = self.directory.appendingPathComponent("runtime-update-pending")
+            if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
             self.runtimeSettings = snapshot
             self.runtimeConfigurationUncertain = false
             self.message = "配置已校验并启动。"
@@ -455,7 +458,11 @@ final class MihomoGUIModel: ObservableObject {
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
                     let controller = try self.api
-                    if snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
+                    // This marker survives GUI termination between reload and durable confirmation.
+                    let pending = self.directory.appendingPathComponent("runtime-update-pending")
+                    try Data().write(to: pending, options: .atomic)
+                    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
+                    if self.runtimeConfigurationUncertain || snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
                         ruleFiles = try await prepareRuleFileUpdate(snapshot)
                     }
                     // A lost response cannot prove that the core kept its previous configuration.
@@ -485,12 +492,17 @@ final class MihomoGUIModel: ObservableObject {
                             do { try saveRuntimeSettings(previousSettings, to: self.directory) }
                             catch { failures.append("运行配置恢复失败：" + error.localizedDescription) }
                         }
+                        if failures.isEmpty {
+                            do { try FileManager.default.removeItem(at: pending) }
+                            catch { failures.append("更新标记清理失败：" + error.localizedDescription) }
+                        }
                         self.runtimeConfigurationUncertain = !failures.isEmpty
                         if !failures.isEmpty {
                             throw MihomoGUIError(persistenceError.localizedDescription + "；" + failures.joined(separator: "；") + "。请重试应用或重新启动服务。")
                         }
                         throw persistenceError
                     }
+                    try FileManager.default.removeItem(at: pending)
                     self.runtimeSettings = snapshot
                     self.runtimeConfigurationUncertain = false
                     self.message = "修改已自动应用。"
@@ -503,6 +515,9 @@ final class MihomoGUIModel: ObservableObject {
                             self.runtimeConfigurationUncertain = true
                             detail += "；规则文件恢复失败：" + error.localizedDescription
                         }
+                    }
+                    if FileManager.default.fileExists(atPath: self.directory.appendingPathComponent("runtime-update-pending").path) {
+                        self.runtimeConfigurationUncertain = true
                     }
                     self.error = "修改已保存在本地，但自动应用失败：\(detail)"
                 }

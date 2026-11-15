@@ -19,6 +19,14 @@ struct DashboardView: View {
 
     var body: some View {
         Form {
+            if model.runtimeConfigurationUncertain {
+                Section("配置更新需要恢复") {
+                    Text("上次配置更新未确认完成，当前运行配置可能与本地设置不同。可重新应用；连接不可用时请停止并重新启动内核。")
+                        .foregroundStyle(.orange)
+                    Button("重新应用当前设置") { model.retryLiveUpdate() }
+                        .disabled(model.busy || !model.coreActive)
+                }
+            }
             Section("内核运行信息") {
                 information("连接状态", status)
                 information("内核版本", model.coreVersion ?? "暂不可用")
