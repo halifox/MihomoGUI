@@ -4,6 +4,8 @@
 
 ## 报告问题
 
+疑似安全漏洞请先阅读 [安全报告政策](SECURITY.md)，不要在公开 Issue 中提交漏洞细节。
+
 请在 [Issues](https://github.com/halifox/mihomoGUI/issues) 中提供：
 
 - 应用版本或提交号、macOS 版本、Apple Silicon / Intel 架构。

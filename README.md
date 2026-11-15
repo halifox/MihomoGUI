@@ -282,4 +282,6 @@ resources/                构建所需的内核与 GEO 数据
 
 欢迎提交 [Issue](https://github.com/halifox/mihomoGUI/issues) 和 Pull Request。开发约定、验证要求与提交格式见 [贡献指南](CONTRIBUTING.md)，自动构建与发布流程见 [发布维护文档](docs/releasing.md)。
 
+疑似安全漏洞请遵循[安全报告政策](SECURITY.md)，不要公开漏洞细节。
+
 反馈问题时，请提供应用版本或提交号、macOS 版本、机器架构、复现步骤和实际现象。涉及网络、TUN 或服务启停时，请补充相关环境与已脱敏配置；不要公开订阅地址、密钥或节点凭据。
