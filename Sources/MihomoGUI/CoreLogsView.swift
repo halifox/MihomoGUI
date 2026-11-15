@@ -48,10 +48,22 @@ struct CoreLogsView: View {
                     .help(entry.log.payload)
             }.width(min: 200, ideal: 600, max: nil)
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let streamError {
+                Text(streamError + (entries.isEmpty ? "" : "；下方保留此前收到的日志。"))
+                    .font(.caption).foregroundStyle(.orange).textSelection(.enabled)
+                    .padding(8).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+            }
+        }
         .overlay {
-            if rows.isEmpty && !entries.isEmpty {
-                Text("没有匹配的日志")
-                    .foregroundStyle(.secondary).allowsHitTesting(false)
+            if rows.isEmpty {
+                if !entries.isEmpty {
+                    Text("没有匹配的日志")
+                        .foregroundStyle(.secondary).allowsHitTesting(false)
+                } else if streamError == nil {
+                    Text(connected ? "日志已连接，等待新日志" : "正在连接或等待首条日志…")
+                        .foregroundStyle(.secondary).allowsHitTesting(false)
+                }
             }
         }
         .searchable(text: $search, placement: .toolbar, prompt: "搜索日志")
