@@ -23,7 +23,7 @@
 
 标签推送同样构建标签对应源码并上传。文件名为 `MihomoGUI-v版本号-macos-arm64.zip`，Actions 构建产物保留 7 天。上传时会替换同名附件；Release 不存在时会基于已有标签创建 Release。
 
-构建依次执行资源下载与摘要校验、应用打包、交互回归、签名验证、SDK 与应用版本检查，然后生成 ZIP。当前不生成 `SHA256SUMS` 附件。
+构建依次执行资源下载与摘要校验、应用打包、交互回归、签名验证、SDK 与应用版本检查，然后生成 ZIP。归档脚本生成 ZIP、`SHA256SUMS` 及 `BUILD-METADATA.json`。发布时额外生成 `provenance.sigstore.json`，由 GitHub OIDC 身份签署 ZIP 和构建元数据的来源证明。
 
 Release 可能在构建完成前已创建。构建失败时先查明原因；若是临时下载或 runner 故障，可重新运行原任务。源码修复需要新的提交与版本，不应移动已发布标签来替换源码。
 
@@ -64,3 +64,17 @@ CI 可通过手动输入 `signed_release: true` 启用。自动发布需设置�
 CI 在临时钥匙串导入身份，仅在非 PR 构建中使用签名凭据，完成交互检查后才提交公证，归档前完成 stapling，并在结束时删除临时钥匙串及私钥文件。缺少凭据或公证失败时，正式构建失败，不会静默退回临时签名。
 
 启用自动正式分发前，应使用实际发布身份验证 Developer ID 签名、公证提交、stapling 和 Gatekeeper 接受结果。
+
+## 校验安装包与来源
+
+本地通过 `bash scripts/archive.sh` 生成 `dist/release/` 下的归档、SHA-256 校验文件和构建元数据。该目录是本次构建产物，脚本会重新创建。元数据区分实际检出源码提交与触发工作流的提交，并记录工具链、架构、资源清单摘要和工作区是否存在未提交修改。
+
+下载同一 Release 的 ZIP、`SHA256SUMS` 和 `BUILD-METADATA.json` 到同一目录后执行：
+
+```bash
+shasum -a 256 -c SHA256SUMS
+gh attestation verify MihomoGUI-v版本号-macos-arm64.zip --repo halifox/mihomoGUI
+gh attestation verify BUILD-METADATA.json --repo halifox/mihomoGUI
+```
+
+SHA-256 检查文件完整性，来源证明检查发布工作流身份；二者不能替代对代码行为的审核。手动构建历史标签时，工作流提交可能不同于检出源码提交，应同时检查元数据中的 `source_commit`、`workflow_commit`、`workflow_ref`。本地归档不伪造 GitHub 证明，证明签发需要在 GitHub Actions 实际运行，使用方式见 [官方 attest 文档](https://github.com/actions/attest)。
