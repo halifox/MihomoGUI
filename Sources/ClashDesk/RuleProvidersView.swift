@@ -8,13 +8,13 @@ struct RuleProvidersView: View {
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: ResourceRow?
+    @State private var deleting: ResourceRow?
     var rows: [ResourceRow] {
         (model.settings.options?["rule-providers"]?.object ?? [:]).keys.sorted().map { name in
             let fields = model.settings.options?["rule-providers"]?.object[name]?.object ?? [:]
             return ResourceRow(id: name, name: name, type: fields["type"]?.text ?? "", fields: fields)
         }
     }
-    var selected: ResourceRow? { rows.first { $0.id == selection } }
     func columnSort(_ column: String) -> TableSort<ResourceRow> {
         switch column {
         case "名称": return TableSort(column) { $0.name }
@@ -38,19 +38,30 @@ struct RuleProvidersView: View {
             tableColumnWidth("行为", rows.map(detail)),
             tableColumnWidth("来源 / 内容", rows.map(source))
         ]))
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let item = rows.first(where: { $0.id == id }) {
+                Button("编辑") { editing = item }.disabled(model.busy)
+                Button("删除", role: .destructive) { deleting = item }.disabled(model.busy)
+            }
+        }
+        .alert("确认删除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("取消", role: .cancel) { deleting = nil }
+            Button("确认删除", role: .destructive) {
+                if let item = deleting { model.deleteResource(item, groups: false) }
+                deleting = nil
+            }.disabled(model.busy)
+        } message: {
+            Text("确定删除“\(deleting?.name ?? "")”吗？此操作无法撤销。")
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
-                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(model.busy || selected == nil)
-                    DeleteButton(toolbar: true, message: "确定删除“\(selected?.name ?? "")”吗？此操作无法撤销。") {
-                        if let selected { model.deleteResource(selected, groups: false) }
-                    }.disabled(model.busy || selected == nil)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                    .disabled(model.busy)
+                    .buttonStyle(.bordered)
+                    .labelStyle(.titleAndIcon)
+                    .controlSize(.regular)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
             }
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: false) }

@@ -11,9 +11,7 @@ struct RulesView: View {
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: RouteRule?
-    private var selectedIndex: Int? {
-        model.settings.rules.firstIndex { $0.id == selection }
-    }
+    @State private var deleting: RouteRule?
     var rows: [RuleTableItem] {
         return model.settings.rules.enumerated().map { RuleTableItem(id: $0.element.id, number: $0.offset + 1, rule: $0.element) }
             + [RuleTableItem(id: matchID, number: model.settings.rules.count + 1, rule: nil)]
@@ -68,27 +66,37 @@ struct RulesView: View {
             tableColumnWidth("出口", rows.map(targetText), padding: 48)
         ]))
         .help("使用上移、下移调整匹配顺序；序号为实际匹配优先级，MATCH 固定在最后。")
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let index = model.settings.rules.firstIndex(where: { $0.id == id }) {
+                let item = model.settings.rules[index]
+                Button("编辑") { editing = item }.disabled(model.busy)
+                Button("上移") { model.moveRule(item.id, offset: -1) }.disabled(model.busy || index == 0)
+                Button("下移") { model.moveRule(item.id, offset: 1) }
+                    .disabled(model.busy || index == model.settings.rules.count - 1)
+                Button("删除", role: .destructive) { deleting = item }.disabled(model.busy)
+            }
+        }
+        .alert("确认删除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("取消", role: .cancel) { deleting = nil }
+            Button("确认删除", role: .destructive) {
+                if let item = deleting {
+                    model.deleteRule(item.id)
+                    if selection == item.id { selection = nil }
+                }
+                deleting = nil
+            }.disabled(model.busy)
+        } message: {
+            Text("确定删除所选路由规则吗？此操作无法撤销。")
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { adding = true } label: { toolbarIcon("添加规则", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
-                    Button {
-                        if let selectedIndex { editing = model.settings.rules[selectedIndex] }
-                    } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(selectedIndex == nil || model.busy)
-                    Button {
-                        if let selection { model.moveRule(selection, offset: -1) }
-                    } label: { toolbarIcon("上移", systemImage: "arrow.up") }.frame(width: 28, height: 28).disabled(selectedIndex == nil || selectedIndex == 0 || model.busy)
-                    Button {
-                        if let selection { model.moveRule(selection, offset: 1) }
-                    } label: { toolbarIcon("下移", systemImage: "arrow.down") }.frame(width: 28, height: 28).disabled(selectedIndex == nil || selectedIndex == model.settings.rules.count - 1 || model.busy)
-                    DeleteButton(toolbar: true, message: "确定删除所选路由规则吗？此操作无法撤销。") {
-                        if let selection { model.deleteRule(selection); self.selection = nil }
-                    }.disabled(selectedIndex == nil || model.busy)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                    .disabled(model.busy)
+                    .buttonStyle(.bordered)
+                    .labelStyle(.titleAndIcon)
+                    .controlSize(.regular)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
             }
         }
         .sheet(isPresented: $adding) { RuleEditorView() }

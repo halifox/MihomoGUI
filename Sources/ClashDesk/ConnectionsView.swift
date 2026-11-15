@@ -132,10 +132,6 @@ struct ConnectionsView: View {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
                     Button {
-                        if let selection { closeConnection(selection) }
-                    } label: { Label("关闭连接", systemImage: "xmark.circle") }
-                    .disabled(selectedRow == nil || !canClose(selection))
-                    Button {
                         confirmingCloseAll = true
                     } label: { Label("关闭所有连接", systemImage: "xmark.circle.fill") }
                     .accessibilityLabel("关闭所有连接")

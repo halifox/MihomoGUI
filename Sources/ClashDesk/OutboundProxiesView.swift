@@ -7,6 +7,7 @@ struct OutboundProxiesView: View {
     @EnvironmentObject var model: DeskModel
     @State private var adding = false
     @State private var editing: ManualProxy?
+    @State private var deleting: ManualProxy?
     @State private var selection: String?
     var udpKey: Data {
         let encoder = JSONEncoder(); encoder.outputFormatting = [.sortedKeys]
@@ -17,10 +18,6 @@ struct OutboundProxiesView: View {
             data.append((try? encoder.encode(proxy.fields)) ?? Data())
         }
         return data
-    }
-    var selectedManual: ManualProxy? {
-        guard let node = model.allNodes.first(where: { $0.id == selection }) else { return nil }
-        return model.manualProxy(for: node)
     }
     func columnSort(_ column: String) -> TableSort<Node> {
         switch column {
@@ -62,28 +59,38 @@ struct OutboundProxiesView: View {
             }),
             tableColumnWidth("延迟", rows.map { $0.delayMilliseconds.map { "\($0) ms" } ?? "" } + ["测试中…", "超时"], numeric: true, unitSample: "ms")
         ]))
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let node = rows.first(where: { $0.id == id }) {
+                if let item = model.manualProxy(for: node) {
+                    Button("编辑") { editing = item }.disabled(model.busy)
+                    Button("删除", role: .destructive) { deleting = item }.disabled(model.busy)
+                }
+                Button("测延迟") { model.testDelay(node) }
+                    .disabled(model.busy || model.settings.corePath.isEmpty)
+            }
+            Button(model.isTestingDelays ? "取消测延迟" : "全部测延迟") {
+                if model.isTestingDelays { model.cancelDelayTests() }
+                else { model.testAllDelays() }
+            }.disabled(!model.isTestingDelays && (model.busy || rows.isEmpty || model.settings.corePath.isEmpty))
+        }
+        .alert("确认删除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("取消", role: .cancel) { deleting = nil }
+            Button("确认删除", role: .destructive) {
+                if let item = deleting { model.deleteManualProxy(item) }
+                deleting = nil
+            }.disabled(model.busy)
+        } message: {
+            Text("确定删除所选代理吗？此操作无法撤销。")
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28).disabled(model.busy)
-                    Button { editing = selectedManual } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28).disabled(model.busy || selectedManual == nil)
-                    DeleteButton(toolbar: true, message: "确定删除所选代理吗？此操作无法撤销。") { if let proxy = selectedManual { model.deleteManualProxy(proxy) } }.disabled(model.busy || selectedManual == nil)
-                    Button {
-                        if let node = model.allNodes.first(where: { $0.id == selection }) { model.testDelay(node) }
-                    } label: { toolbarIcon("延迟", systemImage: "speedometer") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || !model.allNodes.contains(where: { $0.id == selection }) || model.settings.corePath.isEmpty)
-                    Button {
-                        if model.isTestingDelays { model.cancelDelayTests() }
-                        else { model.testAllDelays() }
-                    } label: {
-                        toolbarIcon(model.isTestingDelays ? "取消测延迟" : "全部延迟",
-                              systemImage: model.isTestingDelays ? "stop.circle" : "gauge.with.dots.needle.50percent")
-                    }.frame(width: 28, height: 28).disabled(!model.isTestingDelays && (model.busy || model.allNodes.isEmpty || model.settings.corePath.isEmpty))
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                    .disabled(model.busy)
+                    .buttonStyle(.bordered)
+                    .labelStyle(.titleAndIcon)
+                    .controlSize(.regular)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
             }
         }
         .task(id: udpKey) { await model.refreshManualUDP() }

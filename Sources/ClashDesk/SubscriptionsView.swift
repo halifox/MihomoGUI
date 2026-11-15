@@ -8,7 +8,7 @@ struct SubscriptionsView: View {
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: Subscription?
-    var selected: Subscription? { model.settings.subscriptions.first { $0.id == selection } }
+    @State private var deleting: Subscription?
     func columnSort(_ column: String) -> TableSort<Subscription> {
         let counts = Dictionary(model.nodes.map { ($0.provider, 1) }, uniquingKeysWith: +)
         switch column {
@@ -64,24 +64,34 @@ struct SubscriptionsView: View {
             contentWidth("节点数"),
             contentWidth("上次更新时间")
         ]))
+        .contextMenu(forSelectionType: String.self) { ids in
+            if let id = ids.first, let item = model.settings.subscriptions.first(where: { $0.id == id }) {
+                Button("编辑") { editing = item }.disabled(model.busy)
+                Button("删除", role: .destructive) { deleting = item }.disabled(model.busy)
+                Button("更新") { model.refreshSubscription(item) }
+                    .disabled(model.busy || model.settings.corePath.isEmpty)
+            }
+            Button("全部更新") { model.refreshSubscriptions() }
+                .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
+        }
+        .alert("确认删除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
+            Button("取消", role: .cancel) { deleting = nil }
+            Button("确认删除", role: .destructive) {
+                if let item = deleting { model.deleteSubscription(item) }
+                deleting = nil
+            }.disabled(model.busy)
+        } message: {
+            Text("确定删除订阅“\(deleting?.name ?? "")”及其节点吗？此操作无法撤销。")
+        }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                HStack(spacing: 4) {
-                    Button { adding = true } label: { toolbarIcon("添加", systemImage: "plus") }.frame(width: 28, height: 28)
-                        .disabled(model.busy)
-                    Button { editing = selected } label: { toolbarIcon("编辑", systemImage: "pencil") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || selected == nil)
-                    DeleteButton(toolbar: true, message: "确定删除订阅“\(selected?.name ?? "")”及其节点吗？此操作无法撤销。") { if let selected { model.deleteSubscription(selected) } }
-                        .disabled(model.busy || selected == nil)
-                    Button { if let selected { model.refreshSubscription(selected) } } label: { toolbarIcon("更新", systemImage: "arrow.clockwise") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || selected == nil || model.settings.corePath.isEmpty)
-                    Button { model.refreshSubscriptions() } label: { toolbarIcon("全部更新", systemImage: "arrow.triangle.2.circlepath") }.frame(width: 28, height: 28)
-                        .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                    .disabled(model.busy)
+                    .buttonStyle(.bordered)
+                    .labelStyle(.titleAndIcon)
+                    .controlSize(.regular)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 2)
             }
         }
         .sheet(isPresented: $adding) { SubscriptionEditorView() }
