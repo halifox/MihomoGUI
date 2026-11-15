@@ -2,7 +2,9 @@ Bundled third-party resources
 
 mihomo: MetaCubeX/mihomo and its contributors, GPL-3.0.
 Source: https://github.com/MetaCubeX/mihomo
-The exact bundled release tag is recorded in resources-manifest.json.
+Verified downloads record their upstream identity and source digest in
+resources-manifest.json, alongside final packaged file digests. Explicit manual
+builds are labeled local-unverified and do not claim a verified upstream identity.
 License: mihomo-GPL-3.0.txt
 
 Country.mmdb, geoip.dat, geosite.dat: MetaCubeX/meta-rules-dat and its

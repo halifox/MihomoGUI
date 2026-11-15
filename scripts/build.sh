@@ -27,6 +27,7 @@ if ! /usr/bin/lipo "$CORE_FILE" -verify_arch "$ARCH" >/dev/null 2>&1; then
   printf 'Bundled mihomo must be a macOS executable supporting %s: %s\n' "$ARCH" "$CORE_FILE" >&2
   exit 1
 fi
+python3 scripts/resources.py verify "$ARCH"
 BUILD_DIR="$PWD/.build/manual"
 mkdir -p "$BUILD_DIR"
 export CLANG_MODULE_CACHE_PATH="$BUILD_DIR/module-cache"
@@ -47,7 +48,6 @@ mkdir -p "$APP_DIR/Contents/MacOS" "$APP_DIR/Contents/Helpers" "$APP_DIR/Content
 cp "$BUILD_DIR/MihomoGUI" "$APP_DIR/Contents/MacOS/MihomoGUI"
 cp resources/AppIcon.icns "$APP_DIR/Contents/Resources/AppIcon.icns"
 cp -R resources/licenses "$APP_DIR/Contents/Resources/"
-cp resources/manifest.json "$APP_DIR/Contents/Resources/resources-manifest.json"
 cp "$BUILD_DIR/MihomoGUIHelper" "$APP_DIR/Contents/Helpers/MihomoGUIHelper"
 cp "$CORE_FILE" "$APP_DIR/Contents/Helpers/mihomo"
 chmod 755 "$APP_DIR/Contents/Helpers/mihomo"
@@ -69,11 +69,13 @@ cat > "$APP_DIR/Contents/Info.plist" <<PLIST
 <key>NSHighResolutionCapable</key><true/>
 </dict></plist>
 PLIST
+python3 scripts/resources.py verify-staged "$ARCH" "$APP_DIR"
 printf '[5/6] Signing application and helpers...\n'
 SIGNING_FLAGS=(--force --sign "$SIGNING_IDENTITY" --options runtime)
 if [ "$SIGNING_IDENTITY" != - ]; then SIGNING_FLAGS+=(--timestamp); fi
 codesign "${SIGNING_FLAGS[@]}" "$APP_DIR/Contents/Helpers/mihomo"
 codesign "${SIGNING_FLAGS[@]}" "$APP_DIR/Contents/Helpers/MihomoGUIHelper"
+python3 scripts/resources.py bundle-manifest "$ARCH" "$APP_DIR"
 codesign "${SIGNING_FLAGS[@]}" "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
 printf '[6/6] Build completed in %ss.\n' "$SECONDS"

@@ -152,6 +152,7 @@ MihomoGUI 将配置管理界面与代理服务分开运行。需要修改配置�
 - macOS 13 或更高版本。
 - Xcode 或 Command Line Tools 提供的 Swift 编译器；`Package.swift` 声明 Swift tools 5.9。
 - 当前机器架构对应的 macOS mihomo 内核，以及四份 GEO 数据。
+- Python 3，用于构建时的资源身份校验、随包清单及归档元数据。
 - 系统 Ruby / Psych，用于订阅 YAML 解析；无需安装第三方 Swift 包。
 
 ### 获取源码与准备资源
@@ -181,7 +182,7 @@ resources/
     ASN.mmdb
 ```
 
-只需准备当前构建机器对应架构的内核。内核必须是已解压的 macOS 可执行文件；构建脚本不会自动下载资源，缺少或为空时会报错。为两个架构分发时，分别在对应架构环境构建。
+只需准备当前构建机器对应架构的内核。内核必须是已解压的 macOS 可执行文件；构建脚本不会自动下载资源，缺少或为空时会报错。为两个架构分发时，分别在对应架构环境构建。手动准备的资源需按[资源说明](resources/README.md)显式启用未验证本地资源模式，随包清单会如实标注。
 
 ### 构建与运行
 
@@ -192,7 +193,7 @@ bash scripts/build.sh
 open dist/MihomoGUI.app
 ```
 
-脚本直接调用 `swiftc`，编译 GUI 与特权辅助程序，打包内核和 GEO 数据，复制第三方许可说明与资源清单，然后进行本地临时签名。中间文件位于 `.build/manual/`，最终交付整个 `dist/MihomoGUI.app`，无需另外交付 `resources/`。
+脚本直接调用 `swiftc`，编译 GUI 与特权辅助程序，打包内核和 GEO 数据，复制第三方许可说明、核对实际资源并生成随包清单，然后进行本地临时签名。中间文件位于 `.build/manual/`，最终交付整个 `dist/MihomoGUI.app`，无需另外交付 `resources/`。
 
 重新构建后，请先用 Cmd-Q 退出旧应用，再打开新构建。也可通过 [Package.swift](Package.swift) 在支持 Swift Package 的开发环境中打开项目；完整编译、打包与签名仍使用上述脚本。
 
@@ -226,7 +227,7 @@ Sources/
 scripts/
   build.sh                 编译、打包与本地签名
   check-interactions.sh    交互与数据契约回归检查
-  resources.py             按清单下载资源、更新资源清单
+  resources.py             下载固定资源、验证身份、生成随包清单
 resources/                构建所需的内核与 GEO 数据
 ```
 

@@ -32,7 +32,7 @@ metadata = {
     'workflow_run_attempt': os.environ.get('GITHUB_RUN_ATTEMPT'),
     'swift_version': subprocess.check_output(['swiftc', '--version'], text=True, stderr=subprocess.STDOUT).strip(),
     'sdk_version': subprocess.check_output(['xcrun', '--sdk', 'macosx', '--show-sdk-version'], text=True).strip(),
-    'resource_manifest_sha256': hashlib.sha256(Path('resources/manifest.json').read_bytes()).hexdigest(),
+    'resource_manifest_sha256': hashlib.sha256(Path('dist/MihomoGUI.app/Contents/Resources/resources-manifest.json').read_bytes()).hexdigest(),
 }
 Path('dist/release/BUILD-METADATA.json').write_text(json.dumps(metadata, indent=2, sort_keys=True) + '\n')
 PY

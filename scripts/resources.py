@@ -14,6 +14,8 @@ import urllib.request
 
 ROOT = Path(__file__).resolve().parent.parent
 MANIFEST = ROOT / "resources/manifest.json"
+RECEIPTS = ROOT / ".build/resource-receipts.json"
+VERIFIED = ROOT / ".build/verified-resources.json"
 SOURCES = [
     ("MetaCubeX/mihomo", "latest", {"core/arm64/mihomo": None}),
     ("MetaCubeX/meta-rules-dat", "tags/latest", {
@@ -56,6 +58,7 @@ def download():
     expected = {target for _, _, files in SOURCES for target in files}
     if set(assets) != expected:
         raise ValueError("Resource manifest must contain exactly the five required assets")
+    receipts = {}
     for target, asset in assets.items():
         if not asset["url"].startswith("https://github.com/" + asset["repository"] + "/releases/download/"):
             raise ValueError("Invalid resource URL")
@@ -84,6 +87,74 @@ def download():
                 subprocess.run(["/usr/bin/lipo", str(staged), "-verify_arch", "arm64"], check=True)
                 staged.chmod(0o755)
             shutil.copy2(staged, destination)
+            receipts[target] = {"asset": asset, "source_sha256": hashlib.sha256(data).hexdigest()}
+    RECEIPTS.parent.mkdir(parents=True, exist_ok=True)
+    temporary = RECEIPTS.with_suffix(".tmp")
+    temporary.write_text(json.dumps(receipts, indent=2) + "\n")
+    temporary.replace(RECEIPTS)
+
+
+def file_digest(path):
+    result = hashlib.sha256()
+    with path.open("rb") as source:
+        for chunk in iter(lambda: source.read(1024 * 1024), b""):
+            result.update(chunk)
+    return result.hexdigest()
+
+
+def resource_targets(architecture):
+    if architecture not in ("arm64", "x86_64"):
+        raise ValueError("Unsupported resource architecture")
+    return [f"core/{architecture}/mihomo"] + ["geodata/" + name for name in
+            ("Country.mmdb", "geoip.dat", "geosite.dat", "ASN.mmdb")]
+
+
+def verify(architecture):
+    assets = json.loads(MANIFEST.read_text())
+    targets = resource_targets(architecture)
+    hashes = {}
+    for target in targets:
+        path = ROOT / "resources" / target
+        if not path.is_file() or path.stat().st_size == 0:
+            raise ValueError(f"Missing resource: {target}")
+        hashes[target] = file_digest(path)
+    receipts = json.loads(RECEIPTS.read_text()) if RECEIPTS.exists() else {}
+    pinned = all(target in assets and receipts.get(target, {}).get("asset") == assets[target]
+                 and receipts[target].get("source_sha256") == hashes[target] for target in targets)
+    if not pinned and os.environ.get("ALLOW_UNVERIFIED_RESOURCES") != "1":
+        raise ValueError("Resources do not match verified download receipts; run resources.py download. "
+                         "Manual local resources require ALLOW_UNVERIFIED_RESOURCES=1 and are labeled unverified.")
+    state = {"schema_version": 1, "architecture": architecture,
+             "verification": "pinned-source-sha256" if pinned else "local-unverified", "assets": {}}
+    for target in targets:
+        entry = {"source_sha256": hashes[target]}
+        if pinned:
+            entry["source_asset"] = assets[target]
+        state["assets"][target] = entry
+    VERIFIED.parent.mkdir(parents=True, exist_ok=True)
+    temporary = VERIFIED.with_suffix(".tmp")
+    temporary.write_text(json.dumps(state, indent=2) + "\n")
+    temporary.replace(VERIFIED)
+    print("Resource verification: " + state["verification"])
+
+
+def bundle_manifest(architecture, app, signed=False):
+    state = json.loads(VERIFIED.read_text())
+    if state.get("architecture") != architecture or set(state["assets"]) != set(resource_targets(architecture)):
+        raise ValueError("Verified resource snapshot does not match build architecture")
+    app = Path(app)
+    for target, entry in state["assets"].items():
+        core = target.startswith("core/")
+        path = app / ("Contents/Helpers/mihomo" if core else "Contents/Resources/" + target)
+        actual = file_digest(path)
+        if (not signed or not core) and actual != entry["source_sha256"]:
+            raise ValueError(f"Packaged resource changed after verification: {target}")
+        if signed:
+            entry["bundled_sha256"] = actual
+            entry["transformation"] = "codesign" if core else "copy"
+    if signed:
+        subprocess.run(["/usr/bin/codesign", "--verify", "--strict", str(app / "Contents/Helpers/mihomo")], check=True)
+        (app / "Contents/Resources/resources-manifest.json").write_text(json.dumps(state, indent=2) + "\n")
 
 
 if __name__ == "__main__":
@@ -91,5 +162,9 @@ if __name__ == "__main__":
         update()
     elif sys.argv[1:] == ["download"]:
         download()
+    elif len(sys.argv) == 3 and sys.argv[1] == "verify":
+        verify(sys.argv[2])
+    elif len(sys.argv) == 4 and sys.argv[1] in ("verify-staged", "bundle-manifest"):
+        bundle_manifest(sys.argv[2], sys.argv[3], signed=sys.argv[1] == "bundle-manifest")
     else:
-        sys.exit("Usage: python3 scripts/resources.py update|download")
+        sys.exit("Usage: python3 scripts/resources.py update|download|verify ARCH|verify-staged ARCH APP|bundle-manifest ARCH APP")
