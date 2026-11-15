@@ -113,9 +113,9 @@ public func prepareGeoAssets(corePath: String, directory: URL, names: [String] =
                 : "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/" + name.lowercased()
             guard let url = URL(string: urls[name] ?? defaultURL), url.scheme == "https" else { throw MihomoGUIError("GEO 下载地址必须为 HTTPS") }
             var request = URLRequest(url: url); request.timeoutInterval = 45
-            let (download, response) = try await URLSession.shared.download(for: request)
+            let (download, response) = try await downloadLimited(request, maximumBytes: 100 * 1024 * 1024)
             defer { try? FileManager.default.removeItem(at: download) }
-            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+            guard (200..<300).contains(response.statusCode) else {
                 throw MihomoGUIError("下载 DNS 地理数据 \(name) 失败，请检查网络后重试")
             }
             let size = try download.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
@@ -233,12 +233,12 @@ public func fetchSubscriptionData(_ subscriptions: [Subscription], corePath: Str
         var request = URLRequest(url: url)
         request.timeoutInterval = 30; request.cachePolicy = .reloadIgnoringLocalCacheData
         request.setValue("clash.meta", forHTTPHeaderField: "User-Agent")
-        let (download, response) = try await URLSession.shared.download(for: request)
+        let (download, response) = try await downloadLimited(request, maximumBytes: 16 * 1024 * 1024)
         defer { try? FileManager.default.removeItem(at: download) }
-        guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
-            throw MihomoGUIError("订阅“\(subscription.name)”下载失败（HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)）")
+        guard (200..<300).contains(response.statusCode) else {
+            throw MihomoGUIError("订阅“\(subscription.name)”下载失败（HTTP \(response.statusCode)）")
         }
-        updated[index].usage = http.value(forHTTPHeaderField: "subscription-userinfo").map { SubscriptionUsage(header: $0) }
+        updated[index].usage = response.value(forHTTPHeaderField: "subscription-userinfo").map { SubscriptionUsage(header: $0) }
         let size = try download.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
         guard size > 0, size <= 16 * 1024 * 1024 else { throw MihomoGUIError("订阅为空或超过 16 MiB") }
         let target = staging.appendingPathComponent(subscription.id + ".yaml")

@@ -7,7 +7,10 @@ if [ ! -s .build/manual/MihomoGUICore.o ]; then
   exit 1
 fi
 CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/MihomoGUI-interactions.XXXXXX")"
-trap 'rm -rf "$CHECK_DIR"' EXIT
+DOWNLOAD_SERVER_PID=""
+trap 'if [ -n "$DOWNLOAD_SERVER_PID" ]; then kill "$DOWNLOAD_SERVER_PID" 2>/dev/null || true; wait "$DOWNLOAD_SERVER_PID" 2>/dev/null || true; fi; rm -rf "$CHECK_DIR"' EXIT
+python3 scripts/download-fixture.py "$CHECK_DIR/download-port" &
+DOWNLOAD_SERVER_PID=$!
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
 import Darwin
@@ -206,6 +209,40 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         let cancelledAfter = try Data(contentsOf: cancelledDirectory.appendingPathComponent("settings.json"))
         try check(cancelledModel.settings.subscriptions.isEmpty && cancelledAfter == cancelledBefore,
                   "cancelled subscription cannot mutate persisted settings")
+        let downloadDirectory = directory.appendingPathComponent("downloads")
+        try FileManager.default.createDirectory(at: downloadDirectory, withIntermediateDirectories: true)
+        let downloadPort = try String(contentsOf: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("download-port"), encoding: .utf8)
+        func downloadRequest(_ path: String) throws -> URLRequest {
+            guard let url = URL(string: "http://127.0.0.1:" + downloadPort + path) else { throw MihomoGUIError("invalid fixture URL") }
+            return URLRequest(url: url)
+        }
+        let exact = try await downloadLimited(downloadRequest("/exact"), maximumBytes: 1024, directory: downloadDirectory)
+        try check(try Data(contentsOf: exact.0).count == 1024, "download accepts exact size limit")
+        try FileManager.default.removeItem(at: exact.0)
+        for route in ["/declared", "/unknown?token=fixture-private-value", "/empty", "/error"] {
+            do {
+                let result = try await downloadLimited(downloadRequest(route), maximumBytes: 4096, directory: downloadDirectory)
+                try? FileManager.default.removeItem(at: result.0)
+                throw MihomoGUIError("invalid download accepted")
+            } catch let error as MihomoGUIError {
+                try check(!error.message.contains("fixture-private-value") && error.message != "invalid download accepted", "rejected downloads do not expose request credentials")
+            }
+            try check(try FileManager.default.contentsOfDirectory(atPath: downloadDirectory.path).isEmpty, "failed download removes partial file")
+        }
+        let cancelRequest = try downloadRequest("/cancel")
+        let activeDownload = Task { try await downloadLimited(cancelRequest, maximumBytes: 1024 * 1024, directory: downloadDirectory) }
+        for _ in 0..<100 {
+            let files = try FileManager.default.contentsOfDirectory(at: downloadDirectory, includingPropertiesForKeys: [.fileSizeKey])
+            if let file = files.first, (try file.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) > 0 { break }
+            try await Task.sleep(nanoseconds: 10_000_000)
+        }
+        activeDownload.cancel()
+        do {
+            let result = try await activeDownload.value
+            try? FileManager.default.removeItem(at: result.0)
+            throw MihomoGUIError("cancelled download accepted")
+        } catch is CancellationError {}
+        try check(try FileManager.default.contentsOfDirectory(atPath: downloadDirectory.path).isEmpty, "cancelled streaming download removes partial file")
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
