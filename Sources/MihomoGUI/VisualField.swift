@@ -29,8 +29,17 @@ struct VisualField: View {
                           description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
                 .frame(width: labelWidth, alignment: .leading)
             VisualValue(field: field, value: inputValue, compact: true).disabled(!inputEnabled)
+            if allowUnset && !field.required {
+                Button { value = nil } label: {
+                    Image(systemName: "arrow.uturn.backward")
+                }
+                .buttonStyle(.borderless)
+                .disabled(!inputEnabled || value == nil)
+                .help("恢复未设置：移除此项，按默认配置处理")
+                .accessibilityLabel("将 " + field.title + " 恢复未设置")
+                .accessibilityValue(value == nil ? "未设置" : "已设置")
+            }
             Spacer(minLength: 0)
-
         }.padding(.vertical, 3)
     }
     var legacyRow: some View {
