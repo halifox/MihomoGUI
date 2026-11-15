@@ -11,4 +11,4 @@
 
 前三项已接入构建工作流。测试失败应阻止后续公证与发布；不能用构建成功代替交互回归成功。新增回归优先放入现有脚本，复现实际数据契约或失败边界，不依赖生产订阅或真实秘密。
 
-隔离测试不覆盖管理员弹窗、launchd 安装/卸载、真实 TUN、睡眠恢复、多 VPN 共存及系统代理恢复；这些仍需独立实机记录。兼容性范围见 [compatibility.md](compatibility.md)。
+隔离测试不覆盖管理员弹窗、launchd 安装/卸载、真实 TUN、睡眠恢复、多 VPN 共存及系统代理恢复；这些仍需按[系统行为验证记录](system-validation.md)完成独立实机验收。兼容性范围见 [compatibility.md](compatibility.md)。
