@@ -2,7 +2,7 @@ import Foundation
 import Darwin
 import MihomoGUICore
 
-func runCommand(_ executable: String, _ arguments: [String], timeout: TimeInterval = 45) async throws -> String {
+func runCommand(_ executable: String, _ arguments: [String], timeout: TimeInterval = 45, expiresAt: DispatchTime? = nil) async throws -> String {
     try await Task.detached {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable); process.arguments = arguments
@@ -10,7 +10,7 @@ func runCommand(_ executable: String, _ arguments: [String], timeout: TimeInterv
         process.standardOutput = pipe; process.standardError = pipe
         defer { try? pipe.fileHandleForReading.close(); try? pipe.fileHandleForWriting.close() }
         try process.run()
-        let deadline = ProcessDeadline(process: process, timeout: timeout)
+        let deadline = ProcessDeadline(process: process, timeout: timeout, expiresAt: expiresAt)
         defer {
             if process.isRunning {
                 let pid = process.processIdentifier
@@ -54,9 +54,9 @@ func runCommand(_ executable: String, _ arguments: [String], timeout: TimeInterv
     }.value
 }
 
-func administratorCommand(_ command: String) async throws {
+func administratorCommand(_ command: String, timeout: TimeInterval = 180, expiresAt: DispatchTime? = nil) async throws {
     let script = "on run argv\n do shell script (item 1 of argv) with administrator privileges\nend run"
-    _ = try await runCommand("/usr/bin/osascript", ["-e", script, command], timeout: 180)
+    _ = try await runCommand("/usr/bin/osascript", ["-e", script, command], timeout: timeout, expiresAt: expiresAt)
 }
 
 // Shared by initial installation and live reloads; keep generated file paths in sync.

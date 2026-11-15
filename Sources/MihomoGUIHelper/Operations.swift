@@ -4,7 +4,8 @@ import Security
 import MihomoGUICore
 
 // Read through one descriptor so a user-controlled symlink cannot redirect a root read.
-private func readInput(_ path: String, owner: uid_t) throws -> Data {
+private func readInput(_ path: String, owner: uid_t, deadline: PrivilegedOperationDeadline) throws -> Data {
+    try deadline.check()
     let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
     guard descriptor >= 0 else { throw MihomoGUIError("无法读取操作输入") }
     let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
@@ -14,7 +15,14 @@ private func readInput(_ path: String, owner: uid_t) throws -> Data {
           info.st_uid == owner, info.st_size >= 0, info.st_size <= 128 * 1024 * 1024 else {
         throw MihomoGUIError("操作输入必须是安装用户拥有的普通文件")
     }
-    return try file.readToEnd() ?? Data()
+    var data = Data()
+    while true {
+        try deadline.check()
+        let chunk = try file.read(upToCount: 65_536) ?? Data()
+        try deadline.check()
+        if chunk.isEmpty { return data }
+        data.append(chunk)
+    }
 }
 
 private func checkRuleNames(_ names: [String]) throws {
@@ -30,15 +38,18 @@ private func checkDirectory(_ path: String) throws {
           info.st_mode & 0o022 == 0 else { throw MihomoGUIError("系统操作目录权限无效") }
 }
 
-func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequirement: String) throws -> Int32 {
+func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequirement: String, deadline: PrivilegedOperationDeadline = PrivilegedOperationDeadline(timeout: 120)) throws -> Int32 {
+    try deadline.check()
     let stage = URL(fileURLWithPath: "/private/tmp").appendingPathComponent("MihomoGUI-operation-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: stage) }
     func write(_ data: Data, _ name: String) throws {
+        try deadline.check()
         let target = stage.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try data.write(to: target, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        try deadline.check()
     }
     let command: String
     switch operation {
@@ -52,9 +63,11 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
         command = "set -eu\n/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent("config.yaml").path) + " " + shellQuote(pending)
             + "\n/bin/mv -f " + shellQuote(pending) + " " + shellQuote(target)
     case .install(let source, let settings):
-        try write(readInput(URL(fileURLWithPath: source).appendingPathComponent("mihomo").path, owner: owner), "mihomo")
+        try write(readInput(URL(fileURLWithPath: source).appendingPathComponent("mihomo").path, owner: owner, deadline: deadline), "mihomo")
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stage.appendingPathComponent("mihomo").path)
+        try deadline.check()
         try verifyCore(at: stage.appendingPathComponent("mihomo"), requirement: coreRequirement)
+        try deadline.check()
 
         try write(generateConfig(settings), "config.yaml")
         let plist: [String: Any] = ["Label": coreLabel,
@@ -73,7 +86,7 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
             names.append("rules/set-\(index)." + (providers[name]?.object["format"]?.text ?? "yaml"))
         }
         for name in names {
-            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner), name)
+            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner, deadline: deadline), name)
             let target = rootDirectory + "/" + name
             seeds.append("/bin/test ! -L " + shellQuote(target))
             seeds.append("/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent(name).path) + " " + shellQuote(target))
@@ -83,7 +96,7 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
         try checkRuleNames(filenames)
         try checkDirectory(rootDirectory)
         for name in filenames {
-            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner), name)
+            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner, deadline: deadline), name)
         }
         try write(Data((filenames.sorted().joined(separator: "\n") + "\n").utf8), "rule-manifest")
         command = ruleFilePrepareCommand(staging: stage, id: id, filenames: filenames)
@@ -101,7 +114,8 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
         command = ruleFileFinishCommand(staging: stage, id: id, filenames: filenames, restore: restore)
 
     }
-    let result = try runPrivilegedScript(command)
+    let result = try runPrivilegedScript(command, timeout: deadline.remaining, expiresAt: deadline.end)
+    try deadline.check()
     guard result.status == 0 else { throw PrivilegedCommandFailure(diagnostic: result.diagnostic) }
     return result.status
 }
@@ -347,7 +361,7 @@ struct PrivilegedCommandFailure: Error {
 }
 
 // Commands are generated locally. Retain a bounded tail and expose only known diagnostic categories.
-func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120) throws -> (status: Int32, diagnostic: String) {
+func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120, expiresAt: DispatchTime? = nil) throws -> (status: Int32, diagnostic: String) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
     process.arguments = ["-c", command]
@@ -355,7 +369,7 @@ func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120) throws 
     process.standardOutput = pipe
     process.standardError = pipe
     try process.run()
-    let deadline = ProcessDeadline(process: process, timeout: timeout)
+    let deadline = ProcessDeadline(process: process, timeout: timeout, expiresAt: expiresAt)
     defer { deadline.invalidate() }
     try pipe.fileHandleForWriting.close()
     defer { try? pipe.fileHandleForReading.close() }

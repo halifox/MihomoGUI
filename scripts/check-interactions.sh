@@ -855,6 +855,41 @@ import MihomoGUICore
         try FileManager.default.createDirectory(at: unfinished, withIntermediateDirectories: false)
         guard try runPrivilegedScript(ruleFileFinishCommand(staging: ruleStage, id: unfinishedID, filenames: ruleNames, restore: true, directory: rulesRoot.path)).status == 0,
               try Data(contentsOf: original) == Data("old".utf8) else { throw MihomoGUIError("unfinished backup removed an untouched original") }
+        let alreadyExpired = PrivilegedOperationDeadline(timeout: 0)
+        do {
+            _ = try executeOperation(.install(staging: source.path, settings: Settings()), owner: getuid(), coreRequirement: "invalid", deadline: alreadyExpired)
+            throw MihomoGUIError("expired operation reached input handling")
+        } catch let error as MihomoGUIError {
+            guard error.message.contains("操作超时") else { throw error }
+        }
+        let service = Service(owner: getuid(), requirement: "invalid", coreRequirement: "invalid")
+        service.queue.async { Thread.sleep(forTimeInterval: 0.25) }
+        let replyArrived = DispatchSemaphore(value: 0)
+        let replyLock = NSLock()
+        var replyCount = 0
+        var replyDiagnostic: String?
+        let queuedDeadline = PrivilegedOperationDeadline(timeout: 0.04)
+        service.execute(Data("invalid fixture".utf8), deadline: queuedDeadline.end.uptimeNanoseconds) { _, diagnostic in
+            replyLock.lock(); replyCount += 1; replyDiagnostic = diagnostic; replyLock.unlock()
+            replyArrived.signal()
+        }
+        guard replyArrived.wait(timeout: .now() + 0.2) == .success else { throw MihomoGUIError("queued request timeout waited for the serial queue") }
+        service.queue.sync {}
+        replyLock.lock()
+        let queuedTimedOutOnce = replyCount == 1 && replyDiagnostic?.contains("操作超时") == true
+        replyLock.unlock()
+        guard queuedTimedOutOnce else { throw MihomoGUIError("queued timeout replied more than once or lost its diagnostic") }
+        let longClientBudget = PrivilegedOperationDeadline(clientDeadline: (DispatchTime.now() + 1000).uptimeNanoseconds)
+        guard try longClientBudget.remaining <= 120 else { throw MihomoGUIError("helper accepted an unbounded client deadline") }
+        let cumulativeStart = Date()
+        let cumulativeDeadline = PrivilegedOperationDeadline(timeout: 0.2)
+        Thread.sleep(forTimeInterval: 0.14)
+        do {
+            _ = try runPrivilegedScript("/bin/sleep 2", timeout: 5, expiresAt: cumulativeDeadline.end)
+            throw MihomoGUIError("command received a fresh timeout after preparation")
+        } catch let error as MihomoGUIError {
+            guard error.message.contains("超时"), Date().timeIntervalSince(cumulativeStart) < 1 else { throw error }
+        }
         let target = source.appendingPathComponent("mihomo")
         try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: "/bin/sh")
         do {
@@ -981,12 +1016,18 @@ import MihomoGUICore
             }
             guard ready else { throw MihomoGUIError("real core health check rejected " + bindHost) }
         }
-        print("PASS: privileged boundary, bounded health protocol, stable listener identity and real-core IPv4/IPv6 wildcard checks")
+        print("PASS: privileged boundary, cumulative deadline, bounded health protocol, stable listener identity and real-core IPv4/IPv6 wildcard checks")
     }
 }
 SWIFT
+python3 - "$CHECK_DIR/Service.swift" <<'PYSERVICE'
+from pathlib import Path
+import sys
+source = Path('Sources/MihomoGUIHelper/main.swift').read_text()
+Path(sys.argv[1]).write_text(source.split('\nguard getuid() == 0,')[0])
+PYSERVICE
 swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
-  Sources/MihomoGUIHelper/Operations.swift "$CHECK_DIR/PrivilegedChecks.swift" .build/manual/MihomoGUICore.o \
+  Sources/MihomoGUIHelper/Operations.swift "$CHECK_DIR/Service.swift" "$CHECK_DIR/PrivilegedChecks.swift" .build/manual/MihomoGUICore.o \
   -o "$CHECK_DIR/privileged-checks"
 "$CHECK_DIR/privileged-checks" "$CHECK_DIR"
