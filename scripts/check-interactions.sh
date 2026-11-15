@@ -38,6 +38,10 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try check(try Data(contentsOf: backups[0]) == original, "damaged settings backup preserves original bytes")
         _ = try loadSettings(from: damaged)
 
+        for path in ["type", "type.nested"] {
+            let overridden = ManualProxy(type: "ss", fields: [path: .string("direct")])
+            try expectFailure("extra fields cannot override protocol") { _ = try overridden.configuration() }
+        }
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)

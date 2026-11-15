@@ -178,7 +178,7 @@ struct ProxyEditorView: View {
                 .popover(isPresented: $addingField, arrowEdge: .top) {
                     VStack(alignment: .leading, spacing: 12) {
                         Text("添加额外字段").font(.headline)
-                        CustomFieldEditor(fields: $fields, reservedPaths: knownFields) { addingField = false }
+                        CustomFieldEditor(fields: $fields, reservedPaths: knownFields.union(["type"])) { addingField = false }
                         Button("取消") { addingField = false }
                             .frame(maxWidth: .infinity, alignment: .trailing)
                     }.padding(16).frame(width: editorSheetWidth)
