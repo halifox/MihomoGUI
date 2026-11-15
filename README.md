@@ -2,7 +2,7 @@
 
 <img src="resources/AppIcon.png" width="160" height="160">
 
-# mihomo.GUI
+# MihomoGUI
 
 一款使用 SwiftUI 构建的 macOS 原生 mihomo 客户端。
 
@@ -20,7 +20,7 @@
 
 ## 项目初衷
 
-**Mac 的内存比金子贵，日常代理只需要内核运行。** 配置完成后，没有必要让管理界面一直占着内存。mihomo.GUI 的定位就是一个纯粹的配置与管理 GUI：需要修改配置或查看连接时打开，用完便可退出 GUI，让 mihomo 内核独立运行，尽量减少界面带来的常驻内存开销。重新打开 GUI 会连接现有内核，无需重启代理服务。
+**Mac 的内存比金子贵，日常代理只需要内核运行。** 配置完成后，没有必要让管理界面一直占着内存。MihomoGUI 的定位就是一个纯粹的配置与管理 GUI：需要修改配置或查看连接时打开，用完便可退出 GUI，让 mihomo 内核独立运行，尽量减少界面带来的常驻内存开销。重新打开 GUI 会连接现有内核，无需重启代理服务。
 
 另一个原因是，很多订阅附带的配置质量参差不齐，DNS、TUN 和路由规则未必适合自己的网络环境。我需要的是订阅里的节点，以及自己维护的一套网络策略。但在其他客户端中，修改这些参数往往要处理配置覆写、混合配置或手动编辑文件，维护起来很麻烦。
 
@@ -105,7 +105,7 @@
 
 ### macOS
 
-从 [GitHub Releases](https://github.com/halifox/macos_clash/releases) 下载 `mihomo-v版本号-macos-arm64.zip`，解压后将 `mihomo.app` 放入“应用程序”目录。自动发布包仅提供 Apple Silicon 版本。
+从 [GitHub Releases](https://github.com/halifox/mihomoGUI/releases) 下载 `MihomoGUI-v版本号-macos-arm64.zip`，解压后将 `MihomoGUI.app` 放入“应用程序”目录。自动发布包仅提供 Apple Silicon 版本。
 
 - **Apple Silicon（M 系列芯片）**：选择 `arm64` 安装包。
 - **Intel 芯片**：需要自行准备对应内核并从源码构建。
@@ -147,8 +147,8 @@
 ### 获取源码与准备资源
 
 ```bash
-git clone https://github.com/halifox/macos_clash.git mihomo
-cd mihomo
+git clone https://github.com/halifox/mihomoGUI.git MihomoGUI
+cd MihomoGUI
 ```
 
 按照 [内置资源说明](resources/README.md) 准备以下文件：
@@ -173,10 +173,10 @@ resources/
 
 ```bash
 bash scripts/build.sh
-open dist/mihomo.app
+open dist/MihomoGUI.app
 ```
 
-脚本直接调用 `swiftc`，编译 GUI 与特权辅助程序，打包内核和 GEO 数据，然后进行本地临时签名。中间文件位于 `.build/manual/`，最终交付整个 `dist/mihomo.app`，无需另外交付 `resources/`。
+脚本直接调用 `swiftc`，编译 GUI 与特权辅助程序，打包内核和 GEO 数据，然后进行本地临时签名。中间文件位于 `.build/manual/`，最终交付整个 `dist/MihomoGUI.app`，无需另外交付 `resources/`。
 
 重新构建后，请先用 Cmd-Q 退出旧应用，再打开新构建。也可通过 [Package.swift](Package.swift) 在支持 Swift Package 的开发环境中打开项目；完整编译、打包与签名仍使用上述脚本。
 
@@ -204,9 +204,9 @@ bash scripts/check-interactions.sh
 
 ```text
 Sources/
-  Mihomo/           页面、共享状态、配置协调与服务管理
-  MihomoCore/           配置类型、API、订阅解析及字段文档
-  MihomoHelper/         特权 XPC 服务入口
+  MihomoGUI/           页面、共享状态、配置协调与服务管理
+  MihomoGUICore/           配置类型、API、订阅解析及字段文档
+  MihomoGUIHelper/         特权 XPC 服务入口
 scripts/
   build.sh             编译、打包与本地签名
   check-interactions.sh
@@ -217,7 +217,7 @@ resources/             构建所需的内核与 GEO 数据
 
 ### 本地数据
 
-用户数据保存在 `~/Library/Application Support/Mihomo/`：
+用户数据保存在 `~/Library/Application Support/MihomoGUI/`：
 
 | 内容 | 文件或目录 |
 | --- | --- |
@@ -236,11 +236,11 @@ resources/             构建所需的内核与 GEO 数据
 
 | 内容 | 位置 |
 | --- | --- |
-| 内核 LaunchDaemon | `/Library/LaunchDaemons/local.mihomo.core.plist` |
-| 辅助服务 LaunchDaemon | `/Library/LaunchDaemons/local.mihomo.helper.plist` |
-| 特权辅助程序 | `/Library/PrivilegedHelperTools/local.mihomo.helper` |
-| 安装的内核 | `/Library/PrivilegedHelperTools/Mihomo/mihomo` |
-| 系统运行配置 | `/Library/Application Support/Mihomo/` |
+| 内核 LaunchDaemon | `/Library/LaunchDaemons/local.MihomoGUI.core.plist` |
+| 辅助服务 LaunchDaemon | `/Library/LaunchDaemons/local.MihomoGUI.helper.plist` |
+| 特权辅助程序 | `/Library/PrivilegedHelperTools/local.MihomoGUI.helper` |
+| 安装的内核 | `/Library/PrivilegedHelperTools/MihomoGUI/mihomo` |
+| 系统运行配置 | `/Library/Application Support/MihomoGUI/` |
 
 辅助服务只接受安装用户及当前应用签名的请求。
 

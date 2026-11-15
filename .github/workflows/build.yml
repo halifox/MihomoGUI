@@ -45,12 +45,12 @@ jobs:
         run: bash scripts/check-interactions.sh
       - name: Verify and archive application
         run: |
-          codesign --verify --deep --strict dist/mihomo.app
-          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/mihomo.app/Contents/Info.plist)" = "$(cat VERSION)"
-          ditto -c -k --sequesterRsrc --keepParent dist/mihomo.app "dist/mihomo-v$(cat VERSION)-macos-arm64.zip"
+          codesign --verify --deep --strict dist/MihomoGUI.app
+          test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' dist/MihomoGUI.app/Contents/Info.plist)" = "$(cat VERSION)"
+          ditto -c -k --sequesterRsrc --keepParent dist/MihomoGUI.app "dist/MihomoGUI-v$(cat VERSION)-macos-arm64.zip"
       - uses: actions/upload-artifact@v4
         with:
-          name: mihomo-macos-arm64
+          name: MihomoGUI-macos-arm64
           path: dist/*.zip
           if-no-files-found: error
           retention-days: 7
@@ -63,7 +63,7 @@ jobs:
     steps:
       - uses: actions/download-artifact@v4
         with:
-          name: mihomo-macos-arm64
+          name: MihomoGUI-macos-arm64
           path: release
       - name: Upload release archive
         env:

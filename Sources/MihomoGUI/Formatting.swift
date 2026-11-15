@@ -1,0 +1,220 @@
+import SwiftUI
+import AppKit
+import MihomoGUICore
+
+func bytes(_ value: Int64) -> String {
+    let magnitude = Double(value).magnitude
+    let divisor: Double
+    let unit: String
+    if magnitude >= 1_073_741_824 {
+        divisor = 1_073_741_824
+        unit = "GB"
+    } else if magnitude >= 1_048_576 {
+        divisor = 1_048_576
+        unit = "MB"
+    } else {
+        divisor = 1024
+        unit = "KB"
+    }
+    return String(format: "%.2f %@", Double(value) / divisor, unit)
+}
+
+// Shared by traffic, subscription, and delay table cells. Reserve the same
+// unit width in every numeric row; missing values align to the column edge.
+struct TableUnitValue: View {
+    let text: String
+    var unitSample = "MB"
+
+    var body: some View {
+        let parts = text.split(separator: " ", maxSplits: 1)
+        let percent = text.hasSuffix("%")
+        let number = percent ? String(text.dropLast()) : String(parts.first ?? "")
+        let unit = percent ? "%" : (parts.count == 2 ? String(parts[1]) : "")
+        Group {
+            if unit.isEmpty {
+                Text(text)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            } else {
+                HStack(alignment: .firstTextBaseline, spacing: 0) {
+                    Text(number)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                    Text(" " + unitSample)
+                        .fixedSize()
+                        .hidden()
+                        .overlay(alignment: .leading) { Text(unit.isEmpty ? "" : " " + unit) }
+                }
+            }
+        }
+        .monospacedDigit()
+        .lineLimit(1)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(text)
+    }
+}
+
+func connectionChain(_ connection: Connection, proxyNames: [String: String]) -> String {
+    let names = (connection.chains ?? []).reversed().map { name in
+        proxyNames[name] ?? (name == defaultGroup ? "默认代理组" : name)
+    }
+    return names.isEmpty ? "—" : names.joined(separator: " / ")
+}
+
+func connectionRule(_ connection: Connection) -> String {
+    guard let rule = connection.rule, !rule.isEmpty else { return "—" }
+    guard let payload = connection.rulePayload, !payload.isEmpty else { return rule }
+    return "\(rule)(\(payload))"
+}
+
+func optionLabel(_ value: String) -> String {
+    let labels: [String: String] = [
+        "select": "手动选择",
+        "url-test": "自动测速",
+        "fallback": "故障转移",
+        "load-balance": "负载均衡",
+        "http": "超文本传输",
+        "file": "本地文件",
+        "inline": "内嵌内容",
+        "domain": "域名规则",
+        "ipcidr": "网段规则",
+        "classical": "经典规则",
+        "yaml": "结构化格式",
+        "text": "文本格式",
+        "mrs": "二进制规则格式",
+        "consistent-hashing": "一致性哈希",
+        "round-robin": "轮询",
+        "sticky-sessions": "会话保持",
+        "DIRECT": "直连",
+        "REJECT": "拒绝",
+        "REJECT-DROP": "丢弃",
+        "rule": "规则模式",
+        "global": "全局模式",
+        "direct": "直连",
+        "debug": "调试",
+        "info": "信息",
+        "warning": "警告",
+        "error": "错误",
+        "silent": "静默",
+        "none": "无",
+        "off": "关闭",
+        "auto": "自动",
+        "random": "随机",
+        "always": "始终",
+        "system": "系统",
+        "strict": "严格",
+        "standard": "标准",
+        "conservative": "保守",
+        "aggressive": "激进",
+        "memconservative": "节省内存",
+        "dual": "双栈",
+        "ipv4": "仅第四版地址",
+        "ipv6": "仅第六版地址",
+        "ipv4-prefer": "优先第四版地址",
+        "ipv6-prefer": "优先第六版地址",
+        "fake-ip": "虚拟地址",
+        "redir-host": "真实地址",
+        "blacklist": "黑名单",
+        "whitelist": "白名单",
+        "native": "原生",
+        "mixed": "混合",
+        "gvisor": "用户态网络栈",
+        "lru": "最近最少使用",
+        "arc": "自适应缓存",
+        "mips": "mihomo IP 协议栈",
+        "zero": "零值",
+        "tcp": "传输控制协议",
+        "udp": "用户数据报协议",
+        "TCP": "传输控制协议",
+        "UDP": "用户数据报协议",
+        "ws": "网页套接字",
+        "grpc": "远程过程调用",
+        "quic": "快速传输协议",
+        "h2": "第二版超文本传输",
+        "h2mux": "第二版协议多路复用",
+        "tls": "传输层安全",
+        "tls12": "传输层安全版本一二",
+        "tls13": "传输层安全版本一三",
+        "smux": "流多路复用",
+        "yamux": "流多路复用",
+        "xudp": "扩展数据报",
+        "packetaddr": "数据包地址",
+        "aes-128-gcm": "高级加密标准",
+        "chacha20-poly1305": "流加密与认证",
+        "bbr": "带宽拥塞控制",
+        "bbr3": "第三版带宽拥塞控制",
+        "cubic": "立方拥塞控制",
+        "reno": "雷诺拥塞控制",
+        "chrome": "谷歌浏览器",
+        "firefox": "火狐浏览器",
+        "safari": "苹果浏览器",
+        "edge": "微软浏览器",
+        "android": "安卓系统",
+        "ios": "苹果移动系统",
+        "360": "三六零浏览器",
+        "qq": "腾讯浏览器",
+        "gecko": "Gecko 混淆器",
+        "jls": "指纹伪装",
+        "restls": "握手伪装",
+        "shadow-tls": "影子传输层安全",
+        "salamander": "混淆",
+        "anytls": "任意传输层安全代理",
+        "dns": "域名解析",
+        "easytier": "易联组网",
+        "hysteria": "歇斯底里代理",
+        "hysteria2": "第二代歇斯底里代理",
+        "masque": "隧道代理",
+        "mieru": "弥尔代理",
+        "openvpn": "开放虚拟专网",
+        "rematch": "重新匹配",
+        "shadowquic": "影子快速传输代理",
+        "snell": "斯奈尔代理",
+        "socks5": "第五版套接字代理",
+        "ss": "影梭",
+        "ssh": "安全外壳",
+        "ssr": "影梭增强版",
+        "sudoku": "数独代理",
+        "tailscale": "虚拟组网",
+        "trojan": "特洛伊代理",
+        "trusttunnel": "可信隧道",
+        "tuic": "快速传输代理",
+        "vless": "轻量代理",
+        "vmess": "加密代理",
+        "wireguard": "轻量虚拟专网",
+        "zerotier": "零层组网",
+        "DOMAIN": "完整域名",
+        "DOMAIN-SUFFIX": "域名后缀",
+        "DOMAIN-KEYWORD": "域名关键词",
+        "DOMAIN-WILDCARD": "域名通配符",
+        "DOMAIN-REGEX": "域名正则",
+        "GEOSITE": "域名分类",
+        "IP-CIDR": "目标网段",
+        "IP-CIDR6": "目标网段别名",
+        "IP-SUFFIX": "目标地址后缀",
+        "IP-ASN": "目标自治系统",
+        "GEOIP": "目标地理位置",
+        "SRC-GEOIP": "来源地理位置",
+        "SRC-IP-ASN": "来源自治系统",
+        "SRC-IP-CIDR": "来源网段",
+        "SRC-IP-SUFFIX": "来源地址后缀",
+        "DST-PORT": "目标端口",
+        "SRC-PORT": "来源端口",
+        "IN-PORT": "入站端口",
+        "IN-TYPE": "入站类型",
+        "IN-USER": "入站用户",
+        "IN-NAME": "入站名称",
+        "REMATCH-NAME": "重匹配名称",
+        "PROCESS-NAME": "进程名称",
+        "PROCESS-PATH": "进程路径",
+        "PROCESS-NAME-WILDCARD": "进程名称通配符",
+        "PROCESS-NAME-REGEX": "进程名称正则",
+        "PROCESS-PATH-WILDCARD": "进程路径通配符",
+        "PROCESS-PATH-REGEX": "进程路径正则",
+        "NETWORK": "网络协议",
+        "RULE-SET": "规则集合",
+        "AND": "逻辑与",
+        "OR": "逻辑或",
+        "NOT": "逻辑非",
+        "SUB-RULE": "子规则",
+    ]
+    guard let label = labels[value] else { return value }
+    return "\(label)（\(value)）"
+}

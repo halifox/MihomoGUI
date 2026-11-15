@@ -2,30 +2,30 @@
 # Run after bash scripts/build.sh. Uses isolated settings fixtures only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
-if [ ! -s .build/manual/MihomoCore.o ]; then
+if [ ! -s .build/manual/MihomoGUICore.o ]; then
   printf 'Run bash scripts/build.sh first.\n' >&2
   exit 1
 fi
-CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/mihomo-interactions.XXXXXX")"
+CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/MihomoGUI-interactions.XXXXXX")"
 trap 'rm -rf "$CHECK_DIR"' EXIT
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
 import SwiftUI
-import MihomoCore
+import MihomoGUICore
 
 func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
-    if try !condition() { throw MihomoError("CHECK FAILED: " + message) }
+    if try !condition() { throw MihomoGUIError("CHECK FAILED: " + message) }
 }
 func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
     do { try operation() } catch { return }
-    throw MihomoError("EXPECTED FAILURE: " + message)
+    throw MihomoGUIError("EXPECTED FAILURE: " + message)
 }
 @main struct InteractionChecks {
     @MainActor static func main() async throws {
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("fixture")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let model = MihomoModel(directory: directory)
+        let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
@@ -116,7 +116,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         core.standardOutput = FileHandle.nullDevice; core.standardError = FileHandle.nullDevice
         try core.run()
         defer { if core.isRunning { core.terminate(); core.waitUntilExit() } }
-        var first: MihomoModel? = MihomoModel(directory: directory)
+        var first: MihomoGUIModel? = MihomoGUIModel(directory: directory)
         for _ in 0..<30 {
             await first?.refresh()
             if first?.coreRunning == true { break }
@@ -185,7 +185,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         let pid = core.processIdentifier
         first = nil
         try check(core.isRunning && core.processIdentifier == pid, "releasing GUI model leaves core running")
-        let reopened = MihomoModel(directory: directory)
+        let reopened = MihomoGUIModel(directory: directory)
         await reopened.refresh()
         try check(reopened.coreRunning && core.processIdentifier == pid, "reopened GUI reconnects without restarting core")
         reopened.startCore()
@@ -196,12 +196,12 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
 }
 SWIFT
 SOURCES=()
-for source in Sources/Mihomo/*.swift; do
-  if [ "$source" != Sources/Mihomo/App.swift ]; then SOURCES+=("$source"); fi
+for source in Sources/MihomoGUI/*.swift; do
+  if [ "$source" != Sources/MihomoGUI/App.swift ]; then SOURCES+=("$source"); fi
 done
 swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
-  "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/MihomoCore.o \
+  "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/MihomoGUICore.o \
   -o "$CHECK_DIR/checks"
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"

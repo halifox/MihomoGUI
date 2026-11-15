@@ -2,11 +2,11 @@
 import PackageDescription
 
 let package = Package(
-    name: "mihomo", platforms: [.macOS(.v13)],
-    products: [.executable(name: "mihomo", targets: ["Mihomo"]),
-               .executable(name: "mihomo-helper", targets: ["MihomoHelper"])],
+    name: "MihomoGUI", platforms: [.macOS(.v13)],
+    products: [.executable(name: "MihomoGUI", targets: ["MihomoGUI"]),
+               .executable(name: "MihomoGUIHelper", targets: ["MihomoGUIHelper"])],
     targets: [
-        .target(name: "MihomoCore"),
-        .executableTarget(name: "MihomoHelper", dependencies: ["MihomoCore"]),
-        .executableTarget(name: "Mihomo", dependencies: ["MihomoCore"])
+        .target(name: "MihomoGUICore"),
+        .executableTarget(name: "MihomoGUIHelper", dependencies: ["MihomoGUICore"]),
+        .executableTarget(name: "MihomoGUI", dependencies: ["MihomoGUICore"])
     ])
