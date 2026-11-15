@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a reproducible application problem.
+title: '[Bug]: '
+body:
+  - type: markdown
+    attributes:
+      value: |
+        For suspected vulnerabilities, follow [SECURITY.md](https://github.com/halifox/MihomoGUI/blob/main/SECURITY.md).
+        Do not include real subscription URLs, API secrets, node credentials, or personal connection records.
+  - type: input
+    id: application
+    attributes:
+      label: Application version or commit
+      placeholder: Release version or full commit SHA
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: macOS version
+      placeholder: Include the macOS version and build number.
+    validations:
+      required: true
+  - type: dropdown
+    id: architecture
+    attributes:
+      label: Machine architecture
+      options:
+        - Apple Silicon (arm64)
+        - Intel (x86_64)
+    validations:
+      required: true
+  - type: input
+    id: core
+    attributes:
+      label: Mihomo version and installation method
+      description: State the core version, and whether this is a release package or source build.
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Steps to reproduce
+      description: Give minimal steps using test addresses and fake credentials.
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior and sanitized evidence
+      description: Include exact error text or screenshots after removing private information. Do not attach your entire data directory.
+    validations:
+      required: true
+  - type: textarea
+    id: network
+    attributes:
+      label: Network and service context
+      description: For TUN, DNS, service lifecycle, sleep or network issues, state relevant settings, other VPNs, and whether the issue survives restarting the app or service.

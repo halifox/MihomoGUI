@@ -1,0 +1,26 @@
+name: Feature request
+description: Describe a user problem and the behavior that would solve it.
+title: '[Feature]: '
+body:
+  - type: markdown
+    attributes:
+      value: Do not include secrets, personal connection records, or security vulnerability details.
+  - type: textarea
+    id: problem
+    attributes:
+      label: User problem
+      description: Describe the task and what prevents you from completing it today.
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: Proposed behavior
+      description: Include a concrete example and the expected outcome.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives and scope
+      description: Describe existing workarounds and relevant macOS or mihomo constraints.

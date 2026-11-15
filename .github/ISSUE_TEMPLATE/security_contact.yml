@@ -1,0 +1,16 @@
+name: Request a private security contact
+description: Ask for a private contact without disclosing vulnerability details.
+title: Request a private security contact
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This Issue is PUBLIC. Do not add vulnerability details, affected components, reproduction steps, attachments, or secrets.
+        Please provide a private reporting channel as described in [SECURITY.md](https://github.com/halifox/MihomoGUI/blob/main/SECURITY.md).
+  - type: checkboxes
+    id: contact_only
+    attributes:
+      label: Private contact request
+      options:
+        - label: I am requesting a private reporting channel only and have included no vulnerability details.
+          required: true
