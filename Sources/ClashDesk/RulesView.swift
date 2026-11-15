@@ -134,6 +134,7 @@ struct RuleEditorView: View {
     @State private var noResolve: Bool
     @State private var sourceIP: Bool
     @State private var subTarget: String
+    @State private var atTop = false
     @State private var advancedLogic: Bool
     @State private var conditions = [RuleCondition(), RuleCondition(kind: .network, value: "tcp")]
     @State private var error: String?
@@ -217,12 +218,36 @@ struct RuleEditorView: View {
                             }.labelsHidden()
                         }
                     } else { formRow("target *") { PolicyPicker(model: model, selection: $target) } }
+                    if original == nil {
+                        Toggle("插入列表顶部（优先匹配）", isOn: $atTop)
+                        Text(atTop ? "插入第 1 条，优先于现有规则。" : "追加至第 \(model.settings.rules.count + 1) 条、MATCH 之前。前置规则可能优先命中。")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
+                    if let preview = try? makeRule() {
+                        GroupBox("规则预览") {
+                            VStack(alignment: .leading, spacing: 6) {
+                                Text("\(preview.kind.rawValue),\(preview.value)").font(.system(.body, design: .monospaced)).textSelection(.enabled)
+                                let destination = preview.proxyGroup ?? preview.node.map { model.nodeLabelWithDelay($0) } ?? preview.builtin ?? "DIRECT"
+                                Text(preview.kind == .subRule ? "子规则：" + subTarget : "目标出口：" + destination)
+                                Text(ruleScopeDescription(preview))
+                                if model.settings.rules.contains(where: { $0.id != original?.id && sameRuleMatch($0, preview) }) {
+                                    Text("已有相同匹配条件，请确认是否需要重复添加，或修改已有规则的出口。")
+                                        .foregroundStyle(.orange)
+                                }
+                                let index = original.flatMap { original in model.settings.rules.firstIndex { $0.id == original.id } }
+                                    ?? (atTop ? 0 : model.settings.rules.count)
+                                if let notice = rulePriorityNotice(preview, preceding: Array(model.settings.rules.prefix(index))) {
+                                    Text(notice).foregroundStyle(.orange)
+                                }
+                            }.font(.caption).frame(maxWidth: .infinity, alignment: .leading)
+                        }
+                    }
                 }.textFieldStyle(.roundedBorder)
             }
             HStack {
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("保存规则") { save() }.buttonStyle(.borderedProminent)
+                Button("保存规则") { save() }.buttonStyle(.borderedProminent).disabled(model.busy)
             }
         }.padding(16).controlSize(.regular).frame(width: 720, height: 540)
         .environment(\.formHelpDocument, "rules/index.md")
@@ -244,23 +269,27 @@ struct RuleEditorView: View {
             TextField("", text: value)
         }
     }
+    func makeRule() throws -> RouteRule {
+        var payload = kind.isCIDR ? address.trimmingCharacters(in: .whitespaces) + "/" + prefix : value.trimmingCharacters(in: .whitespacesAndNewlines)
+        if kind.isLogic && !advancedLogic {
+            for condition in conditions { try validateRule(RouteRule(kind: condition.kind, value: condition.value, node: nil), settings: model.settings) }
+            let clauses = conditions.map { "(\($0.kind.rawValue),\($0.value))" }
+            payload = kind == .subRule ? clauses[0] : "(" + clauses.joined(separator: ",") + ")"
+        }
+        let node = model.allNodes.first { "node:" + $0.id == target }
+            ?? (original?.node.map { "node:" + $0.id == target } == true ? original?.node : nil)
+        if target.hasPrefix("node:"), node == nil { throw DeskError("所选代理已失效，请重新选择出口") }
+        var rule = RouteRule(kind: kind, value: payload, node: node)
+        if let original { rule.id = original.id }
+        rule.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
+        rule.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
+        rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
+        try validateRule(rule, settings: model.settings)
+        return rule
+    }
     func save() {
         do {
-            var payload = kind.isCIDR ? address.trimmingCharacters(in: .whitespaces) + "/" + prefix : value.trimmingCharacters(in: .whitespacesAndNewlines)
-            if kind.isLogic && !advancedLogic {
-                for condition in conditions { try validateRule(RouteRule(kind: condition.kind, value: condition.value, node: nil), settings: model.settings) }
-                let clauses = conditions.map { "(\($0.kind.rawValue),\($0.value))" }
-                payload = kind == .subRule ? clauses[0] : "(" + clauses.joined(separator: ",") + ")"
-            }
-            let node = model.allNodes.first { "node:" + $0.id == target }
-                ?? (original?.node.map { "node:" + $0.id == target } == true ? original?.node : nil)
-            if target.hasPrefix("node:"), node == nil { throw DeskError("所选代理已失效，请重新选择出口") }
-            var rule = RouteRule(kind: kind, value: payload, node: node)
-            if let original { rule.id = original.id }
-            rule.proxyGroup = target.hasPrefix("group:") ? String(target.dropFirst(6)) : nil
-            rule.builtin = target.hasPrefix("builtin:") ? String(target.dropFirst(8)) : nil
-            rule.noResolve = noResolve; rule.sourceIP = sourceIP; rule.subRuleTarget = subTarget
-            try model.saveRule(rule); dismiss()
+            try model.saveRule(makeRule(), atTop: atTop); dismiss()
         } catch { self.error = error.localizedDescription }
     }
 }
@@ -298,13 +327,31 @@ extension DeskModel {
             _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
         } catch { self.error = error.localizedDescription }
     }
-    func saveRule(_ rule: RouteRule) throws {
+    func saveRule(_ rule: RouteRule, atTop: Bool = false) throws {
         guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
         var candidate = settings
         if let index = candidate.rules.firstIndex(where: { $0.id == rule.id }) { candidate.rules[index] = rule }
-        else { candidate.rules.append(rule) }
+        else {
+            candidate.rules.insert(rule, at: atTop ? 0 : candidate.rules.count)
+        }
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
         message = "路由规则已保存，运行时将自动应用。"
+    }
+    func addRules(_ rules: [RouteRule], atTop: Bool) throws {
+        guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
+        guard !rules.isEmpty else { throw DeskError("没有可添加的规则") }
+        var candidate = settings
+        var additions: [RouteRule] = []
+        for rule in rules {
+            guard !candidate.rules.contains(where: { sameRuleMatch($0, rule) }),
+                  !additions.contains(where: { sameRuleMatch($0, rule) }) else { throw DeskError("规则已存在，请重新检查批量预览") }
+            additions.append(rule)
+        }
+        candidate.rules.insert(contentsOf: additions, at: atTop ? 0 : candidate.rules.count)
+        _ = try generateConfig(candidate)
+        try saveSettings(candidate, to: directory)
+        settings = candidate
+        message = "已保存 \(additions.count) 条路由规则，运行时将自动应用。"
     }
     func setRuleTarget(_ rule: RouteRule, target: String) {
         do {

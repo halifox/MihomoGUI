@@ -8,6 +8,9 @@ final class DeskModel: ObservableObject {
     @Published var nodes: [Node] = []
     @Published var connections: [Connection] = []
     @Published var connectionsError: String?
+    @Published var connectionsLoaded = false
+    @Published var statisticsLoaded = false
+    private var statisticsRefreshID = UUID()
     private var connectionsRefreshID = UUID()
     private var udpRefreshID = UUID()
     @Published var runtimeConfigurationUncertain = false
@@ -148,7 +151,7 @@ final class DeskModel: ObservableObject {
             }
             connectionSpeedsAvailable = connectionsDate != nil
             connectionsDate = now
-            connections = live; coreRunning = true; connectionsError = nil
+            connections = live; coreRunning = true; connectionsError = nil; connectionsLoaded = true
         } catch {
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
             let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
@@ -158,11 +161,18 @@ final class DeskModel: ObservableObject {
                 && (error as? URLError)?.code == .cannotConnectToHost
             // HTTP and decoding failures still mean the controller is reachable.
             coreRunning = error is CoreAPIError
-            connections = []; connectionsDate = nil; connectionSpeedsAvailable = false
+            if stopped { connections = [] }
+            connectionsDate = nil; connectionSpeedsAvailable = false; connectionsLoaded = true
             connectionsError = stopped ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
         }
+        await refreshStatistics()
+        if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
+    }
+    func refreshStatistics() async {
+        let refreshID = UUID()
+        statisticsRefreshID = refreshID
+        let folder = directory; let range = hours; let grouping = trafficGrouping
         do {
-            let folder = directory; let range = hours; let grouping = trafficGrouping
             let allowMissing = connectionsError == nil && !coreRunning && corePID == nil && statsPID == nil
             let result = try await Task.detached { () -> [DomainTrafficRow] in
                 let url = folder.appendingPathComponent("traffic.sqlite")
@@ -170,11 +180,13 @@ final class DeskModel: ObservableObject {
                 let database = try TrafficDatabase(url: url, readOnly: true)
                 return try database.groupedRows(since: Date().addingTimeInterval(-Double(range) * 3600), by: grouping)
             }.value
-            guard grouping == trafficGrouping, range == hours else { return }
+            guard !Task.isCancelled, statisticsRefreshID == refreshID, grouping == trafficGrouping, range == hours else { return }
             if traffic != result { traffic = result }
-            if statisticsError != nil { statisticsError = nil }
-        } catch { traffic = []; statisticsError = error.localizedDescription }
-        if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
+            statisticsError = nil; statisticsLoaded = true
+        } catch {
+            guard !Task.isCancelled, statisticsRefreshID == refreshID, grouping == trafficGrouping, range == hours else { return }
+            statisticsError = error.localizedDescription; statisticsLoaded = true
+        }
     }
     func refreshDiagnostics() async {
         diagnosticsDate = Date()

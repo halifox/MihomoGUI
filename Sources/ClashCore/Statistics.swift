@@ -53,12 +53,14 @@ public struct TrafficTracker {
 }
 
 public struct TrafficRow: Identifiable {
-    public var id: String { domain + "\u{0}" + process + "\u{0}" + outbound }
+    public var id: String { [domain, process, outbound, ip, port].joined(separator: "\u{0}") }
     public var domain: String
     public var process: String
     public var outbound: String
     public var upload: Int64
     public var download: Int64
+    public var ip: String
+    public var port: String
 }
 
 public struct DomainTrafficRow: Identifiable, Equatable {
@@ -158,14 +160,29 @@ public final class TrafficDatabase {
             try execute("COMMIT")
         } catch { try? execute("ROLLBACK"); throw error }
     }
-    public func rows(since date: Date, limit: Int = 500) throws -> [TrafficRow] {
+    public func rows(since date: Date, limit: Int = 500, matching grouping: TrafficGrouping? = nil, value: String? = nil) throws -> [TrafficRow] {
+        guard (grouping == nil) == (value == nil) else { throw DeskError("统计筛选条件不完整") }
+        let schema = try prepare("PRAGMA table_info(traffic)")
+        var columns = Set<String>()
+        while true {
+            let code = sqlite3_step(schema)
+            if code == SQLITE_DONE { break }
+            guard code == SQLITE_ROW else { sqlite3_finalize(schema); throw failure() }
+            columns.insert(String(cString: sqlite3_column_text(schema, 1)))
+        }
+        sqlite3_finalize(schema)
+        let ip = columns.contains("ip") ? "ip" : "'未知 IP'"
+        let port = columns.contains("port") ? "port" : "'未知端口'"
+        let filter = grouping.map { $0 == .ip ? ip : $0 == .port ? port : $0.rawValue }
         let statement = try prepare("""
-        SELECT domain,process,outbound,SUM(upload),SUM(download) FROM traffic WHERE bucket>=?
-        GROUP BY domain,process,outbound ORDER BY SUM(upload)+SUM(download) DESC LIMIT ?
+        SELECT domain,process,outbound,SUM(upload),SUM(download),\(ip),\(port) FROM traffic
+        WHERE bucket>=? \(filter.map { "AND \($0)=?" } ?? "")
+        GROUP BY domain,process,outbound,\(ip),\(port) ORDER BY SUM(upload)+SUM(download) DESC LIMIT ?
         """)
         defer { sqlite3_finalize(statement) }
         sqlite3_bind_int64(statement, 1, Int64(date.timeIntervalSince1970) / 3600 * 3600)
-        sqlite3_bind_int(statement, 2, Int32(max(1, min(limit, 5000))))
+        if let value { sqlite3_bind_text(statement, 2, value, -1, transient) }
+        sqlite3_bind_int(statement, value == nil ? 2 : 3, Int32(max(1, min(limit, 5000))))
         var result: [TrafficRow] = []
         while true {
             let code = sqlite3_step(statement)
@@ -173,7 +190,8 @@ public final class TrafficDatabase {
             guard code == SQLITE_ROW else { throw failure() }
             func string(_ index: Int32) -> String { String(cString: sqlite3_column_text(statement, index)) }
             result.append(TrafficRow(domain: string(0), process: string(1), outbound: string(2),
-                                     upload: sqlite3_column_int64(statement, 3), download: sqlite3_column_int64(statement, 4)))
+                                     upload: sqlite3_column_int64(statement, 3), download: sqlite3_column_int64(statement, 4),
+                                     ip: string(5), port: string(6)))
         }
         return result
     }
