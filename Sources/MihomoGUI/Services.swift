@@ -80,6 +80,7 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL, group
     guard FileManager.default.isExecutableFile(atPath: settings.corePath) else { throw MihomoGUIError("应用内置 mihomo 内核缺失或不可执行，请重新安装应用") }
     // Stage immutable inputs for this operation, never interpolate unquoted user values into a shell.
     let staging = directory.appendingPathComponent("install-" + UUID().uuidString)
+    try validatePrivilegedConfiguration(settings, config: config, directory: directory)
     try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: staging) }
     let binary = staging.appendingPathComponent("mihomo")

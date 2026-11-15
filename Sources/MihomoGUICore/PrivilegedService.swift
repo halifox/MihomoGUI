@@ -1,6 +1,7 @@
 import Foundation
 
 public let privilegedServiceLabel = "local.MihomoGUI.helper"
+public let privilegedPayloadMaximumBytes = 32 * 1024 * 1024
 
 // Shared wire contract for the authenticated GUI and its root LaunchDaemon.
 @objc public protocol PrivilegedService {
@@ -31,6 +32,22 @@ public enum PrivilegedOperation: Codable {
     case persist(Data)
     case prepareRules(staging: String, id: UUID, filenames: [String])
     case finishRules(id: UUID, filenames: [String], restore: Bool)
+}
+
+public func encodePrivilegedOperation(_ operation: PrivilegedOperation) throws -> Data {
+    let payload = try JSONEncoder().encode(operation)
+    guard payload.count <= privilegedPayloadMaximumBytes else {
+        throw MihomoGUIError("特权请求超过32MiB限制，请减少订阅节点或配置内容；本次操作未提交")
+    }
+    return payload
+}
+
+// Validate both wire forms before committing fetched subscriptions. Raw download
+// sizes cannot predict JSON escaping or the base64 expansion of persisted YAML.
+public func validatePrivilegedConfiguration(_ settings: Settings, config: Data, directory: URL) throws {
+    let staging = directory.appendingPathComponent("install-00000000-0000-0000-0000-000000000000")
+    _ = try encodePrivilegedOperation(.install(staging: staging.path, settings: settings))
+    _ = try encodePrivilegedOperation(.persist(config))
 }
 
 public func shellQuote(_ string: String) -> String { "'" + string.replacingOccurrences(of: "'", with: "'\\''") + "'" }

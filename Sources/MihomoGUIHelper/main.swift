@@ -55,7 +55,7 @@ final class Service: NSObject, NSXPCListenerDelegate, PrivilegedService {
             do { try deadline.check() }
             catch { reply(-1, "操作超时，结果可能未知，请检查系统服务状态后重试"); return }
             do {
-                guard payload.count <= 32 * 1024 * 1024 else { reply(64, "特权请求超过大小限制"); return }
+                guard payload.count <= privilegedPayloadMaximumBytes else { reply(64, "特权请求超过大小限制"); return }
                 let operation = try JSONDecoder().decode(PrivilegedOperation.self, from: payload)
                 try deadline.check()
                 reply(try executeOperation(operation, owner: self.owner, coreRequirement: self.coreRequirement, deadline: deadline), nil)

@@ -87,6 +87,15 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         } catch let error as MihomoGUIError { try check(error.message == "内置 GEO 数据文件大小无效", "invalid bundled data is explicit") }
         try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8), "invalid bundle preserves previous cache")
         try check(try FileManager.default.attributesOfItem(atPath: geoTarget.path)[.posixPermissions] as? NSNumber == NSNumber(value: 0o600), "refreshed GEO cache stays owner-only")
+        do {
+            let envelope = try encodePrivilegedOperation(.persist(Data())).count
+            let largestRaw = ((privilegedPayloadMaximumBytes - envelope) / 4) * 3
+            let acceptedBytes = try encodePrivilegedOperation(.persist(Data(repeating: 0, count: largestRaw))).count
+            try check(acceptedBytes <= privilegedPayloadMaximumBytes && acceptedBytes > privilegedPayloadMaximumBytes - 4, "actual encoded persist payload accepts its exact boundary")
+            try expectFailure("base64 expansion exceeds shared XPC limit") {
+                _ = try encodePrivilegedOperation(.persist(Data(repeating: 0, count: largestRaw + 3)))
+            }
+        }
         let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
         let ruleAddress = "https://user:fixture-secret@example.com/private-rules?token=fixture-token"
@@ -914,6 +923,14 @@ import MihomoGUICore
         let queuedTimedOutOnce = replyCount == 1 && replyDiagnostic?.contains("操作超时") == true
         replyLock.unlock()
         guard queuedTimedOutOnce else { throw MihomoGUIError("queued timeout replied more than once or lost its diagnostic") }
+        let sizeRejected = DispatchSemaphore(value: 0)
+        var sizeStatus: Int32 = 0
+        service.execute(Data(repeating: 0, count: privilegedPayloadMaximumBytes + 1), deadline: (DispatchTime.now() + 2).uptimeNanoseconds) { status, _ in
+            replyLock.lock(); sizeStatus = status; replyLock.unlock(); sizeRejected.signal()
+        }
+        guard sizeRejected.wait(timeout: .now() + 1) == .success else { throw MihomoGUIError("oversized XPC payload did not reply") }
+        replyLock.lock(); let payloadRejected = sizeStatus == 64; replyLock.unlock()
+        guard payloadRejected else { throw MihomoGUIError("helper payload limit differs from client encoder") }
         let longClientBudget = PrivilegedOperationDeadline(clientDeadline: (DispatchTime.now() + 1000).uptimeNanoseconds)
         guard try longClientBudget.remaining <= 120 else { throw MihomoGUIError("helper accepted an unbounded client deadline") }
         let cumulativeStart = Date()

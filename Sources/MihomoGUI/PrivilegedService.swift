@@ -49,7 +49,7 @@ final class PrivilegedRequest {
 
 func privilegedOperation(_ operation: PrivilegedOperation) async throws {
     let deadline = PrivilegedOperationDeadline()
-    let payload = try JSONEncoder().encode(operation)
+    let payload = try encodePrivilegedOperation(operation)
     try deadline.check()
     let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/MihomoGUIHelper")
     var applicationCode: SecCode?

@@ -335,6 +335,47 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
             try generateConfig(model.settings).write(to: root.appendingPathComponent(updateAll ? "reconciled-all.yaml" : "reconciled-single.yaml"))
         }
 
+        // Each individual fetched source fits 16 MiB, but the combined settings
+        // cannot cross XPC. Reject before changing any committed user file.
+        failureMode = .subscriptionReferences
+        do {
+            let directory = root.appendingPathComponent("subscription-capacity")
+            try FileManager.default.createDirectory(at: directory.appendingPathComponent("providers"), withIntermediateDirectories: true)
+            let changing = Subscription(name: "changing", url: "https://example.com/changing")
+            let otherA = Subscription(name: "other-a", url: "https://example.com/a")
+            let otherB = Subscription(name: "other-b", url: "https://example.com/b")
+            func capacityRow(_ name: String, password: String) -> ConfigValue {
+                .object(["name": .string(name), "type": .string("ss"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string(password)])
+            }
+            let oldRow = capacityRow("old-first", password: "small")
+            let existingRow = capacityRow("unchanged", password: String(repeating: "x", count: 11 * 1024 * 1024))
+            var settings = Settings()
+            settings.defaultPolicy = "DIRECT"
+            settings.subscriptions = [changing, otherA, otherB]
+            settings.subscriptionProxies = [changing.id: [oldRow], otherA.id: [existingRow], otherB.id: [existingRow]]
+            settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0)]
+            try validatePrivilegedConfiguration(settings, config: generateConfig(settings), directory: directory)
+            try saveSettings(settings, to: directory); try saveRuntimeSettings(settings, to: directory)
+            let originalNodes = [Node(provider: changing.provider, name: "old-first"), Node(provider: otherA.provider, name: "unchanged"), Node(provider: otherB.provider, name: "unchanged")]
+            try saveNodeCache(originalNodes, directory: directory)
+            let oldProvider = try JSONSerialization.data(withJSONObject: ["proxies": [oldRow.native]])
+            try oldProvider.write(to: providerFile(changing, directory: directory))
+            let model = MihomoGUIModel(directory: directory)
+            let before = try Data(contentsOf: directory.appendingPathComponent("settings.json"))
+            let nodesBefore = try Data(contentsOf: directory.appendingPathComponent("nodes.json"))
+            fetchedRows = [changing.id: [capacityRow("new-first", password: String(repeating: "y", count: 12 * 1024 * 1024))]]
+            do {
+                try await model.saveSubscription(changing)
+                throw MihomoGUIError("oversized combined subscriptions were committed")
+            } catch let error as MihomoGUIError {
+                try check(error.message.contains("32MiB"), "aggregate capacity error identifies actual wire limit")
+            }
+            try check(try Data(contentsOf: directory.appendingPathComponent("settings.json")) == before, "capacity rejection preserves settings bytes")
+            try check(try Data(contentsOf: directory.appendingPathComponent("nodes.json")) == nodesBefore, "capacity rejection preserves node cache bytes")
+            try check(try Data(contentsOf: providerFile(changing, directory: directory)) == oldProvider, "capacity rejection preserves provider bytes")
+            try check(model.nodes == originalNodes && model.settings.subscriptionProxies?[changing.id] == [oldRow], "capacity rejection leaves model snapshot unchanged")
+        }
+
         for mode in [FailureMode.prepareLostReply, .ruleRestoreFailure] {
             failureMode = mode; prepareCalls = 0; restoreCalls = 0; persistCalls = 0
             let directory = root.appendingPathComponent(mode.rawValue)

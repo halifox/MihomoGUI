@@ -324,7 +324,8 @@ final class MihomoGUIModel: ObservableObject {
     private func commitSubscriptionUpdate(_ updated: MihomoGUICore.Settings, nodes: [Node], sources: [Subscription], staging: URL) async throws {
         let folder = directory
         let files = try await Task.detached {
-            _ = try generateConfig(updated)
+            let config = try generateConfig(updated)
+            try validatePrivilegedConfiguration(updated, config: config, directory: folder)
             var files = try sources.map { ("providers/" + $0.id + ".yaml", try Data(contentsOf: providerFile($0, directory: staging))) }
             files.append(("nodes.json", try JSONEncoder().encode(nodes)))
             files.append(("settings.json", try JSONEncoder().encode(updated)))
@@ -566,6 +567,7 @@ final class MihomoGUIModel: ObservableObject {
                 do {
                     try await self.recoverRuleFileUpdate(reload: true)
                     let config = try generateConfig(snapshot)
+                    try validatePrivilegedConfiguration(snapshot, config: config, directory: self.directory)
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
                     let controller = try self.api
