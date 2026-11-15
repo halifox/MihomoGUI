@@ -43,6 +43,7 @@ final class MihomoGUIModel: ObservableObject {
     private var configurationSavePending = false
     private var liveUpdateTask: Task<Void, Never>?
     private var liveUpdatePending = false
+    private var requestedGroupSelections: Set<String> = []
     var configurationLocked: Bool { coreActive }
 
     init(directory: URL? = nil) {
@@ -111,7 +112,7 @@ final class MihomoGUIModel: ObservableObject {
     var api: CoreAPI { get throws { try CoreAPI(settings: runtimeSettings) } }
     var allNodes: [Node] { (settings.manualProxies ?? []).map(\.node) + nodes }
     var coreActive: Bool { coreRunning || coreServiceLoaded || corePID != nil }
-    var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
+    var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || !requestedGroupSelections.isEmpty || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
     func toggleCore() {
         if !coreActive { startCore(); return }
         perform {
@@ -472,6 +473,7 @@ final class MihomoGUIModel: ObservableObject {
                 try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
                 if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
                 self.runtimeSettings = snapshot
+                self.requestedGroupSelections.removeAll()
                 self.runtimeConfigurationUncertain = false
                 self.message = "配置已校验并启动。"
             } catch {
@@ -482,6 +484,21 @@ final class MihomoGUIModel: ObservableObject {
                 }
                 throw error
             }
+        }
+    }
+    func selectProxyGroup(_ group: ProxyGroup, target: String) throws {
+        guard !busy else { throw MihomoGUIError("正在执行其他操作，请稍后重试") }
+        guard let group = settings.proxyGroups?.first(where: { $0.id == group.id }), group.type == "select" else {
+            throw MihomoGUIError("代理组已更改，请重新选择")
+        }
+        guard proxyGroupTargets(group, settings: settings).contains(target) else { throw MihomoGUIError("所选代理组成员已失效") }
+        var updated = group
+        updated.fields["default-selected"] = .string(target)
+        try saveProxyGroup(updated)
+        if coreActive {
+            // An explicit user choice is meaningful even when its saved default is unchanged.
+            requestedGroupSelections.insert(group.id)
+            scheduleLiveUpdate()
         }
     }
     func retryLiveUpdate() {
@@ -501,6 +518,8 @@ final class MihomoGUIModel: ObservableObject {
                 self.liveUpdatePending = false
                 guard self.configurationLocked, self.hasUnappliedChanges else { continue }
                 let snapshot = self.settings
+                self.requestedGroupSelections.formIntersection(Set((snapshot.proxyGroups ?? []).filter { $0.type == "select" }.map(\.id)))
+                let requestedSelections = self.requestedGroupSelections
                 self.busy = true
                 var ruleFiles: RuleFileUpdate?
                 var applied = false
@@ -509,6 +528,14 @@ final class MihomoGUIModel: ObservableObject {
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
                     let controller = try self.api
+                    var selections: [String: String] = [:]
+                    for group in snapshot.proxyGroups ?? [] where group.type == "select" {
+                        guard let selected = group.fields["default-selected"]?.text, !selected.isEmpty else { continue }
+                        let old = previousSettings.proxyGroups?.first(where: { $0.id == group.id })
+                        if self.runtimeConfigurationUncertain || requestedSelections.contains(group.id) || old?.type != "select" || old?.name != group.name || old?.fields["default-selected"] != group.fields["default-selected"] {
+                            selections[group.name] = try proxyTargetName(selected, settings: snapshot)
+                        }
+                    }
                     // This marker survives GUI termination between reload and durable confirmation.
                     let pending = self.directory.appendingPathComponent("runtime-update-pending")
                     try Data().write(to: pending, options: .atomic)
@@ -554,13 +581,24 @@ final class MihomoGUIModel: ObservableObject {
                     // Core, disk and runtime snapshot now agree. Cleanup failures must
                     // not send only the rule files back to their previous contents.
                     self.runtimeSettings = snapshot
-                    self.runtimeConfigurationUncertain = false
-                    self.message = "修改已自动应用。"
                     applied = true
-                    do { try FileManager.default.removeItem(at: pending) }
-                    catch {
-                        self.runtimeConfigurationUncertain = true
-                        self.error = "配置已应用，但恢复标记清理失败：" + error.localizedDescription + "。请重新应用以完成确认。"
+                    do {
+                        let appliedController = try CoreAPI(settings: snapshot)
+                        for name in selections.keys.sorted() {
+                            if let target = selections[name] { try await appliedController.selectProxyGroup(name, target: target) }
+                        }
+                        self.requestedGroupSelections.subtract(requestedSelections)
+                        do {
+                            try FileManager.default.removeItem(at: pending)
+                            self.runtimeConfigurationUncertain = false
+                            self.message = "修改已自动应用。"
+                        } catch {
+                            self.message = "配置已应用，恢复标记尚未清理。"
+                            self.error = "配置已应用，但恢复标记清理失败：" + error.localizedDescription + "。请重新应用以完成确认。"
+                        }
+                    } catch {
+                        self.message = "配置已保存，代理组选择尚未确认。"
+                        self.error = "配置已应用，但代理组选择尚未确认：" + error.localizedDescription + "。请重新应用以完成确认。"
                     }
                 } catch {
                     var detail = error.localizedDescription

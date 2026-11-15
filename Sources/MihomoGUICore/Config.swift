@@ -10,6 +10,21 @@ public func subscriptionProxyAlias(sourceIndex: Int, proxyIndex: Int) -> String 
     "MihomoGUI.Proxy.\(sourceIndex).\(proxyIndex)"
 }
 
+// Resolve the same target IDs for generated configuration, runtime selection and display.
+public func proxyTargetName(_ target: String, settings: Settings) throws -> String {
+    if let node = referencedNode(target) {
+        if node.provider == "manual", (settings.manualProxies ?? []).contains(where: { $0.name == node.name }) { return node.name }
+        if let sourceIndex = settings.subscriptions.firstIndex(where: { $0.provider == node.provider }),
+           let proxyIndex = settings.subscriptionProxies?[settings.subscriptions[sourceIndex].id]?.firstIndex(where: { $0.object["name"]?.text == node.name }) {
+            return subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)
+        }
+        throw MihomoGUIError("引用的代理节点已失效，请重新选择出口：" + node.name)
+    }
+    if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
+    if target.hasPrefix("builtin:") { return String(target.dropFirst(8)) }
+    throw MihomoGUIError("代理组成员标识无效")
+}
+
 public func dataDirectory() throws -> URL {
     let support = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support")
     let url = support.appendingPathComponent("MihomoGUI")
@@ -318,18 +333,13 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         guard let alias = aliases[node] else { throw MihomoGUIError("引用的代理节点已失效，请重新选择出口：" + node.name) }
         return alias
     }
-    func resolve(_ target: String) throws -> String {
-        if let node = referencedNode(target) { return try nodeTarget(node) }
-        if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
-        return String(target.dropFirst(8))
-    }
     for group in settings.proxyGroups ?? [] {
         var object = group.fields.filter { $0.value != .string("") }.mapValues(\.native)
         object["name"] = group.name; object["type"] = group.type
         // Resolve filters against original names and protocol types before alias translation.
-        object["proxies"] = try proxyGroupTargets(group, settings: settings).map(resolve)
+        object["proxies"] = try proxyGroupTargets(group, settings: settings).map { try proxyTargetName($0, settings: settings) }
         for key in ["include-all-proxies", "filter", "exclude-filter", "exclude-type"] { object.removeValue(forKey: key) }
-        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try resolve(selected) }
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try proxyTargetName(selected, settings: settings) }
         groups.append(object)
     }
     let defaultTarget: String?
@@ -392,7 +402,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     }
     if var resources = config["rule-providers"] as? [String: [String: Any]] {
         for (index, name) in resources.keys.sorted().enumerated() {
-            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = try resolve(target) }
+            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = try proxyTargetName(target, settings: settings) }
             if resources[name]?["type"] as? String == "file" {
                 let format = resources[name]?["format"] as? String ?? "yaml"
                 resources[name]?["path"] = "./rules/set-\(index)." + format

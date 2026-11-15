@@ -15,17 +15,34 @@ import sys
 root = Path(sys.argv[1])
 version = re.search(r'^public let configurationCoreVersion = "([^"]+)"$', Path('Sources/MihomoGUICore/DocSchemas.swift').read_text(), re.M)[1]
 class Handler(BaseHTTPRequestHandler):
+    selected = "REJECT"
     def log_message(self, *_args):
         pass
     def do_GET(self):
-        body = json.dumps({'version': 'v' + version} if self.path == '/version' else {'connections': []}).encode()
+        if self.path == '/version':
+            value = {'version': 'v' + version}
+        elif self.path == '/proxies':
+            value = {'proxies': {'fixture': {'type': 'Selector', 'now': Handler.selected}}}
+        elif self.path.startswith('/proxies/'):
+            value = {'now': Handler.selected}
+        else:
+            value = {'connections': []}
+        body = json.dumps(value).encode()
         self.send_response(200)
         self.send_header('Content-Length', str(len(body)))
         self.end_headers()
         self.wfile.write(body)
     def do_PUT(self):
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
-        (root / 'running.yaml').write_text(body['payload'])
+        if self.path.startswith('/proxies/'):
+            if (root / 'reject-selection').exists():
+                self.send_response(503)
+                self.end_headers()
+                return
+            if not (root / 'ignore-selection').exists():
+                Handler.selected = body['name']
+        else:
+            (root / 'running.yaml').write_text(body['payload'])
         self.send_response(204)
         self.end_headers()
 server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
@@ -43,7 +60,7 @@ cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
 
-enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure }
+enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure }
 @MainActor var failureMode = FailureMode.afterWrite
 @MainActor var persistCalls = 0
 @MainActor var installCalls = 0
@@ -79,7 +96,9 @@ enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFa
     try data.write(to: fixtureDirectory.appendingPathComponent("disk.yaml"), options: .atomic)
     if failureMode == .markerCleanupFailure {
         try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fixtureDirectory.appendingPathComponent("runtime-update-pending").path)
-    } else if persistCalls == 1 { throw MihomoGUIError("injected lost reply after successful write") }
+    } else if persistCalls == 1 && ![FailureMode.selectionSuccess, .selectionFailure, .selectionReadbackFailure].contains(failureMode) {
+        throw MihomoGUIError("injected lost reply after successful write")
+    }
 }
 func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
     guard try condition() else { throw MihomoGUIError("CHECK FAILED: " + message) }
@@ -118,6 +137,51 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
                       "recovery marker cleared only after confirmed restoration")
             try check(model.hasUnappliedChanges, "new draft remains unapplied after rollback")
         }
+        for mode in [FailureMode.selectionSuccess, .selectionFailure, .selectionReadbackFailure] {
+            failureMode = mode; persistCalls = 0
+            let directory = root.appendingPathComponent(mode.rawValue)
+            fixtureDirectory = directory
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var settings = Settings()
+            settings.corePath = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo").path
+            settings.defaultPolicy = "DIRECT"
+            settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0), "external-controller": .string("127.0.0.1:" + port)]
+            let group = ProxyGroup(name: "fixture", targets: ["builtin:DIRECT", "builtin:REJECT"], fields: ["default-selected": .string("builtin:DIRECT")])
+            settings.proxyGroups = [group]
+            let controller = try CoreAPI(settings: settings)
+            try await controller.selectProxyGroup(group.name, target: "REJECT")
+            let failureFlag = root.appendingPathComponent(mode == .selectionFailure ? "reject-selection" : "ignore-selection")
+            if mode != .selectionSuccess { try Data().write(to: failureFlag) }
+            try saveSettings(settings, to: directory)
+            try saveRuntimeSettings(settings, to: directory)
+            let model = MihomoGUIModel(directory: directory)
+            model.corePID = 123
+            try check(!model.hasUnappliedChanges, "selection fixture begins with identical saved and runtime configuration")
+            try model.selectProxyGroup(group, target: "builtin:DIRECT")
+            for _ in 0..<200 {
+                if persistCalls > 0 && !model.busy { break }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            try check(persistCalls == 1 && !model.busy, "explicit choice applies even when its saved default is unchanged")
+            if mode != .selectionSuccess {
+                try check(model.runtimeConfigurationUncertain && model.hasUnappliedChanges && model.error?.contains("代理组选择尚未确认") == true,
+                          "rejected or unconfirmed selection keeps visible pending state")
+                try check(model.message != "修改已自动应用。", "unconfirmed selector choice never reports application success")
+                try check(FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path), "selection failure keeps durable marker")
+                try FileManager.default.removeItem(at: failureFlag)
+                model.error = nil
+                model.retryLiveUpdate()
+                for _ in 0..<200 {
+                    if persistCalls == 2 && !model.busy { break }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                try check(persistCalls == 2 && !model.busy, "retry resubmits an unconfirmed selection")
+            }
+            let selected = try await controller.proxyGroupSelections()[group.name]
+            try check(selected == "DIRECT" && model.error == nil && !model.runtimeConfigurationUncertain && !model.hasUnappliedChanges,
+                      "only confirmed actual selection clears pending state")
+        }
+
         failureMode = .markerCleanupFailure; persistCalls = 0
         let cleanupDirectory = root.appendingPathComponent("marker-cleanup")
         fixtureDirectory = cleanupDirectory

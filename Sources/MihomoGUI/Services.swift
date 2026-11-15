@@ -80,6 +80,12 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     try Data().write(to: pending, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
     try await privilegedOperation(.install(staging: staging.path, settings: settings))
+    let controller = try CoreAPI(settings: settings)
+    for group in settings.proxyGroups ?? [] where group.type == "select" {
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty {
+            try await controller.selectProxyGroup(group.name, target: proxyTargetName(selected, settings: settings))
+        }
+    }
     try saveRuntimeSettings(settings, to: directory)
 }
 

@@ -3,12 +3,18 @@ import AppKit
 import MihomoGUICore
 
 struct ProxyGroupsView: View {
+    @State private var activeSelections: [String: String] = [:]
+    @State private var selectionsError: String?
     @State private var sortOrder: [TableSort<ResourceRow>] = []
     @EnvironmentObject var model: MihomoGUIModel
     @State private var selection: String?
     @State private var adding = false
     @State private var editing: ResourceRow?
     @State private var deleting: ResourceRow?
+    private var endpoint: String {
+        guard let api = try? model.api else { return "" }
+        return "\(api.host):\(api.port)/\(api.secret)/\(model.coreActive)"
+    }
     var rows: [ResourceRow] {
         (model.settings.proxyGroups ?? []).map { ResourceRow(id: $0.id, name: $0.name, type: $0.type, fields: $0.fields, group: $0) }
     }
@@ -56,6 +62,30 @@ struct ProxyGroupsView: View {
                     .help("新建代理组")
             }
         }
+        .safeAreaInset(edge: .top, spacing: 0) {
+            if let selectionsError {
+                Text(selectionsError).font(.caption).foregroundStyle(.orange)
+                    .padding(8).frame(maxWidth: .infinity, alignment: .leading).background(.bar)
+            }
+        }
+        .task(id: endpoint) {
+            let source = endpoint
+            activeSelections = [:]; selectionsError = nil
+            guard model.coreActive else { return }
+            while !Task.isCancelled {
+                do {
+                    let selections = try await model.api.proxyGroupSelections()
+                    guard !Task.isCancelled, source == endpoint else { return }
+                    activeSelections = selections; selectionsError = nil
+                } catch {
+                    guard !Task.isCancelled, source == endpoint else { return }
+                    activeSelections = [:]
+                    selectionsError = "代理组实际选择读取失败，将自动重试：" + error.localizedDescription
+                }
+                do { try await Task.sleep(nanoseconds: 3_000_000_000) }
+                catch { return }
+            }
+        }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: true) }
         .sheet(item: $editing) { ResourceEditorView(groups: true, original: $0) }
     }
@@ -63,15 +93,12 @@ struct ProxyGroupsView: View {
         if let group = row.group, group.type == "select" {
             let targets = proxyGroupTargets(group, settings: model.settings)
             Picker("选择节点", selection: Binding(get: {
-                let current = group.fields["default-selected"]?.text ?? ""
-                return current.isEmpty ? targets.first ?? "" : current
+                selectedTarget(group) ?? ""
             }, set: { target in
-                var updated = group
-                updated.fields["default-selected"] = .string(target)
-                do { try model.saveProxyGroup(updated) }
+                do { try model.selectProxyGroup(group, target: target) }
                 catch { model.error = error.localizedDescription }
             })) {
-                if targets.isEmpty { Text("空（Empty）").tag("") }
+                if selectedTarget(group) == nil { Text(model.coreActive ? "运行选择尚未确认" : "空（Empty）").tag("") }
                 ForEach(targets, id: \.self) { target in
                     Text(memberLabel(target)).tag(target)
                 }
@@ -84,9 +111,17 @@ struct ProxyGroupsView: View {
     }
     func selectedMemberText(_ row: ResourceRow) -> String {
         guard let group = row.group, group.type == "select" else { return "—" }
-        let selected = group.fields["default-selected"]?.text ?? ""
-        guard let target = selected.isEmpty ? proxyGroupTargets(group, settings: model.settings).first : selected else { return "空（Empty）" }
+        guard let target = selectedTarget(group) else { return model.coreActive ? "运行选择尚未确认" : "空（Empty）" }
         return memberLabel(target)
+    }
+    private func selectedTarget(_ group: ProxyGroup) -> String? {
+        let targets = proxyGroupTargets(group, settings: model.settings)
+        if model.coreActive {
+            guard let actual = activeSelections[group.name] else { return nil }
+            return targets.first { (try? proxyTargetName($0, settings: model.settings)) == actual }
+        }
+        let selected = group.fields["default-selected"]?.text ?? ""
+        return selected.isEmpty ? targets.first : selected
     }
     func memberLabel(_ target: String) -> String {
         if let node = model.allNodes.first(where: { "node:" + $0.id == target }) {

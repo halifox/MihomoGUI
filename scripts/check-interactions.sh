@@ -441,6 +441,26 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         }
         try check(first?.coreRunning == true, "GUI model connects to real existing core")
         let controller = try CoreAPI(settings: runtime)
+        var selectorSettings = Settings()
+        selectorSettings.options = runtime.options
+        selectorSettings.options?["dns.enable"] = .boolean(false)
+        selectorSettings.options?["tun.enable"] = .boolean(false)
+        selectorSettings.options?["mixed-port"] = .integer(0)
+        let selectorName = "选择 / fixture"
+        selectorSettings.proxyGroups = [ProxyGroup(name: selectorName, targets: ["builtin:DIRECT", "builtin:REJECT"], fields: ["default-selected": .string("builtin:DIRECT")])]
+        try await controller.reload(generateConfig(selectorSettings))
+        try await controller.selectProxyGroup(selectorName, target: "REJECT")
+        try await controller.reload(generateConfig(selectorSettings))
+        let cachedSelection = try await controller.proxyGroupSelections()[selectorName]
+        try check(cachedSelection == "REJECT", "real cached selection overrides default-selected on reload")
+        try await controller.selectProxyGroup(selectorName, target: "DIRECT")
+        try await controller.reload(generateConfig(selectorSettings))
+        let confirmedSelection = try await controller.proxyGroupSelections()[selectorName]
+        try check(confirmedSelection == "DIRECT", "confirmed selection updates the real cache and survives reload")
+        do {
+            try await controller.selectProxyGroup(selectorName, target: "missing-fixture")
+            throw MihomoGUIError("invalid selector member accepted")
+        } catch CoreAPIError.http(400) {}
         var filteredSettings = Settings()
         filteredSettings.options = runtime.options
         filteredSettings.options?["dns.enable"] = .boolean(false)
