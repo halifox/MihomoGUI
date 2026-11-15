@@ -120,6 +120,7 @@ struct ConnectionsView: View {
                                 : ["下载量", "上传量"].contains(column) ? "MB" : nil)
         }))
         .searchable(text: $search, placement: .toolbar, prompt: "搜索连接")
+        .background(ToolbarSearchWidth(width: 180))
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button {
@@ -135,11 +136,7 @@ struct ConnectionsView: View {
                 .accessibilityLabel("关闭所有连接")
                 .help("关闭全部活动连接，包括未显示的连接")
                 .disabled(model.busy || model.connections.isEmpty || model.connectionsError != nil)
-                .buttonStyle(.bordered)
-                .labelStyle(.titleAndIcon)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                .labelStyle(.iconOnly)
             }
         }
     }

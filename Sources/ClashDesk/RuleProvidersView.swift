@@ -57,11 +57,8 @@ struct RuleProvidersView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { adding = true } label: { Label("新建规则集合", systemImage: "plus") }
                     .disabled(model.busy)
-                    .buttonStyle(.bordered)
-                    .labelStyle(.titleAndIcon)
-                    .controlSize(.regular)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
+                    .labelStyle(.iconOnly)
+                    .help("新建规则集合")
             }
         }
         .sheet(isPresented: $adding) { ResourceEditorView(groups: false) }

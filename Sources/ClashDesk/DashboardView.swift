@@ -56,22 +56,20 @@ struct DashboardView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 Button { model.toggleCore() } label: {
-                    HStack {
+                    Label {
+                        Text(serviceButtonTitle)
+                    } icon: {
                         if model.serviceOperation != nil {
                             ProgressView().controlSize(.small)
                         } else {
                             Image(systemName: model.coreActive ? "stop.fill" : "play.fill")
                         }
-                        Text(serviceButtonTitle)
                     }
                 }
                 .disabled(model.busy)
                 .help(serviceButtonTitle)
-                .buttonStyle(.bordered)
-                .labelStyle(.titleAndIcon)
-                .controlSize(.regular)
-                .padding(.horizontal, 4)
-                .padding(.vertical, 2)
+                .accessibilityLabel(serviceButtonTitle)
+                .labelStyle(.iconOnly)
             }
         }
         .task(id: endpoint) {

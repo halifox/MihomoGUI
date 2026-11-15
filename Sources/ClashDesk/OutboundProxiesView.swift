@@ -86,11 +86,8 @@ struct OutboundProxiesView: View {
             ToolbarItem(placement: .primaryAction) {
                 Button { adding = true } label: { Label("新建出站代理", systemImage: "plus") }
                     .disabled(model.busy)
-                    .buttonStyle(.bordered)
-                    .labelStyle(.titleAndIcon)
-                    .controlSize(.regular)
-                    .padding(.horizontal, 4)
-                    .padding(.vertical, 2)
+                    .labelStyle(.iconOnly)
+                    .help("新建出站代理")
             }
         }
         .task(id: udpKey) { await model.refreshManualUDP() }
