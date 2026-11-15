@@ -183,6 +183,9 @@ public struct CoreAPI {
         request.setValue("Bearer \(secret)", forHTTPHeaderField: "Authorization")
         let socket = URLSession.shared.webSocketTask(with: request)
         socket.resume(); defer { socket.cancel(with: .goingAway, reason: nil) }
+        // mihomo sends a zero placeholder before its first real memory sample.
+        _ = try await socket.receive()
+        try Task.checkCancellation()
         let data: Data
         switch try await socket.receive() {
         case .data(let value): data = value
