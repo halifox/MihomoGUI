@@ -231,14 +231,36 @@ extension MihomoGUIModel {
         value.replacingOccurrences(of: "RULE-SET," + old + ",", with: "RULE-SET," + new + ",")
             .replacingOccurrences(of: "RULE-SET," + old + ")", with: "RULE-SET," + new + ")")
     }
-    private func rewriteSubRules(_ candidate: inout MihomoGUICore.Settings, old: String, new: String, provider: Bool) {
+    func rewriteSubRules(_ candidate: inout MihomoGUICore.Settings, old: String, new: String, provider: Bool) {
         var subRules = candidate.options?["sub-rules"]?.object ?? [:]
         for name in subRules.keys {
             subRules[name] = .array((subRules[name]?.array ?? []).map { entry in
                 let text = entry.text
-                return .string(provider ? replacingProvider(text, old: old, new: new) : text.hasSuffix("," + old) ? String(text.dropLast(old.count)) + new : text)
+                return .string(provider ? replacingProvider(text, old: old, new: new) : replacingSubRuleTarget(text, old: old, new: new))
             })
         }
         if !subRules.isEmpty { candidate.options?["sub-rules"] = .object(subRules) }
     }
+}
+
+// Rule options follow the target; preserve them when renaming or checking a reference.
+func replacingSubRuleTarget(_ rule: String, old: String, new: String) -> String {
+    guard !rule.hasPrefix("SUB-RULE,") else { return rule }
+    var body = rule
+    var options = ""
+    var depth = 0
+    var separators = 0
+    for character in rule {
+        if character == "(" { depth += 1 }
+        if character == ")" { depth -= 1 }
+        if character == ",", depth == 0 { separators += 1 }
+    }
+    let targetSeparators = rule.hasPrefix("MATCH,") ? 1 : 2
+    while separators > targetSeparators, let option = [",no-resolve", ",src"].first(where: { body.hasSuffix($0) }) {
+        body.removeLast(option.count)
+        separators -= 1
+        options = option + options
+    }
+    guard body.hasSuffix("," + old) else { return rule }
+    return String(body.dropLast(old.count)) + new + options
 }

@@ -238,6 +238,7 @@ extension MihomoGUIModel {
             }
             for index in candidate.rules.indices where candidate.rules[index].node?.provider == "manual" && candidate.rules[index].node?.name == old { candidate.rules[index].node = proxy.node }
             if candidate.defaultNode?.provider == "manual", candidate.defaultNode?.name == old { candidate.defaultNode = proxy.node }
+            rewriteSubRules(&candidate, old: old, new: proxy.name, provider: false)
             var providers = candidate.options?["rule-providers"]?.object ?? [:]
             for name in providers.keys {
                 var fields = providers[name]?.object ?? [:]
@@ -267,6 +268,10 @@ extension MihomoGUIModel {
         }
         if settings.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("node:" + proxy.node.id) || $0.object["proxy"] == .string(proxy.name) }) == true {
             error = "该代理仍用于规则集下载，请先修改下载出口。"; return
+        }
+        let subRules = settings.options?["sub-rules"]?.object.values.flatMap(\.array).map(\.text) ?? []
+        if subRules.contains(where: { replacingSubRuleTarget($0, old: proxy.name, new: "__reference_check__") != $0 }) {
+            error = "该代理仍被子规则引用，请先调整子规则出口。"; return
         }
         do {
             var candidate = settings

@@ -109,6 +109,22 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
 
         let commaProxy = ManualProxy(type: "ss", fields: ["name": .string("node,comma"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
         try expectFailure("manual proxy names cannot break CSV rule targets") { _ = try commaProxy.configuration() }
+        try check(replacingSubRuleTarget("DOMAIN,example.com,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,renamed", "option-like proxy name remains a target")
+        try check(replacingSubRuleTarget("DOMAIN,example.com,other,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,other,no-resolve", "option is not mistaken for a proxy reference")
+        try check(replacingSubRuleTarget("SUB-RULE,(NETWORK,tcp),old", old: "old", new: "new") == "SUB-RULE,(NETWORK,tcp),old", "sub-rule names are not proxy references")
+        let referenceDirectory = directory.appendingPathComponent("proxy-references")
+        try FileManager.default.createDirectory(at: referenceDirectory, withIntermediateDirectories: true)
+        let referenceModel = MihomoGUIModel(directory: referenceDirectory)
+        var referencedProxy = ManualProxy(type: "ss", fields: ["name": .string("old-proxy"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
+        try referenceModel.saveManualProxy(referencedProxy)
+        referenceModel.settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0), "sub-rules": .object(["nested": .array([.string("DOMAIN,example.com,old-proxy"), .string("IP-CIDR,192.0.2.0/24,old-proxy,no-resolve")])])]
+        referencedProxy.fields["name"] = .string("new-proxy")
+        try referenceModel.saveManualProxy(referencedProxy)
+        let rewritten = referenceModel.settings.options?["sub-rules"]?.object["nested"]?.array.map(\.text)
+        try check(rewritten == ["DOMAIN,example.com,new-proxy", "IP-CIDR,192.0.2.0/24,new-proxy,no-resolve"], "proxy rename preserves sub-rule references and options")
+        referenceModel.deleteManualProxy(referencedProxy)
+        try check(referenceModel.error != nil && referenceModel.settings.manualProxies?.count == 1, "sub-rule references prevent proxy deletion")
+        try generateConfig(referenceModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("subrule-renamed.yaml"))
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
@@ -324,6 +340,7 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -o "$CHECK_DIR/checks"
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-renamed.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
 import Security
