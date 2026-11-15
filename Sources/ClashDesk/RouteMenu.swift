@@ -127,7 +127,7 @@ struct BatchRouteEditor: View {
             Text("批量添加路由规则").font(.title2.bold())
             Text("待添加 \(additions.count) 条；已有相同条件 \(uniqueRules.count - additions.count) 条；不可用记录 \(skippedCount) 条。")
                 .foregroundStyle(.secondary)
-            formRow("目标出口") { PolicyPicker(model: model, selection: $target) }
+            formRow("目标出口", labelWidth: editorLabelWidth) { PolicyPicker(model: model, selection: $target) }
             Toggle("插入列表顶部（优先匹配）", isOn: $atTop)
             Text(atTop ? "将先于现有规则匹配。" : "追加到现有规则之后、MATCH 之前；前置规则可能优先命中。")
                 .font(.caption).foregroundStyle(.secondary)
@@ -150,7 +150,7 @@ struct BatchRouteEditor: View {
                 Button("添加 \(additions.count) 条规则") { save() }
                     .buttonStyle(.borderedProminent).disabled(model.busy || additions.isEmpty)
             }
-        }.padding(16).frame(width: 680, height: 500)
+        }.padding(16).frame(width: editorSheetWidth, height: 360)
     }
     func save() {
         do {

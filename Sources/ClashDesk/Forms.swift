@@ -66,6 +66,10 @@ func formRow<Content: View>(_ title: String, help: String = "", labelWidth: CGFl
     }.padding(.vertical, 3)
 }
 
+// Shared dimensions for subscription, proxy, resource, and route editing sheets.
+let editorSheetWidth: CGFloat = 600
+let editorLabelWidth: CGFloat = 160
+
 private struct FormHelpDocumentKey: EnvironmentKey { static let defaultValue = "" }
 extension EnvironmentValues {
     var formHelpDocument: String {

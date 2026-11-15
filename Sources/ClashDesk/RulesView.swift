@@ -162,31 +162,31 @@ struct RuleEditorView: View {
             Text(original == nil ? "添加路由规则" : "编辑路由规则").font(.title2.bold())
             ScrollView {
                 VStack(alignment: .leading, spacing: 6) {
-                    formRow("type *", help: documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "选择路由规则类型。") {
+                    formRow("type *", help: documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "选择路由规则类型。", labelWidth: editorLabelWidth) {
                         Picker("规则类型", selection: $kind) { ForEach(RuleKind.allCases, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) } }.labelsHidden()
                     }
                     if kind.isCIDR {
-                        formRow("address *") { TextField("192.168.1.0 或 2001:db8::", text: $address) }
-                        formRow("prefix *") { TextField("掩码位数", text: $prefix).frame(width: 90) }
+                        formRow("address *", labelWidth: editorLabelWidth) { TextField("192.168.1.0 或 2001:db8::", text: $address) }
+                        formRow("prefix *", labelWidth: editorLabelWidth) { TextField("掩码位数", text: $prefix).frame(width: 90) }
                     } else if kind == .network {
-                        formRow("network *") {
+                        formRow("network *", labelWidth: editorLabelWidth) {
                             Picker("网络协议", selection: $value) { Text(optionLabel("tcp")).tag("tcp"); Text(optionLabel("udp")).tag("udp") }.labelsHidden()
                         }
                     } else if kind == .ruleSet {
-                        formRow("rule-set *") {
+                        formRow("rule-set *", labelWidth: editorLabelWidth) {
                             Picker("集合名称", selection: $value) {
                                 Text("空（Empty）").tag("")
                                 ForEach((model.settings.options?["rule-providers"]?.object.keys.sorted() ?? []), id: \.self) { Text($0).tag($0) }
                             }.labelsHidden()
                         }
                     } else if kind.isLogic {
-                        formRow("expression-mode") { Toggle("直接编辑逻辑表达式", isOn: $advancedLogic) }
+                        formRow("expression-mode", labelWidth: editorLabelWidth) { Toggle("直接编辑逻辑表达式", isOn: $advancedLogic) }
                         if advancedLogic {
-                            formRow("expression *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写逻辑表达式。") + "\n\n示例：" + kind.hint) { TextField("", text: $value) }
+                            formRow("expression *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写逻辑表达式。") + "\n\n示例：" + kind.hint, labelWidth: editorLabelWidth) { TextField("", text: $value) }
                         }
                         else {
                             ForEach(conditions.indices, id: \.self) { index in
-                                formRow("condition[\(index + 1)].type", help: documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "选择条件的规则类型。") {
+                                formRow("condition[\(index + 1)].type", help: documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "选择条件的规则类型。", labelWidth: editorLabelWidth) {
                                     HStack {
                                         Picker("条件", selection: $conditions[index].kind) {
                                             ForEach(RuleKind.allCases.filter { !$0.isLogic }, id: \.self) { Text(optionLabel($0.rawValue)).tag($0) }
@@ -199,30 +199,30 @@ struct RuleEditorView: View {
                                         }
                                     }
                                 }
-                                formRow("condition[\(index + 1)].value", help: (documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "填写条件的匹配内容。") + "\n\n示例：" + conditions[index].kind.hint) { matchValueField(kind: conditions[index].kind, value: $conditions[index].value) }
+                                formRow("condition[\(index + 1)].value", help: (documentedHelp(document: "rules/index.md", key: conditions[index].kind.rawValue) ?? "填写条件的匹配内容。") + "\n\n示例：" + conditions[index].kind.hint, labelWidth: editorLabelWidth) { matchValueField(kind: conditions[index].kind, value: $conditions[index].value) }
                             }
                             if kind != .not && kind != .subRule {
-                                formRow("conditions") { Button("添加条件") { conditions.append(RuleCondition()) } }
+                                formRow("conditions", labelWidth: editorLabelWidth) { Button("添加条件") { conditions.append(RuleCondition()) } }
                             }
                         }
                     } else {
-                        formRow("value *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写当前规则类型的匹配内容。") + "\n\n示例：" + kind.hint) { matchValueField(kind: kind, value: $value).help(kind.hint) }
+                        formRow("value *", help: (documentedHelp(document: "rules/index.md", key: kind.rawValue) ?? "填写当前规则类型的匹配内容。") + "\n\n示例：" + kind.hint, labelWidth: editorLabelWidth) { matchValueField(kind: kind, value: $value).help(kind.hint) }
                         if kind == .processPath {
-                            formRow("application") { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
+                            formRow("application", labelWidth: editorLabelWidth) { Button("选择应用可执行文件") { if let path = model.chooseApplicationPath() { value = path } } }
                         }
                     }
                     if kind.supportsIPOptions {
-                        formRow("no-resolve") { Toggle("不触发域名解析", isOn: $noResolve) }
-                        formRow("src") { Toggle("匹配来源 IP", isOn: $sourceIP) }
+                        formRow("no-resolve", labelWidth: editorLabelWidth) { Toggle("不触发域名解析", isOn: $noResolve) }
+                        formRow("src", labelWidth: editorLabelWidth) { Toggle("匹配来源 IP", isOn: $sourceIP) }
                     }
                     if kind == .subRule {
-                        formRow("sub-rule *") {
+                        formRow("sub-rule *", labelWidth: editorLabelWidth) {
                             Picker("子规则", selection: $subTarget) {
                                 Text("空（Empty）").tag("")
                                 ForEach(model.settings.options?["sub-rules"]?.object.keys.sorted() ?? [], id: \.self) { Text($0).tag($0) }
                             }.labelsHidden()
                         }
-                    } else { formRow("target *") { PolicyPicker(model: model, selection: $target) } }
+                    } else { formRow("target *", labelWidth: editorLabelWidth) { PolicyPicker(model: model, selection: $target) } }
                     if original == nil {
                         Toggle("插入列表顶部（优先匹配）", isOn: $atTop)
                         Text(atTop ? "插入第 1 条，优先于现有规则。" : "追加至第 \(model.settings.rules.count + 1) 条、MATCH 之前。前置规则可能优先命中。")
@@ -254,7 +254,7 @@ struct RuleEditorView: View {
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存规则") { save() }.buttonStyle(.borderedProminent).disabled(model.busy)
             }
-        }.padding(16).controlSize(.regular).frame(width: 720, height: 540)
+        }.padding(16).controlSize(.regular).frame(width: editorSheetWidth, height: 360)
         .environment(\.formHelpDocument, "rules/index.md")
         .onChange(of: kind) { changed in
             if changed == .network { value = "tcp" }

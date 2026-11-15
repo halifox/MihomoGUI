@@ -71,8 +71,6 @@ struct SubscriptionsView: View {
                 Button("更新") { model.refreshSubscription(item) }
                     .disabled(model.busy || model.settings.corePath.isEmpty)
             }
-            Button("全部更新") { model.refreshSubscriptions() }
-                .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
         }
         .alert("确认删除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("取消", role: .cancel) { deleting = nil }
@@ -84,6 +82,14 @@ struct SubscriptionsView: View {
             Text("确定删除订阅“\(deleting?.name ?? "")”及其节点吗？此操作无法撤销。")
         }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { model.refreshSubscriptions() } label: {
+                    Label("全部更新", systemImage: "arrow.clockwise")
+                }
+                .disabled(model.busy || model.settings.corePath.isEmpty || model.settings.subscriptions.isEmpty)
+                .labelStyle(.iconOnly)
+                .help("全部更新")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { adding = true } label: { Label("新建代理订阅", systemImage: "plus") }
                     .disabled(model.busy)
@@ -134,8 +140,8 @@ struct SubscriptionEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加订阅" : "编辑订阅").font(.title2.bold())
-            formRow("name *", labelWidth: 100) { TextField("订阅名称", text: $name) }
-            formRow("url *", labelWidth: 100) { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
+            formRow("name *", labelWidth: editorLabelWidth) { TextField("订阅名称", text: $name) }
+            formRow("url *", labelWidth: editorLabelWidth) { TextField("HTTPS Clash YAML 订阅地址", text: $url) }
             if let error { Text(error).foregroundStyle(.red).textSelection(.enabled) }
             HStack {
                 Spacer()
@@ -154,7 +160,7 @@ struct SubscriptionEditorView: View {
                     .disabled(model.busy || model.settings.corePath.isEmpty || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || url.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             if model.settings.corePath.isEmpty { Text("应用内置 mihomo 内核不可用，请重新安装应用。").foregroundStyle(.orange) }
-        }.textFieldStyle(.roundedBorder).padding(16).controlSize(.regular).frame(width: 620)
+        }.textFieldStyle(.roundedBorder).padding(16).controlSize(.regular).frame(width: editorSheetWidth)
             .environment(\.formHelpDocument, "subscription")
             .interactiveDismissDisabled(model.busy)
     }

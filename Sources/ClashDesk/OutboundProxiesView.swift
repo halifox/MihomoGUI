@@ -68,10 +68,6 @@ struct OutboundProxiesView: View {
                 Button("测延迟") { model.testDelay(node) }
                     .disabled(model.busy || model.settings.corePath.isEmpty)
             }
-            Button(model.isTestingDelays ? "取消测延迟" : "全部测延迟") {
-                if model.isTestingDelays { model.cancelDelayTests() }
-                else { model.testAllDelays() }
-            }.disabled(!model.isTestingDelays && (model.busy || rows.isEmpty || model.settings.corePath.isEmpty))
         }
         .alert("确认删除", isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } })) {
             Button("取消", role: .cancel) { deleting = nil }
@@ -83,6 +79,18 @@ struct OutboundProxiesView: View {
             Text("确定删除所选代理吗？此操作无法撤销。")
         }
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    if model.isTestingDelays { model.cancelDelayTests() }
+                    else { model.testAllDelays() }
+                } label: {
+                    Label(model.isTestingDelays ? "取消测延迟" : "全部测延迟",
+                          systemImage: model.isTestingDelays ? "stop.circle" : "speedometer")
+                }
+                .disabled(!model.isTestingDelays && (model.busy || rows.isEmpty || model.settings.corePath.isEmpty))
+                .labelStyle(.iconOnly)
+                .help(model.isTestingDelays ? "取消测延迟" : "全部测延迟")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { adding = true } label: { Label("新建出站代理", systemImage: "plus") }
                     .disabled(model.busy)
@@ -137,7 +145,7 @@ struct ProxyEditorView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(original == nil ? "添加代理" : "编辑代理").font(.title2.bold())
-            formRow("type *") {
+            formRow("type *", labelWidth: editorLabelWidth) {
                 Picker("代理类型", selection: $type) {
                     ForEach(documentSchemas.proxies) { Text(optionLabel($0.key)).tag($0.key) }
                 }.labelsHidden()
@@ -145,13 +153,13 @@ struct ProxyEditorView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 2) {
                     ForEach(schema.fields) { field in
-                        VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true)
+                        VisualField(field: field, value: Binding(get: { fields[field.path] }, set: { fields[field.path] = $0 }), compact: true, labelWidth: editorLabelWidth)
                     }
                     if fields.keys.contains(where: { !knownFields.contains($0) }) {
                         Text("额外字段").font(.headline).padding(.top, 8)
                         ForEach(fields.keys.filter { !knownFields.contains($0) }.sorted(), id: \.self) { path in
                             HStack(alignment: .top) {
-                                VisualField(field: customSpec(path), value: Binding(get: { fields[path] }, set: { fields[path] = $0 }), compact: true)
+                                VisualField(field: customSpec(path), value: Binding(get: { fields[path] }, set: { fields[path] = $0 }), compact: true, labelWidth: editorLabelWidth)
                                 Button(role: .destructive) { fields.removeValue(forKey: path) } label: {
                                     Image(systemName: "trash")
                                 }
@@ -172,7 +180,7 @@ struct ProxyEditorView: View {
                         Text("添加额外字段").font(.headline)
                         CustomFieldEditor(fields: $fields, reservedPaths: knownFields) { addingField = false }
                         Button("取消") { addingField = false }
-                    }.padding(16).frame(width: 460)
+                    }.padding(16).frame(width: editorSheetWidth)
                 }
                 Spacer()
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
@@ -185,7 +193,7 @@ struct ProxyEditorView: View {
                     } catch { self.error = error.localizedDescription }
                 }.buttonStyle(.borderedProminent).disabled(invalidMap)
             }
-        }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
+        }.padding(16).controlSize(.regular).frame(width: editorSheetWidth, height: 360)
         .onPreferenceChange(InvalidMapPreference.self) { invalidMap = $0 }
         .environment(\.formHelpDocument, schema.document)
         .onChange(of: type) { _ in

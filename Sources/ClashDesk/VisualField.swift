@@ -7,6 +7,7 @@ struct VisualField: View {
     @Binding var value: ConfigValue?
     var allowUnset = true
     var compact = false
+    var labelWidth: CGFloat = 200
     var inputEnabled = true
     var defaultValue: ConfigValue?
     private var displayedValue: ConfigValue {
@@ -26,7 +27,7 @@ struct VisualField: View {
         HStack(alignment: field.kind == "list" || field.kind == "map" || field.kind == "object" ? .top : .center, spacing: 12) {
             FieldKeyLabel(title: field.title + (field.required ? " *" : ""), key: field.path,
                           description: field.description, hint: field.hint, kind: field.kind, unavailableReason: field.unavailableReason, helpDocument: field.document)
-                .frame(width: 200, alignment: .leading)
+                .frame(width: labelWidth, alignment: .leading)
             VisualValue(field: field, value: inputValue, compact: true).disabled(!inputEnabled)
             Spacer(minLength: 0)
 

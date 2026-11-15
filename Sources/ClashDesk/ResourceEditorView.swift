@@ -33,8 +33,8 @@ struct ResourceEditorView: View {
         VStack(alignment: .leading, spacing: 6) {
             Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集")).font(.title2.bold())
             if !groups {
-                formRow("name *") { TextField("规则集名称", text: $name).textFieldStyle(.roundedBorder) }
-                formRow("type *") {
+                formRow("name *", labelWidth: editorLabelWidth) { TextField("规则集名称", text: $name).textFieldStyle(.roundedBorder) }
+                formRow("type *", labelWidth: editorLabelWidth) {
                     Picker("类型", selection: $type) {
                         ForEach(["http", "file", "inline"], id: \.self) { Text(optionLabel($0)).tag($0) }
                     }.labelsHidden()
@@ -44,18 +44,18 @@ struct ResourceEditorView: View {
                 VStack(alignment: .leading, spacing: 6) {
                     if groups {
                         HStack(spacing: 12) {
-                            FieldKeyLabel(title: "name *", key: "name").frame(width: 200, alignment: .leading)
+                            FieldKeyLabel(title: "name *", key: "name").frame(width: editorLabelWidth, alignment: .leading)
                             TextField("代理组名称", text: $name).textFieldStyle(.roundedBorder)
                         }.padding(.vertical, 3)
                         HStack(spacing: 12) {
-                            FieldKeyLabel(title: "type *", key: "type").frame(width: 200, alignment: .leading)
+                            FieldKeyLabel(title: "type *", key: "type").frame(width: editorLabelWidth, alignment: .leading)
                             Picker("类型", selection: $type) {
                                 ForEach(["select", "url-test", "fallback", "load-balance"], id: \.self) { Text(optionLabel($0)).tag($0) }
                             }.labelsHidden()
                             Spacer(minLength: 0)
                         }.padding(.vertical, 3)
                         HStack(alignment: .top, spacing: 12) {
-                            FieldKeyLabel(title: "proxies", key: "proxies", description: "引入节点或其他代理组作为成员。成员顺序可通过上下移按钮调整；fallback 会按顺序选择可用成员。").frame(width: 200, alignment: .leading)
+                            FieldKeyLabel(title: "proxies", key: "proxies", description: "引入节点或其他代理组作为成员。成员顺序可通过上下移按钮调整；fallback 会按顺序选择可用成员。").frame(width: editorLabelWidth, alignment: .leading)
                             VStack(alignment: .leading, spacing: 4) {
                                 ForEach(targets.indices, id: \.self) { index in
                                     HStack {
@@ -75,7 +75,7 @@ struct ResourceEditorView: View {
                     ForEach(schema) { field in
                         if groups && field.path == "default-selected" {
                             HStack {
-                                FieldKeyLabel(title: "default-selected", key: "default-selected").frame(width: 200, alignment: .leading)
+                                FieldKeyLabel(title: "default-selected", key: "default-selected").frame(width: editorLabelWidth, alignment: .leading)
                                 Picker("默认成员", selection: Binding(get: {
                                     fields["default-selected"]?.text ?? ""
                                 }, set: { fields["default-selected"] = $0.isEmpty ? nil : .string($0) })) {
@@ -86,7 +86,7 @@ struct ResourceEditorView: View {
                         } else {
                             VisualField(field: field, value: Binding(get: {
                                 fields[field.path]
-                            }, set: { fields[field.path] = $0 }), compact: true)
+                            }, set: { fields[field.path] = $0 }), compact: true, labelWidth: editorLabelWidth)
                         }
                         if field.path == "path", type == "file" {
                             Button("选择规则文件") {
@@ -97,7 +97,7 @@ struct ResourceEditorView: View {
                     }
                     if !groups && type == "http" {
                         HStack {
-                            FieldKeyLabel(title: "proxy", key: "proxy").frame(width: 200, alignment: .leading)
+                            FieldKeyLabel(title: "proxy", key: "proxy").frame(width: editorLabelWidth, alignment: .leading)
                             PolicyPicker(model: model, selection: Binding(get: { fields["proxy"]?.text ?? "builtin:DIRECT" }, set: { fields["proxy"] = .string($0) }))
                         }
                     }
@@ -109,7 +109,7 @@ struct ResourceEditorView: View {
                 Button("取消") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button("保存") { save() }.buttonStyle(.borderedProminent).disabled(invalidMap)
             }
-        }.padding(16).controlSize(.regular).frame(width: 720, height: 560)
+        }.padding(16).controlSize(.regular).frame(width: editorSheetWidth, height: 360)
         .onPreferenceChange(InvalidMapPreference.self) { invalidMap = $0 }
         .environment(\.formHelpDocument, groups ? "proxy-groups/" + type + ".md" : "rule-providers/index.md")
         .onChange(of: type) { _ in
