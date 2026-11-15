@@ -105,7 +105,7 @@ MihomoGUI 将配置管理界面与代理服务分开运行。需要修改配置�
 
 从 [GitHub Releases](https://github.com/halifox/mihomoGUI/releases) 下载 `MihomoGUI-v版本号-macos-arm64.zip`，解压后将 `MihomoGUI.app` 放入“应用程序”目录。自动发布包仅提供 Apple Silicon 版本。
 
-当前 GitHub Actions 配置使用 Xcode 26.5 / macOS 26.5 SDK 构建，最低部署版本为 macOS 13。
+当前 GitHub Actions 配置使用 Xcode 26.5 / macOS 26.5 SDK 构建，最低部署版本为 macOS 13。构建会检查 GUI、辅助程序与内核的实际架构及最低系统版本；这不等同于 macOS 13 或 Intel 实机兼容性认证，验证范围见[兼容性记录](docs/compatibility.md)。
 
 - **Apple Silicon（M 系列芯片）**：选择 `arm64` 安装包。
 - **Intel 芯片**：需要自行准备对应内核并从源码构建。

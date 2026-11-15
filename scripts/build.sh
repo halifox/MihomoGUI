@@ -78,6 +78,7 @@ codesign "${SIGNING_FLAGS[@]}" "$APP_DIR/Contents/Helpers/MihomoGUIHelper"
 python3 scripts/resources.py bundle-manifest "$ARCH" "$APP_DIR"
 codesign "${SIGNING_FLAGS[@]}" "$APP_DIR"
 codesign --verify --deep --strict "$APP_DIR"
+python3 scripts/check-compatibility.py "$APP_DIR" "$ARCH"
 printf '[6/6] Build completed in %ss.\n' "$SECONDS"
 printf 'Built: %s\n' "$APP_DIR"
 printf 'If MihomoGUI is already running, quit with Cmd-Q and reopen the app to load this build.\n'
