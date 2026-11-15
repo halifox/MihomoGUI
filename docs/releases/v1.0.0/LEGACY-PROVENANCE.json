@@ -1,0 +1,57 @@
+{
+  "build_job": {
+    "checkout_command": "git log -1 --format=%H",
+    "checkout_output": "7853f1d5a3ddd0140080af0ab36804f2df86a1e5",
+    "id": 132736280208,
+    "logs_api": "https://api.github.com/repos/halifox/MihomoGUI/actions/jobs/132736280208/logs"
+  },
+  "limitations": [
+    "This is a reconstructed verification record, not an original build-issued or signed Sigstore attestation.",
+    "The original working tree dirty state and GITHUB_WORKFLOW_REF were not recorded.",
+    "Declared minimum macOS and SDK values do not establish runtime acceptance on every supported system."
+  ],
+  "observed_at": "2026-11-15T14:58:49+00:00",
+  "original_ci_artifact": {
+    "created_at": "2026-11-15T07:19:17Z",
+    "digest": "sha256:c62c24d6776738e5bab696b1bcaeba5a940204e53ab843ac1a84765e133109d8",
+    "expires_at": "2026-11-22T07:19:15Z",
+    "id": 14151089074,
+    "name": "MihomoGUI-macos-arm64",
+    "size_in_bytes": 36000837
+  },
+  "preserved_ci_artifact_filename": "MihomoGUI-v1.0.0-ci-artifact.zip",
+  "reconstructed_after_publication": true,
+  "record_type": "legacy-artifact-match-verification",
+  "release_asset": {
+    "created_at": "2026-11-15T07:19:26Z",
+    "digest": "sha256:9246cd83009f610c7a0860550f93cc020fa1dbcd8171928af7652b0105743c71",
+    "id": 750188096,
+    "name": "MihomoGUI-v1.0.0-macos-arm64.zip",
+    "size": 36788505,
+    "updated_at": "2026-11-15T07:19:28Z"
+  },
+  "repository": "halifox/MihomoGUI",
+  "schema_version": 1,
+  "sigstore_attestation": {
+    "available": false,
+    "lookup_result": "GitHub attestation download returned HTTP 404 for the release digest",
+    "original_workflow_had_attestation_step": false
+  },
+  "source_commit_from_checkout_log": "7853f1d5a3ddd0140080af0ab36804f2df86a1e5",
+  "tag": "v1.0.0",
+  "verification": {
+    "checkout_log_matches_release_tag": true,
+    "ci_archive_matches_GitHub_digest": true,
+    "ci_member_matches_original_release_sha256": true,
+    "only_ci_member": "MihomoGUI-v1.0.0-macos-arm64.zip"
+  },
+  "workflow_run": {
+    "conclusion": "success",
+    "created_at": "2026-11-15T07:17:19Z",
+    "head_sha": "7853f1d5a3ddd0140080af0ab36804f2df86a1e5",
+    "html_url": "https://github.com/halifox/MihomoGUI/actions/runs/43689272459",
+    "id": 43689272459,
+    "path": ".github/workflows/release-please.yml",
+    "updated_at": "2026-11-15T07:19:30Z"
+  }
+}

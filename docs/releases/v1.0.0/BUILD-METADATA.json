@@ -1,0 +1,35 @@
+{
+  "architecture": "arm64",
+  "code_signing": "ad-hoc",
+  "minimum_macos_declared": "13.0",
+  "reconstructed_legacy_metadata": true,
+  "reconstruction_observed_at": "2026-11-15T14:58:49+00:00",
+  "referenced_workflows": [
+    {
+      "path": "halifox/MihomoGUI/.github/workflows/build.yml@7853f1d5a3ddd0140080af0ab36804f2df86a1e5",
+      "ref": "refs/heads/main",
+      "sha": "7853f1d5a3ddd0140080af0ab36804f2df86a1e5"
+    }
+  ],
+  "repository": "halifox/MihomoGUI",
+  "resource_manifest_format": "legacy source-asset manifest",
+  "resource_manifest_sha256": "31f0ec368afb6e0d9009d5bf5780e93237811dd682d5bb5a36f4f0d90470ce07",
+  "schema_version": 1,
+  "sdk_version": "26.5",
+  "source_commit": "7853f1d5a3ddd0140080af0ab36804f2df86a1e5",
+  "swift_version": "Apple Swift version 6.3.2 (swiftlang-6.3.2.1.108 clang-2100.1.1.101)",
+  "unknown_fields": [
+    "original_working_tree_dirty",
+    "original_GITHUB_WORKFLOW_REF"
+  ],
+  "verification_record": "LEGACY-PROVENANCE.json",
+  "version": "1.0.0",
+  "workflow_commit": "7853f1d5a3ddd0140080af0ab36804f2df86a1e5",
+  "workflow_path": ".github/workflows/release-please.yml",
+  "workflow_ref": null,
+  "workflow_run_attempt": 1,
+  "workflow_run_id": "43689272459",
+  "working_tree_dirty": null,
+  "xcode_build": "Build version 17F42",
+  "xcode_version": "Xcode 26.5"
+}
