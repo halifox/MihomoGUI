@@ -189,6 +189,15 @@ public func loadSettings(from directory: URL) throws -> Settings {
 public func saveSettings(_ settings: Settings, to directory: URL) throws {
     let encoder = JSONEncoder(); encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
     let url = directory.appendingPathComponent("settings.json")
+    // Preserve unreadable settings before an editable recovery draft replaces them.
+    if FileManager.default.fileExists(atPath: url.path) {
+        let previous = try Data(contentsOf: url)
+        if (try? JSONDecoder().decode(Settings.self, from: previous)) == nil {
+            let backup = directory.appendingPathComponent("settings-unreadable-" + UUID().uuidString + ".json")
+            try previous.write(to: backup, options: .atomic)
+            try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: backup.path)
+        }
+    }
     try encoder.encode(settings).write(to: url, options: .atomic)
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }

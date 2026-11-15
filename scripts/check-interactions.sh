@@ -27,6 +27,17 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         defer { try? FileManager.default.removeItem(at: directory) }
         let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
+        let damaged = directory.appendingPathComponent("damaged")
+        try FileManager.default.createDirectory(at: damaged, withIntermediateDirectories: true)
+        let original = Data("broken settings fixture".utf8)
+        try original.write(to: damaged.appendingPathComponent("settings.json"))
+        try saveSettings(Settings(), to: damaged)
+        let backups = try FileManager.default.contentsOfDirectory(at: damaged, includingPropertiesForKeys: nil)
+            .filter { $0.lastPathComponent.hasPrefix("settings-unreadable-") }
+        try check(backups.count == 1, "damaged settings are backed up before replacement")
+        try check(try Data(contentsOf: backups[0]) == original, "damaged settings backup preserves original bytes")
+        _ = try loadSettings(from: damaged)
+
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
