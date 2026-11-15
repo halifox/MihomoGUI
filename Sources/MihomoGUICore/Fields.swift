@@ -174,7 +174,7 @@ public struct ManualProxy: Codable, Identifiable {
     }
     public func configuration() throws -> [String: Any] {
         guard !fields.keys.contains(where: { $0 == "type" || $0.hasPrefix("type.") }) else { throw MihomoGUIError("代理类型由协议选择器设置，额外字段不能覆盖 type") }
-        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !name.hasPrefix("MihomoGUI."), !name.contains(","), !["DIRECT", "REJECT", "REJECT-DROP", "GLOBAL", "PASS"].contains(name),
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !name.hasPrefix("MihomoGUI."), !name.contains(","), !["DIRECT", "REJECT", "REJECT-DROP", "GLOBAL", "PASS", "COMPATIBLE"].contains(name),
               !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw MihomoGUIError("代理名称不能为空，不能使用保留名称、逗号或控制字符") }
         guard let schema = documentSchemas.proxies.first(where: { $0.key == type }) else { throw MihomoGUIError("未知代理类型：\(type)") }
         let fields = fields.filter { entry in

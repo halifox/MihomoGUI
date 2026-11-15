@@ -156,6 +156,18 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
 
         let commaProxy = ManualProxy(type: "ss", fields: ["name": .string("node,comma"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
         try expectFailure("manual proxy names cannot break CSV rule targets") { _ = try commaProxy.configuration() }
+        var reservedProxy = commaProxy
+        reservedProxy.fields["name"] = .string("COMPATIBLE")
+        try expectFailure("manual proxy cannot replace builtin COMPATIBLE") { _ = try reservedProxy.configuration() }
+        let beforeReservedSave = try Data(contentsOf: directory.appendingPathComponent("settings.json"))
+        try expectFailure("manual proxy editor rejects reserved builtin") { try model.saveManualProxy(reservedProxy) }
+        try check(try Data(contentsOf: directory.appendingPathComponent("settings.json")) == beforeReservedSave, "reserved-name rejection leaves settings unchanged")
+        reservedProxy.fields["name"] = .string("compatible")
+        var compatibleSettings = Settings()
+        compatibleSettings.defaultPolicy = "DIRECT"
+        compatibleSettings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0)]
+        compatibleSettings.manualProxies = [reservedProxy]
+        try generateConfig(compatibleSettings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("compatible.yaml"))
         try check(replacingSubRuleTarget("DOMAIN,example.com,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,renamed", "option-like proxy name remains a target")
         try check(replacingSubRuleTarget("DOMAIN,example.com,other,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,other,no-resolve", "option is not mistaken for a proxy reference")
         try check(replacingSubRuleTarget("SUB-RULE,(NETWORK,tcp),old", old: "old", new: "new") == "SUB-RULE,(NETWORK,tcp),old", "sub-rule names are not proxy references")
@@ -699,6 +711,7 @@ for index in 0 1 2; do
   "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/group-reference-$index.yaml"
 done
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-dispatch.yaml"
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/compatible.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
 import Darwin
