@@ -10,6 +10,7 @@ CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/MihomoGUI-interactions.XXXXXX")"
 trap 'rm -rf "$CHECK_DIR"' EXIT
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
+import Darwin
 import SwiftUI
 import MihomoGUICore
 
@@ -55,6 +56,48 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
             _ = try controllerEndpoint(controllerSettings)
             controllerSettings.options?["secret"] = .string("")
         }
+        // Accept a reload request and drop its response, without touching any system service.
+        let listener = socket(AF_INET, SOCK_STREAM, 0)
+        guard listener >= 0 else { throw MihomoGUIError("fixture socket failed") }
+        defer { close(listener) }
+        var address = sockaddr_in()
+        address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+        address.sin_family = sa_family_t(AF_INET)
+        address.sin_addr.s_addr = inet_addr("127.0.0.1")
+        let bound = withUnsafePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(listener, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+        }
+        guard bound == 0, listen(listener, 4) == 0 else { throw MihomoGUIError("fixture bind failed") }
+        var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+        let named = withUnsafeMutablePointer(to: &address) { pointer in
+            pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(listener, $0, &length) }
+        }
+        guard named == 0 else { throw MihomoGUIError("fixture port failed") }
+        let lostResponse = Task.detached {
+            let peer = accept(listener, nil, nil)
+            guard peer >= 0 else { return }
+            var bytes = [UInt8](repeating: 0, count: 4096)
+            _ = read(peer, &bytes, bytes.count)
+            shutdown(peer, SHUT_RDWR)
+            close(peer)
+            shutdown(listener, SHUT_RDWR)
+        }
+        let uncertainDirectory = directory.appendingPathComponent("uncertain")
+        try FileManager.default.createDirectory(at: uncertainDirectory, withIntermediateDirectories: true)
+        var uncertainSettings = Settings()
+        uncertainSettings.options = ["external-controller": .string("127.0.0.1:\(UInt16(bigEndian: address.sin_port))")]
+        try saveSettings(uncertainSettings, to: uncertainDirectory)
+        try saveRuntimeSettings(uncertainSettings, to: uncertainDirectory)
+        let uncertainModel = MihomoGUIModel(directory: uncertainDirectory)
+        uncertainModel.corePID = 123
+        uncertainModel.settings.defaultPolicy = "REJECT"
+        for _ in 0..<200 {
+            if uncertainModel.error != nil && !uncertainModel.busy { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try check(uncertainModel.error != nil && uncertainModel.runtimeConfigurationUncertain,
+                  "lost reload response leaves running configuration uncertain")
+        await lostResponse.value
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)

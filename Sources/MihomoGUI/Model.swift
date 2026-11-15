@@ -458,8 +458,9 @@ final class MihomoGUIModel: ObservableObject {
                     if snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
                         ruleFiles = try await prepareRuleFileUpdate(snapshot)
                     }
-                    try await controller.reload(config)
+                    // A lost response cannot prove that the core kept its previous configuration.
                     self.runtimeConfigurationUncertain = true
+                    try await controller.reload(config)
                     var configurationPersisted = false
                     var runtimeSaveAttempted = false
                     do {
