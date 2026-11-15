@@ -259,7 +259,7 @@ public func controllerEndpoint(_ settings: Settings) throws -> (host: String, po
     let address = settings.options?["external-controller"]?.text ?? "127.0.0.1:19090"
     guard let url = URLComponents(string: "http://" + address), let host = url.host, let port = url.port,
           (1...65535).contains(port), url.path.isEmpty, url.query == nil, url.user == nil else {
-        throw DeskError("external-controller 必须为有效 host:port，GUI 与统计后台需要这个接口")
+        throw DeskError("external-controller 必须为有效 host:port，GUI 需要这个接口")
     }
     let destination = host == "0.0.0.0" ? "127.0.0.1" : host == "::" || host == "[::]" ? "::1" : host
     let secret = settings.options?["secret"]?.text ?? settings.secret

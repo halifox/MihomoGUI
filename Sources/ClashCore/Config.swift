@@ -1,7 +1,6 @@
 import Foundation
 
 public let coreLabel = "local.clashdesk.mihomo"
-public let statsLabel = "local.clashdesk.stats"
 public let defaultGroup = "CD.Default"
 public let rootDirectory = "/Library/Application Support/ClashDesk"
 public let installedCore = "/Library/PrivilegedHelperTools/ClashDesk/mihomo"

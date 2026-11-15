@@ -9,15 +9,11 @@ final class DeskModel: ObservableObject {
     @Published var connections: [Connection] = []
     @Published var connectionsError: String?
     @Published var connectionsLoaded = false
-    @Published var statisticsLoaded = false
-    private var statisticsRefreshID = UUID()
     private var connectionsRefreshID = UUID()
     private var udpRefreshID = UUID()
     @Published var runtimeConfigurationUncertain = false
     private var connectionsDate: Date?
     @Published var connectionSpeedsAvailable = false
-    @Published var traffic: [DomainTrafficRow] = []
-    @Published var statisticsError: String?
     @Published var testingNodes: Set<String> = []
     @Published var isTestingDelays = false
     private var delayTask: Task<Void, Never>?
@@ -28,12 +24,10 @@ final class DeskModel: ObservableObject {
     @Published var serviceOperation: ServiceOperation?
     @Published var error: String?
     @Published var message = "退出界面后，已启动的服务继续运行。"
-    @Published var hours = 24
-    @Published var trafficGrouping: TrafficGrouping = .domain
     @Published var coreMemory: Int64?
     @Published var coreVersion: String?
+    @Published var coreServiceLoaded = false
     @Published var corePID: Int?
-    @Published var statsPID: Int?
     private var runtimeSettings = ClashCore.Settings()
     private var diagnosticsDate = Date.distantPast
     let directory: URL
@@ -42,7 +36,7 @@ final class DeskModel: ObservableObject {
     private var configurationSavePending = false
     private var liveUpdateTask: Task<Void, Never>?
     private var liveUpdatePending = false
-    var configurationLocked: Bool { coreRunning || corePID != nil }
+    var configurationLocked: Bool { coreActive }
 
     init(directory: URL? = nil) {
         self.directory = directory ?? ((try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/ClashDesk"))
@@ -68,6 +62,11 @@ final class DeskModel: ObservableObject {
     func startMonitor() {
         guard monitor == nil else { return }
         monitor = Task { [weak self] in
+            if let self {
+                do { try await removeLegacyStatistics(directory: self.directory) }
+                catch { self.error = "旧统计服务清理失败：" + error.localizedDescription }
+                await self.refresh()
+            }
             if let self, self.settings.subscriptionProxies == nil {
                 let snapshot = self.settings; let folder = self.directory
                 do {
@@ -104,16 +103,15 @@ final class DeskModel: ObservableObject {
     }
     var api: CoreAPI { get throws { try CoreAPI(settings: runtimeSettings) } }
     var allNodes: [Node] { (settings.manualProxies ?? []).map(\.node) + nodes }
-    var servicesActive: Bool { coreRunning || corePID != nil || statsPID != nil }
+    var coreActive: Bool { coreRunning || coreServiceLoaded || corePID != nil }
     var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
-    func toggleAllServices() {
-        if !servicesActive { startAll(); return }
+    func toggleCore() {
+        if !coreActive { startCore(); return }
         perform {
             self.serviceOperation = .stopping
             defer { self.serviceOperation = nil }
             var failures: [String] = []
             do { try await stopCore() } catch { failures.append(error.localizedDescription) }
-            do { try await stopStatistics() } catch { failures.append(error.localizedDescription) }
             await self.refreshDiagnostics()
             if !failures.isEmpty { throw DeskError(failures.joined(separator: "\n")) }
         }
@@ -156,6 +154,7 @@ final class DeskModel: ObservableObject {
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
             let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
+            coreServiceLoaded = registered
             if !registered { corePID = nil }
             let stopped = !registered && serviceOperation != .starting
                 && (error as? URLError)?.code == .cannotConnectToHost
@@ -165,36 +164,15 @@ final class DeskModel: ObservableObject {
             connectionsDate = nil; connectionSpeedsAvailable = false; connectionsLoaded = true
             connectionsError = stopped ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
         }
-        await refreshStatistics()
         if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
-    }
-    func refreshStatistics() async {
-        let refreshID = UUID()
-        statisticsRefreshID = refreshID
-        let folder = directory; let range = hours; let grouping = trafficGrouping
-        do {
-            let allowMissing = connectionsError == nil && !coreRunning && corePID == nil && statsPID == nil
-            let result = try await Task.detached { () -> [DomainTrafficRow] in
-                let url = folder.appendingPathComponent("traffic.sqlite")
-                if allowMissing && !FileManager.default.fileExists(atPath: url.path) { return [] }
-                let database = try TrafficDatabase(url: url, readOnly: true)
-                return try database.groupedRows(since: Date().addingTimeInterval(-Double(range) * 3600), by: grouping)
-            }.value
-            guard !Task.isCancelled, statisticsRefreshID == refreshID, grouping == trafficGrouping, range == hours else { return }
-            if traffic != result { traffic = result }
-            statisticsError = nil; statisticsLoaded = true
-        } catch {
-            guard !Task.isCancelled, statisticsRefreshID == refreshID, grouping == trafficGrouping, range == hours else { return }
-            statisticsError = error.localizedDescription; statisticsLoaded = true
-        }
     }
     func refreshDiagnostics() async {
         diagnosticsDate = Date()
+        coreServiceLoaded = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
         async let core = servicePID(domain: "system", label: coreLabel)
-        async let stats = servicePID(domain: "gui/\(getuid())", label: statsLabel)
         async let memory = try? api.memory()
         async let version = try? api.version()
-        corePID = await core; statsPID = await stats
+        corePID = await core
         coreMemory = await memory; coreVersion = await version
     }
     func baseOption(_ path: String) -> ConfigValue? {
@@ -432,8 +410,11 @@ final class DeskModel: ObservableObject {
         }
     }
     func cancelDelayTests() { delayTask?.cancel() }
-    func startAll() {
+    func startCore() {
+        guard !coreActive else { return }
         perform {
+            await self.refresh()
+            guard !self.coreActive else { return }
             self.serviceOperation = .starting
             defer { self.serviceOperation = nil }
             if self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
@@ -443,7 +424,6 @@ final class DeskModel: ObservableObject {
             try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
             self.runtimeSettings = snapshot
             self.runtimeConfigurationUncertain = false
-            try await startStatistics(directory: self.directory)
             self.message = "配置已校验并启动。"
         }
     }
@@ -490,7 +470,7 @@ final class DeskModel: ObservableObject {
                         }
                         if runtimeSaveAttempted {
                             do { try saveRuntimeSettings(previousSettings, to: self.directory) }
-                            catch { failures.append("采集配置恢复失败：" + error.localizedDescription) }
+                            catch { failures.append("运行配置恢复失败：" + error.localizedDescription) }
                         }
                         self.runtimeConfigurationUncertain = !failures.isEmpty
                         if !failures.isEmpty {

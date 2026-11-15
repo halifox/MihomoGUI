@@ -15,7 +15,7 @@ struct ClashDeskApp: App {
         .windowToolbarStyle(.unified)
         .commands {
             CommandGroup(after: .appInfo) {
-                Button("安装 / 启动全部服务") { model.startAll() }.disabled(model.busy)
+                Button("启动 Clash 内核") { model.startCore() }.disabled(model.busy || model.coreActive)
             }
         }
     }
@@ -38,10 +38,10 @@ final class LaunchSizeView: NSView {
 }
 
 enum DeskPage: Int, CaseIterable, Identifiable {
-    case general, subscriptions, outbound, groups, ruleSets, rules, connections, traffic, logs, settings
+    case general, subscriptions, outbound, groups, ruleSets, rules, connections, logs, settings
     var id: Int { rawValue }
-    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "流量统计", "内核日志", "应用设置"][rawValue] }
-    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "chart.bar", "doc.text", "gearshape"][rawValue] }
+    var title: String { ["全局配置", "代理订阅", "出站代理", "代理分组", "规则集合", "路由规则", "活动连接", "内核日志", "应用设置"][rawValue] }
+    var icon: String { ["slider.horizontal.3", "link", "network", "square.stack.3d.up", "folder", "list.bullet.rectangle", "arrow.left.arrow.right", "doc.text", "gearshape"][rawValue] }
 }
 
 struct DeskView: View {
@@ -63,7 +63,6 @@ struct DeskView: View {
                 case .ruleSets: RuleProvidersView().disabled(model.busy || model.configurationLocked)
                 case .rules: RulesView()
                 case .connections: ConnectionsView()
-                case .traffic: StatisticsView()
                 case .logs: CoreLogsView()
                 case .settings: AppSettingsView()
                 }

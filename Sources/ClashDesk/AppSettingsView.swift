@@ -3,18 +3,10 @@ import ClashCore
 
 struct AppSettingsView: View {
     @EnvironmentObject var model: DeskModel
-    @State private var autoStart = false
-    @State private var silentStart = false
     @State private var configurationText: String?
 
     var body: some View {
         Form {
-            Section {
-                Toggle("自动启动", isOn: $autoStart)
-                Toggle("静默启动", isOn: $silentStart)
-                Text("启动选项暂未实现，仅用于界面预览，不会保存或生效。")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             Section {
                 Button("查看配置文件") {
                     do { configurationText = String(decoding: try generateConfig(model.settings), as: UTF8.self) }

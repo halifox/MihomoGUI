@@ -12,13 +12,13 @@ struct GeneralConfigurationView: View {
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
                 HStack(spacing: 4) {
-                    Button { model.toggleAllServices() } label: {
+                    Button { model.toggleCore() } label: {
                         if model.serviceOperation != nil {
                             ProgressView().controlSize(.small)
                                 .frame(width: 16, height: 16)
                                 .accessibilityLabel(serviceButtonTitle)
                         } else {
-                            toolbarIcon(serviceButtonTitle, systemImage: model.servicesActive ? "stop.fill" : "play.fill")
+                            toolbarIcon(serviceButtonTitle, systemImage: model.coreActive ? "stop.fill" : "play.fill")
                         }
                     }.frame(width: 28, height: 28).disabled(model.busy)
                         .help(serviceButtonTitle)
@@ -36,7 +36,7 @@ struct GeneralConfigurationView: View {
         switch model.serviceOperation {
         case .starting: return "正在启动…"
         case .stopping: return "正在停止…"
-        case nil: return model.servicesActive ? "停止全部" : "启动全部"
+        case nil: return model.coreActive ? "停止 Clash 内核" : "启动 Clash 内核"
         }
     }
 }

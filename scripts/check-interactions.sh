@@ -1,5 +1,5 @@
 #!/bin/bash
-# Run after bash scripts/build.sh. Uses isolated settings and SQLite fixtures only.
+# Run after bash scripts/build.sh. Uses isolated settings fixtures only.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 if [ ! -s .build/manual/ClashCore.o ]; then
@@ -11,7 +11,6 @@ trap 'rm -rf "$CHECK_DIR"' EXIT
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
 import SwiftUI
-import CSQLite
 import ClashCore
 
 func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
@@ -60,52 +59,50 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try check(quickRouteRule(kind: .domain, value: "未知目标") == nil, "placeholder excluded")
         let ipv6Menu = RouteMenu(kind: .domain, value: "2001:db8::1234")
         try check(ipv6Menu.isIPv6 && !ipv6Menu.isIPv4 && ipv6Menu.subnet == "2001:db8::/64", "IPv6 menu and subnet family")
-        let database = try TrafficDatabase(url: directory.appendingPathComponent("traffic.sqlite"))
-        let now = Date()
-        let json = #"{"id":"fixture","metadata":{"host":"api.example.com","sourceIP":"2001:db8::2","sourcePort":"12345","destinationIP":"192.0.2.1","destinationPort":"443","processPath":"/Applications/Fixture.app/Contents/MacOS/Fixture","network":"tcp","type":"TUN"},"upload":10,"download":20,"chains":["DIRECT"],"rule":"Domain","rulePayload":"api.example.com"}"#
-        let connection = try JSONDecoder().decode(Connection.self, from: Data(json.utf8))
-        var tracker = TrafficTracker()
-        try database.record(tracker.consume([connection]), at: now)
-        let injection = "quote' or 1=1 --"
-        var delta = tracker.consume([connection])
-        try check(delta.isEmpty, "no repeated traffic counted")
-        let otherJSON: [String: Any] = ["id": "second", "metadata": ["host": injection, "process": "other", "destinationIP": "2001:db8::1", "destinationPort": "53"], "upload": 5, "download": 6, "chains": ["REJECT"]]
-        let other = try JSONDecoder().decode(Connection.self, from: JSONSerialization.data(withJSONObject: otherJSON))
-        delta = tracker.consume([connection, other])
-        try database.record(delta, at: now)
-        for grouping in TrafficGrouping.allCases {
-            let value = grouping.key(for: connection)
-            let rows = try database.rows(since: now.addingTimeInterval(-3600), matching: grouping, value: value)
-            try check(rows.count == 1 && rows[0].upload == 10 && rows[0].download == 20, "filtered detail query: " + grouping.rawValue)
-            try check(rows[0].ip == "192.0.2.1" && rows[0].port == "443", "detail preserves IP and port")
-        }
-        let exact = try database.rows(since: now.addingTimeInterval(-3600), matching: .domain, value: injection)
-        try check(exact.count == 1 && exact[0].domain == injection, "filter uses bound parameter")
-        try expectFailure("incomplete filter") { _ = try database.rows(since: now, matching: .domain) }
-        let limited = try database.rows(since: now.addingTimeInterval(-3600), limit: 1)
-        try check(limited.count == 1 && limited[0].domain == "api.example.com", "detail ranks before limit")
-        await model.refreshStatistics()
-        try check(model.traffic.count == 2 && model.statisticsError == nil && model.statisticsLoaded, "statistics refresh success")
-        try FileManager.default.moveItem(at: directory.appendingPathComponent("traffic.sqlite"), to: directory.appendingPathComponent("saved.sqlite"))
-        model.connectionsError = "fixture error" // force a missing database to be reported
-        await model.refreshStatistics()
-        try check(model.traffic.count == 2 && model.statisticsError != nil, "statistics failure preserves previous rows and reports error")
-        let legacy = directory.appendingPathComponent("legacy.sqlite")
-        var raw: OpaquePointer?
-        try check(sqlite3_open(legacy.path, &raw) == SQLITE_OK, "legacy fixture opens")
-        let sql = "CREATE TABLE traffic(bucket INTEGER,domain TEXT,process TEXT,outbound TEXT,upload INTEGER,download INTEGER); INSERT INTO traffic VALUES(\(Int64(now.timeIntervalSince1970)/3600*3600),'legacy.example','legacy','DIRECT',7,9);"
-        try check(sqlite3_exec(raw, sql, nil, nil, nil) == SQLITE_OK, "legacy fixture created")
-        sqlite3_close(raw)
-        let old = try TrafficDatabase(url: legacy, readOnly: true)
-        let oldRows = try old.rows(since: now.addingTimeInterval(-3600), matching: .ip, value: "未知 IP")
-        try check(oldRows.count == 1 && oldRows[0].ip == "未知 IP" && oldRows[0].port == "未知端口", "known legacy schema keeps explicit missing data")
+        try check(!model.coreActive, "new model starts disconnected")
+        model.corePID = 123
+        try check(model.coreActive && model.configurationLocked, "existing service locks configuration before API connects")
+        model.startCore()
+        try check(!model.busy, "start does not reinstall an existing core")
+        model.corePID = nil
         try model.addRules([
             RouteRule(kind: .sourceCIDR, value: "2001:db8::2/128", node: nil),
             RouteRule(kind: .and, value: "((PROCESS-PATH,/Applications/Fixture (Test).app/Contents/MacOS/Fixture (Test)),(DOMAIN,api.example.com))", node: nil),
             RouteRule(kind: .and, value: "((PROCESS-NAME,Fixture),(DST-PORT,443))", node: nil)
         ], atTop: true)
         try generateConfig(model.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("config.yaml"), options: .atomic)
-        print("PASS: routing prefill, priority, atomic batch persistence, duplicate/busy guards, all four detail filters, bound SQL, limits, legacy schema, and refresh error retention")
+        // Use a separate, unprivileged real core; never touch the installed system service.
+        let port = Int.random(in: 30000...60000)
+        var runtime = model.settings
+        runtime.options = ["external-controller": .string("127.0.0.1:\(port)"), "secret": .string(UUID().uuidString)]
+        try saveRuntimeSettings(runtime, to: directory)
+        let liveConfig = directory.appendingPathComponent("live.yaml")
+        let secret = runtime.options?["secret"]?.text ?? ""
+        try "external-controller: 127.0.0.1:\(port)\nsecret: \(secret)\nmode: direct\nrules: []\n".write(to: liveConfig, atomically: true, encoding: .utf8)
+        let core = Process()
+        core.executableURL = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
+            .appendingPathComponent("resources/core/" + (CommandLine.arguments[2]) + "/mihomo")
+        core.arguments = ["-d", directory.path, "-f", liveConfig.path]
+        core.standardOutput = FileHandle.nullDevice; core.standardError = FileHandle.nullDevice
+        try core.run()
+        defer { if core.isRunning { core.terminate(); core.waitUntilExit() } }
+        var first: DeskModel? = DeskModel(directory: directory)
+        for _ in 0..<30 {
+            await first?.refresh()
+            if first?.coreRunning == true { break }
+            try await Task.sleep(nanoseconds: 100_000_000)
+        }
+        try check(first?.coreRunning == true, "GUI model connects to real existing core")
+        let pid = core.processIdentifier
+        first = nil
+        try check(core.isRunning && core.processIdentifier == pid, "releasing GUI model leaves core running")
+        let reopened = DeskModel(directory: directory)
+        await reopened.refresh()
+        try check(reopened.coreRunning && core.processIdentifier == pid, "reopened GUI reconnects without restarting core")
+        reopened.startCore()
+        try check(!reopened.busy && core.isRunning, "existing core start is a no-op")
+        try check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("traffic.sqlite").path), "monitoring creates no statistics database")
+        print("PASS: routing prefill, priority, atomic batch persistence, duplicate/busy guards, existing service detection, start guard, real-core reconnect and GUI model release")
     }
 }
 SWIFT
@@ -114,8 +111,8 @@ for source in Sources/ClashDesk/*.swift; do
   if [ "$source" != Sources/ClashDesk/App.swift ]; then SOURCES+=("$source"); fi
 done
 swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
-  -target "$(uname -m)-apple-macosx13.0" -I .build/manual -I Sources/CSQLite \
+  -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
   "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/ClashCore.o \
-  -lsqlite3 -o "$CHECK_DIR/checks"
-"$CHECK_DIR/checks" "$CHECK_DIR"
+  -o "$CHECK_DIR/checks"
+"$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"

@@ -33,67 +33,20 @@ func writePlist(_ dictionary: [String: Any], to url: URL) throws {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
 
-func statisticsExecutable() -> URL {
-    let bundled = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/clash-stats")
-    let adjacent = URL(fileURLWithPath: CommandLine.arguments[0]).deletingLastPathComponent().appendingPathComponent("clash-stats")
-    return FileManager.default.isExecutableFile(atPath: bundled.path) ? bundled : adjacent
-}
-
-func startStatistics(directory: URL) async throws {
-    let source = statisticsExecutable()
-    guard FileManager.default.isExecutableFile(atPath: source.path) else { throw DeskError("找不到 clash-stats，请使用打包脚本构建应用") }
-    let target = directory.appendingPathComponent("clash-stats")
-    let agents = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/LaunchAgents")
-    try FileManager.default.createDirectory(at: agents, withIntermediateDirectories: true)
-    let plist = agents.appendingPathComponent(statsLabel + ".plist")
-    let domain = "gui/\(getuid())"
-    let stage = directory.appendingPathComponent("stats-install-" + UUID().uuidString)
-    try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    defer { try? FileManager.default.removeItem(at: stage) }
-    let stagedBinary = stage.appendingPathComponent("clash-stats")
-    let stagedPlist = stage.appendingPathComponent("stats.plist")
-    try FileManager.default.copyItem(at: source, to: stagedBinary)
-    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stagedBinary.path)
-    try writePlist([
-        "Label": statsLabel, "ProgramArguments": [target.path, "--directory", directory.path],
-        "RunAtLoad": true, "KeepAlive": true, "ThrottleInterval": 10,
-        "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null",
-        "ProcessType": "Background", "Umask": 0o077
-    ], to: stagedPlist)
-    let wasRunning = await servicePID(domain: domain, label: statsLabel) != nil
-    let disabledOutput = try await runCommand("/bin/launchctl", ["print-disabled", domain])
-    let wasDisabled = disabledOutput.contains("\"" + statsLabel + "\" => true")
-    let oldBinary = stage.appendingPathComponent("old-binary")
-    let oldPlist = stage.appendingPathComponent("old-plist")
-    if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.copyItem(at: target, to: oldBinary) }
-    if FileManager.default.fileExists(atPath: plist.path) { try FileManager.default.copyItem(at: plist, to: oldPlist) }
-    _ = try? await runCommand("/bin/launchctl", ["bootout", domain + "/" + statsLabel])
-    do {
-        try Data(contentsOf: stagedBinary).write(to: target, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: target.path)
-        try Data(contentsOf: stagedPlist).write(to: plist, options: .atomic)
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: plist.path)
-        _ = try await runCommand("/bin/launchctl", ["enable", domain + "/" + statsLabel])
-        _ = try await runCommand("/bin/launchctl", ["bootstrap", domain, plist.path])
-    } catch {
-        let original = error
-        _ = try? await runCommand("/bin/launchctl", ["bootout", domain + "/" + statsLabel])
-        do {
-            for (backup, destination) in [(oldBinary, target), (oldPlist, plist)] {
-                if FileManager.default.fileExists(atPath: destination.path) { try FileManager.default.removeItem(at: destination) }
-                if FileManager.default.fileExists(atPath: backup.path) { try FileManager.default.copyItem(at: backup, to: destination) }
-            }
-            _ = try await runCommand("/bin/launchctl", [wasDisabled ? "disable" : "enable", domain + "/" + statsLabel])
-            if wasRunning { _ = try await runCommand("/bin/launchctl", ["bootstrap", domain, plist.path]) }
-        } catch { throw DeskError("统计服务更新失败且恢复失败：\(original.localizedDescription)；\(error.localizedDescription)") }
-        throw original
+// Remove only the retired user collector. Historical databases are left untouched.
+func removeLegacyStatistics(directory: URL) async throws {
+    let label = "local.clashdesk.stats"
+    let target = "gui/\(getuid())/" + label
+    let plist = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/LaunchAgents/" + label + ".plist")
+    let loaded = (try? await runCommand("/bin/launchctl", ["print", target])) != nil
+    if loaded || FileManager.default.fileExists(atPath: plist.path) {
+        _ = try await runCommand("/bin/launchctl", ["disable", target])
+        if loaded { _ = try await runCommand("/bin/launchctl", ["bootout", target]) }
+        if FileManager.default.fileExists(atPath: plist.path) { try FileManager.default.removeItem(at: plist) }
     }
-}
-
-func stopStatistics() async throws {
-    let target = "gui/\(getuid())/" + statsLabel
-    _ = try await runCommand("/bin/launchctl", ["disable", target])
-    _ = try? await runCommand("/bin/launchctl", ["bootout", target])
+    let binary = directory.appendingPathComponent("clash-stats")
+    if FileManager.default.fileExists(atPath: binary.path) { try FileManager.default.removeItem(at: binary) }
 }
 
 func installAndStartCore(settings: Settings, config: Data, directory: URL) async throws {
@@ -130,19 +83,10 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     }
     _ = try await runCommand(binary.path, ["-v"])
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
-    let logger = staging.appendingPathComponent("logger")
-    guard FileManager.default.isExecutableFile(atPath: statisticsExecutable().path) else { throw DeskError("找不到内核日志采集程序，请重新构建应用") }
-    try FileManager.default.copyItem(at: statisticsExecutable(), to: logger)
-    let installedLogger = installedCore + "-logger"
-    let logs = directory.appendingPathComponent("logs", isDirectory: true)
-    try FileManager.default.createDirectory(at: logs, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    let coreCommand = shellQuote(installedCore) + " -d " + shellQuote(rootDirectory) + " -f " + shellQuote(rootDirectory + "/config.yaml")
-        + " 2>&1 | " + shellQuote(installedLogger) + " --log-stream " + shellQuote(logs.appendingPathComponent("core.log").path)
-        + " --log-user \(getuid()) \(getgid())"
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
     try writePlist([
         "Label": coreLabel,
-        "ProgramArguments": ["/bin/sh", "-c", coreCommand],
+        "ProgramArguments": [installedCore, "-d", rootDirectory, "-f", rootDirectory + "/config.yaml"],
         "RunAtLoad": true, "KeepAlive": true, "ThrottleInterval": 10,
         "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null", "Umask": 0o077
     ], to: plist)
@@ -176,11 +120,9 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
                         rootDirectory: String = ClashCore.rootDirectory, installedCore: String = ClashCore.installedCore,
                         coreLabel: String = ClashCore.coreLabel, destinationPlist: String? = nil) -> String {
     let helperDirectory = URL(fileURLWithPath: installedCore).deletingLastPathComponent().path
-    let installedLogger = installedCore + "-logger"
     let destinationPlist = destinationPlist ?? "/Library/LaunchDaemons/" + coreLabel + ".plist"
     let runtimeTarget = directory.appendingPathComponent("runtime.json").path
     let binary = staging.appendingPathComponent("mihomo")
-    let logger = staging.appendingPathComponent("logger")
     let configFile = staging.appendingPathComponent("config.yaml")
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
     let runtime = staging.appendingPathComponent("runtime.json")
@@ -192,7 +134,6 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
     /bin/mkdir -p \(shellQuote(rootDirectory)) \(shellQuote(helperDirectory))
     /usr/sbin/chown root:wheel \(shellQuote(rootDirectory)) \(shellQuote(helperDirectory))
     /bin/chmod 700 \(shellQuote(rootDirectory)) \(shellQuote(helperDirectory))
-    /bin/test ! -L \(shellQuote(installedLogger))
     /bin/test ! -L \(shellQuote(installedCore))
     /bin/test ! -L \(shellQuote(rootDirectory + "/config.yaml"))
     /bin/test ! -L \(shellQuote(destinationPlist))
@@ -205,7 +146,6 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
     /bin/launchctl print system/\(coreLabel) >/dev/null 2>&1 && loaded=1
     [ ! -e \(shellQuote(rootDirectory)) ] || /bin/cp -pR \(shellQuote(rootDirectory)) "$backup/core"
     [ ! -e \(shellQuote(installedCore)) ] || /bin/cp -p \(shellQuote(installedCore)) "$backup/binary"
-    [ ! -e \(shellQuote(installedLogger)) ] || /bin/cp -p \(shellQuote(installedLogger)) "$backup/logger"
     [ ! -e \(shellQuote(destinationPlist)) ] || /bin/cp -p \(shellQuote(destinationPlist)) "$backup/plist"
     /bin/test ! -L \(shellQuote(runtimeTarget))
     [ ! -e \(shellQuote(runtimeTarget)) ] || /bin/cp -p \(shellQuote(runtimeTarget)) "$backup/runtime"
@@ -217,7 +157,7 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
             /bin/launchctl bootout system/\(coreLabel) >/dev/null 2>&1
             if [ -f \(shellQuote(rootDirectory + "/core.log")) ]; then /bin/cp -p \(shellQuote(rootDirectory + "/core.log")) "$backup/failure.log"; fi
             /bin/rm -rf \(shellQuote(rootDirectory))
-            /bin/rm -f \(shellQuote(installedCore)) \(shellQuote(installedLogger)) \(shellQuote(destinationPlist)) \(shellQuote(runtimeTarget))
+            /bin/rm -f \(shellQuote(installedCore)) \(shellQuote(destinationPlist)) \(shellQuote(runtimeTarget))
             restored=1
             if [ -e "$backup/core" ]; then /bin/cp -pR "$backup/core" \(shellQuote(rootDirectory)) || restored=0; fi
             if [ -e "$backup/failure.log" ]; then
@@ -225,7 +165,6 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
                 /bin/chmod 700 \(shellQuote(rootDirectory))
                 /bin/cp -p "$backup/failure.log" \(shellQuote(rootDirectory + "/core-failure.log")) || restored=0
             fi
-            if [ -e "$backup/logger" ]; then /bin/cp -p "$backup/logger" \(shellQuote(installedLogger)) || restored=0; fi
             if [ -e "$backup/binary" ]; then /bin/cp -p "$backup/binary" \(shellQuote(installedCore)) || restored=0; fi
             if [ -e "$backup/plist" ]; then /bin/cp -p "$backup/plist" \(shellQuote(destinationPlist)) || restored=0; fi
             if [ -e "$backup/runtime" ]; then /bin/cp -p "$backup/runtime" \(shellQuote(runtimeTarget)) || restored=0; fi
@@ -247,7 +186,6 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
     trap rollback EXIT
     trap 'exit 1' HUP INT TERM
     /bin/launchctl bootout system/\(coreLabel) >/dev/null 2>&1 || true
-    /usr/bin/install -o root -g wheel -m 700 \(shellQuote(logger.path)) \(shellQuote(installedLogger))
     /usr/bin/install -o root -g wheel -m 700 \(shellQuote(binary.path)) \(shellQuote(installedCore))
     /usr/bin/install -o root -g wheel -m 600 \(shellQuote(configFile.path)) \(shellQuote(rootDirectory + "/config.yaml"))
     \(seedCommands.joined(separator: "\n"))
@@ -265,7 +203,17 @@ func coreInstallCommand(staging: URL, directory: URL, seedCommands: [String],
 }
 
 func stopCore() async throws {
-    try await privilegedCommand("set -eu; /bin/launchctl disable system/\(coreLabel); /bin/launchctl bootout system/\(coreLabel) >/dev/null 2>&1 || true")
+    try await privilegedCommand("""
+    set -eu
+    /bin/launchctl disable system/\(coreLabel)
+    if /bin/launchctl print system/\(coreLabel) >/dev/null 2>&1; then
+        /bin/launchctl bootout system/\(coreLabel)
+    fi
+    if /bin/launchctl print system/\(coreLabel) >/dev/null 2>&1; then
+        echo "内核服务未能停止" >&2
+        exit 1
+    fi
+    """)
 }
 
 func servicePID(domain: String, label: String) async -> Int? {

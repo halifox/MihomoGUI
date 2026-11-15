@@ -58,7 +58,7 @@ struct RouteMenu: View {
     }
 }
 
-// Shared by the statistics batch editor and the single-rule preview.
+// Used by the rule editor to explain overlapping rule priority.
 func quickRouteRule(kind: RuleKind, value: String) -> RouteRule? {
     guard !value.isEmpty, !["未知目标", "未知 IP", "未知端口", "未知程序"].contains(value) else { return nil }
     if kind == .domain || kind == .ipCIDR {
