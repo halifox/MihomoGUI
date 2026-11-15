@@ -105,6 +105,7 @@ struct DashboardView: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Button("关闭") { configurationText = nil }.keyboardShortcut(.cancelAction)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
             }.padding(20).frame(minWidth: 520, idealWidth: 760, minHeight: 360, idealHeight: 520)
         }
     }

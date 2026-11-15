@@ -180,6 +180,7 @@ struct ProxyEditorView: View {
                         Text("添加额外字段").font(.headline)
                         CustomFieldEditor(fields: $fields, reservedPaths: knownFields) { addingField = false }
                         Button("取消") { addingField = false }
+                            .frame(maxWidth: .infinity, alignment: .trailing)
                     }.padding(16).frame(width: editorSheetWidth)
                 }
                 Spacer()
