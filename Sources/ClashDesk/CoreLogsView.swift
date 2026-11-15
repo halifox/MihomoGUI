@@ -44,8 +44,8 @@ struct CoreLogsView: View {
         }
         .background(TableColumnAutoFit(widths: widths))
         .overlay {
-            if rows.isEmpty {
-                Text(entries.isEmpty ? "暂无实时日志" : "没有匹配的日志")
+            if rows.isEmpty && !entries.isEmpty {
+                Text("没有匹配的日志")
                     .foregroundStyle(.secondary).allowsHitTesting(false)
             }
         }

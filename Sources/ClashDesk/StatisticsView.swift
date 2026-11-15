@@ -90,8 +90,8 @@ struct StatisticsView: View {
             if rows.isEmpty {
                 if !model.statisticsLoaded && pausedRows == nil {
                     ProgressView("正在读取统计…")
-                } else {
-                    Text(model.statisticsError != nil ? "统计读取失败，请查看下方提示。" : displayedRows.isEmpty ? "所选时间范围暂无流量记录" : "没有符合搜索条件的统计记录")
+                } else if model.statisticsError != nil || !displayedRows.isEmpty {
+                    Text(model.statisticsError != nil ? "统计读取失败，请查看下方提示。" : "没有符合搜索条件的统计记录")
                         .foregroundStyle(.secondary).allowsHitTesting(false)
                 }
             }

@@ -116,8 +116,8 @@ struct ConnectionsView: View {
             if rows.isEmpty {
                 if !model.connectionsLoaded && pausedRows == nil {
                     ProgressView("正在读取连接…")
-                } else {
-                    Text(model.connectionsError != nil ? "连接读取失败，请查看下方提示。" : displayedRows.isEmpty ? "暂无活动连接" : "没有符合筛选条件的连接")
+                } else if model.connectionsError != nil || !displayedRows.isEmpty {
+                    Text(model.connectionsError != nil ? "连接读取失败，请查看下方提示。" : "没有符合筛选条件的连接")
                         .foregroundStyle(.secondary).allowsHitTesting(false)
                 }
             }
