@@ -4,15 +4,17 @@ on:
     branches: [main]
   workflow_dispatch:
 permissions:
-  contents: write
-  issues: write
-  pull-requests: write
-  actions: write
+  contents: read
 concurrency:
   group: release-please-${{ github.ref }}
   cancel-in-progress: false
 jobs:
   release-please:
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+      issues: write
     if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     outputs:
