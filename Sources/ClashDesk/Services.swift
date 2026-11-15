@@ -49,6 +49,23 @@ func removeLegacyStatistics(directory: URL) async throws {
     if FileManager.default.fileExists(atPath: binary.path) { try FileManager.default.removeItem(at: binary) }
 }
 
+// Shared by initial installation and live reloads; keep generated file paths in sync.
+func stageRuleProviderFiles(_ settings: Settings, directory: URL) throws -> [String] {
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
+    var ruleFiles: [String] = []
+    let resources = settings.options?["rule-providers"]?.object ?? [:]
+    for (index, name) in resources.keys.sorted().enumerated() {
+        let fields = resources[name]?.object ?? [:]
+        guard fields["type"] == .string("file") else { continue }
+        let source = URL(fileURLWithPath: fields["path"]?.text ?? "")
+        let filename = "set-\(index)." + (fields["format"]?.text ?? "yaml")
+        try FileManager.default.copyItem(at: source, to: directory.appendingPathComponent(filename))
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: directory.appendingPathComponent(filename).path)
+        ruleFiles.append(filename)
+    }
+    return ruleFiles
+}
+
 func installAndStartCore(settings: Settings, config: Data, directory: URL) async throws {
     guard FileManager.default.isExecutableFile(atPath: settings.corePath) else { throw DeskError("应用内置 mihomo 内核缺失或不可执行，请重新安装应用") }
     // Stage immutable inputs for this operation, never interpolate unquoted user values into a shell.
@@ -69,18 +86,7 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
         try FileManager.default.copyItem(at: geodata.appendingPathComponent(name), to: staging.appendingPathComponent(name))
     }
     let stagedRules = staging.appendingPathComponent("rules")
-    try FileManager.default.createDirectory(at: stagedRules, withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
-    var ruleFiles: [String] = []
-    let resources = settings.options?["rule-providers"]?.object ?? [:]
-    for (index, name) in resources.keys.sorted().enumerated() {
-        let fields = resources[name]?.object ?? [:]
-        guard fields["type"] == .string("file") else { continue }
-        let source = URL(fileURLWithPath: fields["path"]?.text ?? "")
-        let filename = "set-\(index)." + (fields["format"]?.text ?? "yaml")
-        try FileManager.default.copyItem(at: source, to: stagedRules.appendingPathComponent(filename))
-        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: stagedRules.appendingPathComponent(filename).path)
-        ruleFiles.append(filename)
-    }
+    let ruleFiles = try await Task.detached { try stageRuleProviderFiles(settings, directory: stagedRules) }.value
     _ = try await runCommand(binary.path, ["-v"])
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
@@ -234,4 +240,61 @@ func persistCoreConfiguration(_ config: Data) async throws {
     let command = "set -e; /usr/bin/install -o root -g wheel -m 600 " + shellQuote(file.path) + " " + shellQuote(staged)
         + "; /bin/mv -f " + shellQuote(staged) + " " + shellQuote(target)
     try await privilegedCommand(command)
+}
+
+// File providers use generated relative paths. Preserve their previous contents until
+// both the controller reload and configuration persistence have succeeded.
+struct RuleFileUpdate {
+    let backup: String
+    let filenames: [String]
+
+    func finish(restore: Bool) async throws {
+        var commands = ["set -eu"]
+        if restore {
+            for name in filenames {
+                let target = rootDirectory + "/rules/" + name
+                let saved = backup + "/" + name
+                commands.append("/bin/test ! -L " + shellQuote(target))
+                commands.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target)
+                    + "; else /bin/rm -f " + shellQuote(target) + "; fi")
+            }
+        }
+        commands.append("/bin/rm -rf " + shellQuote(backup))
+        try await privilegedCommand(commands.joined(separator: "\n"))
+    }
+}
+
+func prepareRuleFileUpdate(_ settings: Settings) async throws -> RuleFileUpdate? {
+    let resources = settings.options?["rule-providers"]?.object ?? [:]
+    guard resources.values.contains(where: { $0.object["type"] == .string("file") }) else { return nil }
+    let staging = FileManager.default.temporaryDirectory.appendingPathComponent("clashdesk-rules-" + UUID().uuidString)
+    defer { try? FileManager.default.removeItem(at: staging) }
+    let filenames = try await Task.detached { try stageRuleProviderFiles(settings, directory: staging) }.value
+    let backup = rootDirectory + "/rules-backup-" + UUID().uuidString
+    let update = RuleFileUpdate(backup: backup, filenames: filenames)
+    let rules = rootDirectory + "/rules"
+    var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rules),
+                    "/bin/mkdir -p " + shellQuote(rules), "/bin/chmod 700 " + shellQuote(rules),
+                    "/bin/mkdir -m 700 " + shellQuote(backup)]
+    // Back up every destination before overwriting any file.
+    for name in filenames {
+        let target = rules + "/" + name
+        commands.append("/bin/test ! -L " + shellQuote(target))
+        commands.append("if [ -e " + shellQuote(target) + " ]; then /bin/cp -p " + shellQuote(target) + " " + shellQuote(backup + "/" + name) + "; fi")
+    }
+    // Restore all destinations if an install fails midway.
+    var rollback: [String] = []
+    for name in filenames {
+        let target = rules + "/" + name
+        let saved = backup + "/" + name
+        rollback.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target)
+            + "; else /bin/rm -f " + shellQuote(target) + "; fi")
+    }
+    commands.append("trap " + shellQuote(rollback.joined(separator: "\n")) + " EXIT")
+    for name in filenames {
+        commands.append("/usr/bin/install -o root -g wheel -m 600 " + shellQuote(staging.appendingPathComponent(name).path) + " " + shellQuote(rules + "/" + name))
+    }
+    commands.append("trap - EXIT")
+    try await privilegedCommand(commands.joined(separator: "\n"))
+    return update
 }

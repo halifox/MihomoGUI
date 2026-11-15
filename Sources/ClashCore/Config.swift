@@ -368,6 +368,9 @@ public func generateConfig(_ settings: Settings) throws -> Data {
 
 public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings) -> Bool {
     if settings.corePath != applied.corePath { return true }
+    // File provider source paths are rewritten in generated YAML, but changing
+    // the source still requires copying and reloading the rules.
+    if settings.options?["rule-providers"] != applied.options?["rule-providers"] { return true }
     guard let current = try? generateConfig(settings), let previous = try? generateConfig(applied) else { return true }
     return current != previous
 }

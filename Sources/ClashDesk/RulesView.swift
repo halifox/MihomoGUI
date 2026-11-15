@@ -90,7 +90,7 @@ struct RulesView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                Button { adding = true } label: { Label("新建路由规则", systemImage: "plus") }
                     .disabled(model.busy)
                     .buttonStyle(.bordered)
                     .labelStyle(.titleAndIcon)

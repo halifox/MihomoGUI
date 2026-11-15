@@ -184,7 +184,6 @@ extension DeskModel {
     }
     func saveRuleProvider(name: String, type: String, fields: [String: ConfigValue], oldName: String?) throws {
         guard !busy else { throw DeskError("正在执行其他操作，请稍后重试") }
-        guard !configurationLocked else { throw DeskError("Stop the core before editing rule providers") }
         guard !name.isEmpty, !name.contains(","), !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw DeskError("规则集名称无效") }
         var candidate = settings
         var providers = candidate.options?["rule-providers"]?.object ?? [:]
@@ -207,7 +206,7 @@ extension DeskModel {
         _ = try generateConfig(candidate); try saveSettings(candidate, to: directory); settings = candidate
     }
     func deleteResource(_ row: ResourceRow, groups: Bool) {
-        guard groups || !configurationLocked else { return }
+        guard !busy else { return }
         do {
             var candidate = settings
             let subRules = candidate.options?["sub-rules"]?.object.values.flatMap(\.array).map(\.text) ?? []

@@ -450,11 +450,16 @@ final class DeskModel: ObservableObject {
                 guard self.configurationLocked, self.hasUnappliedChanges else { continue }
                 let snapshot = self.settings
                 self.busy = true
+                var ruleFiles: RuleFileUpdate?
+                var applied = false
                 do {
                     let config = try generateConfig(snapshot)
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
                     let controller = try self.api
+                    if snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
+                        ruleFiles = try await prepareRuleFileUpdate(snapshot)
+                    }
                     try await controller.reload(config)
                     self.runtimeConfigurationUncertain = true
                     var configurationPersisted = false
@@ -467,6 +472,10 @@ final class DeskModel: ObservableObject {
                     } catch {
                         let persistenceError = error
                         var failures: [String] = []
+                        if let update = ruleFiles {
+                            do { try await update.finish(restore: true); ruleFiles = nil }
+                            catch { failures.append("规则文件恢复失败：" + error.localizedDescription) }
+                        }
                         do { try await controller.reload(previous) }
                         catch { failures.append("内核回滚失败：" + error.localizedDescription) }
                         if configurationPersisted {
@@ -486,8 +495,21 @@ final class DeskModel: ObservableObject {
                     self.runtimeSettings = snapshot
                     self.runtimeConfigurationUncertain = false
                     self.message = "修改已自动应用。"
+                    applied = true
                 } catch {
-                    self.error = "修改已保存在本地，但自动应用失败：\(error.localizedDescription)"
+                    var detail = error.localizedDescription
+                    if let update = ruleFiles {
+                        do { try await update.finish(restore: true); ruleFiles = nil }
+                        catch {
+                            self.runtimeConfigurationUncertain = true
+                            detail += "；规则文件恢复失败：" + error.localizedDescription
+                        }
+                    }
+                    self.error = "修改已保存在本地，但自动应用失败：\(detail)"
+                }
+                if applied, let update = ruleFiles {
+                    do { try await update.finish(restore: false) }
+                    catch { self.error = "配置已应用，但规则文件备份清理失败：" + error.localizedDescription }
                 }
                 self.busy = false
             }

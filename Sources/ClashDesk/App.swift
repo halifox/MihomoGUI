@@ -67,7 +67,7 @@ struct DeskView: View {
                 case .subscriptions: SubscriptionsView()
                 case .outbound: OutboundProxiesView()
                 case .groups: ProxyGroupsView()
-                case .ruleSets: RuleProvidersView().disabled(model.busy || model.configurationLocked)
+                case .ruleSets: RuleProvidersView()
                 case .rules: RulesView()
                 case .connections: ConnectionsView()
                 case .logs: CoreLogsView()

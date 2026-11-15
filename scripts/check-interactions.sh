@@ -64,6 +64,36 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try check(model.coreActive && model.configurationLocked, "existing service locks configuration before API connects")
         model.startCore()
         try check(!model.busy, "start does not reinstall an existing core")
+        let providerFields: [String: ConfigValue] = ["behavior": .string("domain"), "payload": .array([.string("example.com")])]
+        try model.saveRuleProvider(name: "fixture-set", type: "inline", fields: providerFields, oldName: nil)
+        try check(model.settings.options?["rule-providers"]?.object["fixture-set"] != nil, "create provider while core is active")
+        let providerRule = RouteRule(kind: .ruleSet, value: "fixture-set", node: nil)
+        try model.saveRule(providerRule)
+        try model.saveRuleProvider(name: "renamed-set", type: "inline", fields: providerFields, oldName: "fixture-set")
+        try check(model.settings.rules.first(where: { $0.id == providerRule.id })?.value == "renamed-set", "renaming provider updates rule reference while active")
+        let providerRow = ResourceRow(id: "renamed-set", name: "renamed-set", type: "inline", fields: providerFields)
+        model.deleteResource(providerRow, groups: false)
+        try check(model.error != nil && model.settings.options?["rule-providers"]?.object["renamed-set"] != nil, "referenced provider cannot be deleted")
+        model.error = nil
+        model.deleteRule(providerRule.id)
+        model.busy = true
+        model.deleteResource(providerRow, groups: false)
+        try check(model.settings.options?["rule-providers"]?.object["renamed-set"] != nil, "busy provider deletion is blocked")
+        try expectFailure("busy provider save") { try model.saveRuleProvider(name: "busy-set", type: "inline", fields: providerFields, oldName: nil) }
+        model.busy = false
+        model.deleteResource(providerRow, groups: false)
+        try check(model.settings.options?["rule-providers"]?.object["renamed-set"] == nil, "delete provider while core is active")
+        try check(try loadSettings(from: directory).options?["rule-providers"]?.object["renamed-set"] == nil, "provider deletion persists")
+        var fileBefore = model.settings
+        fileBefore.options?["rule-providers"] = .object(["file-set": .object(["type": .string("file"), "behavior": .string("domain"), "path": .string("/tmp/old.yaml")])])
+        var fileAfter = fileBefore
+        // Source path changes are absent from the generated YAML.
+        var updatedProviders = fileAfter.options?["rule-providers"]?.object ?? [:]
+        var updatedFile = updatedProviders["file-set"]?.object ?? [:]
+        updatedFile["path"] = .string("/tmp/new.yaml")
+        updatedProviders["file-set"] = .object(updatedFile)
+        fileAfter.options?["rule-providers"] = .object(updatedProviders)
+        try check(runtimeConfigurationChanged(fileAfter, applied: fileBefore), "file source path changes require application")
         model.corePID = nil
         try model.addRules([
             RouteRule(kind: .sourceCIDR, value: "2001:db8::2/128", node: nil),
@@ -94,6 +124,46 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         }
         try check(first?.coreRunning == true, "GUI model connects to real existing core")
         let controller = try CoreAPI(settings: runtime)
+        var providerSettings = Settings()
+        providerSettings.options = runtime.options
+        providerSettings.options?["mixed-port"] = .integer(0)
+        providerSettings.options?["tun.enable"] = .boolean(false)
+        providerSettings.options?["dns.enable"] = .boolean(false)
+        for name in ["live-set", "renamed-live-set", ""] {
+            providerSettings.options?["rule-providers"] = .object(name.isEmpty ? [:] : [name: .object([
+                "type": .string("inline"), "behavior": .string("domain"),
+                "payload": .array([.string("example.com")])
+            ])])
+            try await controller.reload(generateConfig(providerSettings))
+            let response = try JSONSerialization.jsonObject(with: await controller.request("/providers/rules")) as? [String: Any]
+            let providers = response?["providers"] as? [String: Any]
+            try check(providers != nil, "real core reports providers after reload")
+            try check(Set(providers?.keys.map { $0 } ?? []) == Set(name.isEmpty ? [] : [name]), "real core applies provider creation, rename and deletion without restart")
+        }
+        let sourceRules = directory.appendingPathComponent("source-rules.yaml")
+        try "payload:\n  - example.com\n".write(to: sourceRules, atomically: true, encoding: .utf8)
+        let fileFields: [String: ConfigValue] = ["type": .string("file"), "behavior": .string("domain"), "path": .string(sourceRules.path)]
+        providerSettings.options?["rule-providers"] = .object(["file-set": .object(fileFields)])
+        let rulesDirectory = directory.appendingPathComponent("rules")
+        let firstFiles = try stageRuleProviderFiles(providerSettings, directory: rulesDirectory)
+        try check(firstFiles == ["set-0.yaml"], "live reload stages file provider at generated path")
+        try check(try Data(contentsOf: rulesDirectory.appendingPathComponent("set-0.yaml")) == Data(contentsOf: sourceRules), "staged rules preserve source contents")
+        try await controller.reload(generateConfig(providerSettings))
+        var providersResponse = try JSONSerialization.jsonObject(with: await controller.request("/providers/rules")) as? [String: Any]
+        var liveProviders = providersResponse?["providers"] as? [String: Any]
+        try check((liveProviders?["file-set"] as? [String: Any])?["ruleCount"] as? Int == 1, "real core loads staged file provider")
+        // A new earlier name changes generated indices for existing file providers.
+        var mixedProviders = providerSettings.options?["rule-providers"]?.object ?? [:]
+        mixedProviders["a-inline"] = .object(["type": .string("inline"), "behavior": .string("domain"), "payload": .array([.string("example.org")])])
+        providerSettings.options?["rule-providers"] = .object(mixedProviders)
+        let reorderedFiles = try stageRuleProviderFiles(providerSettings, directory: rulesDirectory)
+        try check(reorderedFiles == ["set-1.yaml"], "provider index change restages existing local file")
+        try await controller.reload(generateConfig(providerSettings))
+        providersResponse = try JSONSerialization.jsonObject(with: await controller.request("/providers/rules")) as? [String: Any]
+        liveProviders = providersResponse?["providers"] as? [String: Any]
+        try check(liveProviders?.count == 2 && (liveProviders?["file-set"] as? [String: Any])?["ruleCount"] as? Int == 1, "real core preserves file provider after index change")
+        providerSettings.options?["rule-providers"] = .object([:])
+        try await controller.reload(generateConfig(providerSettings))
         let snapshot = try await controller.connectionSnapshot()
         try check(snapshot.uploadTotal == 0 && snapshot.downloadTotal == 0, "real core reports zero cumulative traffic")
         try check(first?.uploadTotal == snapshot.uploadTotal && first?.downloadTotal == snapshot.downloadTotal, "model exposes core totals")
@@ -121,7 +191,7 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         reopened.startCore()
         try check(!reopened.busy && core.isRunning, "existing core start is a no-op")
         try check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("traffic.sqlite").path), "monitoring creates no statistics database")
-        print("PASS: routing prefill, priority, atomic batch persistence, duplicate/busy guards, existing service detection, start guard, real-core reconnect, GUI model release, dashboard counters, memory and cancellable traffic")
+        print("PASS: active-core provider CRUD, reference and busy guards, file-source change detection, staged file reload and index changes, real-core provider reload, routing prefill, priority, atomic batch persistence, duplicate/busy guards, existing service detection, start guard, real-core reconnect, GUI model release, dashboard counters, memory and cancellable traffic")
     }
 }
 SWIFT

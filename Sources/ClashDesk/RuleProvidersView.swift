@@ -55,7 +55,7 @@ struct RuleProvidersView: View {
         }
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
-                Button { adding = true } label: { Label("新建", systemImage: "plus") }
+                Button { adding = true } label: { Label("新建规则集合", systemImage: "plus") }
                     .disabled(model.busy)
                     .buttonStyle(.bordered)
                     .labelStyle(.titleAndIcon)

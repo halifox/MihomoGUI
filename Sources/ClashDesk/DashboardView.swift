@@ -21,18 +21,6 @@ struct DashboardView: View {
         Form {
             Section("内核运行信息") {
                 information("连接状态", status)
-                Button { model.toggleCore() } label: {
-                    HStack {
-                        if model.serviceOperation != nil {
-                            ProgressView().controlSize(.small)
-                        } else {
-                            Image(systemName: model.coreActive ? "stop.fill" : "play.fill")
-                        }
-                        Text(serviceButtonTitle)
-                    }
-                }
-                .disabled(model.busy)
-                .help(serviceButtonTitle)
                 information("内核版本", model.coreVersion ?? "暂不可用")
                 information("内存占用", model.coreMemory.map { bytes($0) } ?? "暂不可用")
                 information("控制接口", model.activeController)
@@ -65,6 +53,27 @@ struct DashboardView: View {
             }
         }
         .formStyle(.grouped)
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button { model.toggleCore() } label: {
+                    HStack {
+                        if model.serviceOperation != nil {
+                            ProgressView().controlSize(.small)
+                        } else {
+                            Image(systemName: model.coreActive ? "stop.fill" : "play.fill")
+                        }
+                        Text(serviceButtonTitle)
+                    }
+                }
+                .disabled(model.busy)
+                .help(serviceButtonTitle)
+                .buttonStyle(.bordered)
+                .labelStyle(.titleAndIcon)
+                .controlSize(.regular)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 2)
+            }
+        }
         .task(id: endpoint) {
             let source = endpoint
             traffic = nil; trafficError = nil
