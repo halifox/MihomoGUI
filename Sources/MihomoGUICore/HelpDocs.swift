@@ -1,4 +1,5 @@
-// Field explanations reviewed against local Meta-Docs. Keys are document|full-field-path.
+// Field explanations reviewed against pinned Meta-Docs. Keys are document|full-field-path.
+// Source commit, hashes and review limits: docs/field-sources.md.
 // Maintain directly after reading the relevant prose, examples, and shared field documentation.
 import Foundation
 

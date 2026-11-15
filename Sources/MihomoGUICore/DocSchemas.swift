@@ -1,5 +1,6 @@
-// Configuration fields reviewed against local Meta-Docs; maintain directly after semantic review.
+// Configuration fields reviewed against pinned Meta-Docs; maintain directly after semantic review.
 // Existing fields reviewed through mihomo v1.19.34; hints remain documentation examples.
+// Source commit, hashes and review limits: docs/field-sources.md.
 import Foundation
 
 // Updating the bundled core requires a field/default compatibility review first.

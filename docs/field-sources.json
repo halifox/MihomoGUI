@@ -1,0 +1,228 @@
+{
+  "schema_version": 1,
+  "review_date": "2026-11-15",
+  "documentation_repository": "MetaCubeX/Meta-Docs",
+  "documentation_commit": "0ec4dad4496d905b42db3794c49b2ce690a13a5b",
+  "core_version": "v1.19.34",
+  "core_commit": "0455d0d28c4526937380505153e65a843d8612e8",
+  "reviewed_artifacts_sha256": {
+    "Sources/MihomoGUICore/DocSchemas.swift": "ac3502fca256b19e8e02ad634a48dede9740c81e008d73ae66ffe2efd070d327",
+    "Sources/MihomoGUICore/HelpDocs.swift": "7ca8f0e6e9736c16cd1c391ce55d745b5aca9f5208c0dfc7df3981cc33da2085",
+    "Sources/MihomoGUICore/Groups.swift": "3e0d7ed36cbd509ae965ccb0b8e3b143ebe8ca898744cd267ad4f24c1fb3ce82"
+  },
+  "documents": [
+    {
+      "path": "docs/config/dns/hosts.md",
+      "git_blob_sha1": "33b5b25720c093b7ad71074d6328372764e12861",
+      "sha256": "c8cb49ce0ea3a68004be44d37ff215996e39901bdab4be4800386ced786d0044"
+    },
+    {
+      "path": "docs/config/dns/index.md",
+      "git_blob_sha1": "a5d963ddd440387299b67c7f4ee39210e1ac4e99",
+      "sha256": "0755af32e9e51dcf5d8e4db8bed5c6a84f3418930a6666e996d4fc887d6c046c"
+    },
+    {
+      "path": "docs/config/general.md",
+      "git_blob_sha1": "e266cb7d38aa83c04de6eb3a2e591ac4554796c1",
+      "sha256": "6f4159afa6b1035297660afc98754c2143b4f3746a56971c67cd4d5ad42f9545"
+    },
+    {
+      "path": "docs/config/inbound/port.md",
+      "git_blob_sha1": "0ca1254b3e56ed7c393695464b643c007a1d8f9b",
+      "sha256": "125d3a2da1d0601f8ec73be5a8fc8deac6d55536a1abdbff99048d7fdfbefb96"
+    },
+    {
+      "path": "docs/config/inbound/tun.md",
+      "git_blob_sha1": "cd41261cb8acceb57186f314777b21478b22ad78",
+      "sha256": "09bd7bd3db86ae6cd7cc678441650103a1778c2ae2c0ece05fd1cc468c358f9b",
+      "original_local_sha256": "0028ed0d7b59d59967130e90d9aba0834e0b039745cb26f0e267261b64773a3d"
+    },
+    {
+      "path": "docs/config/proxies/anytls.md",
+      "git_blob_sha1": "bb59ad28a7cc974cd1edf31a751035f13a74509f",
+      "sha256": "f706b3734fa6192d308ebf22dd8a4904cd6e6b041c2373ed1de590446dbb3ca1"
+    },
+    {
+      "path": "docs/config/proxies/built-in.md",
+      "git_blob_sha1": "3a79c7e4034c75a37c5522ed5bbbb668a8e28fef",
+      "sha256": "f6cc07d0ddaec1be84d57f35bb33b223f63ec429a939ad7a3972b436c52c805a"
+    },
+    {
+      "path": "docs/config/proxies/direct.md",
+      "git_blob_sha1": "fced2d56a4a7effef154b8b5fe00377985f25d2f",
+      "sha256": "1a4114429ac37282e99e051e6421cbb85be348b4a7853e81bffdfb67ec7d805e"
+    },
+    {
+      "path": "docs/config/proxies/dns.md",
+      "git_blob_sha1": "c64e39961de27bf1d457f4b46c5c8094746d3602",
+      "sha256": "b9926087c459e648df3fc7aee0b7ee42dd655cf3643578d4aaec18bbc74f6c06"
+    },
+    {
+      "path": "docs/config/proxies/easytier.md",
+      "git_blob_sha1": "11bd101116345903b01bb8ce85f84e94c63513bd",
+      "sha256": "06f1605fc4194c0f7a536eead86906fb7915e6b5eb317307c82f6409db2c1877"
+    },
+    {
+      "path": "docs/config/proxies/http.md",
+      "git_blob_sha1": "99b4f5a56237341c4013129073c11074390924bf",
+      "sha256": "724fd9ae67fcd796cc8ace516975670ff1ac9031df39a67051109c80289e0da5"
+    },
+    {
+      "path": "docs/config/proxies/hysteria.md",
+      "git_blob_sha1": "6c49be704e0e440420ecf722f2caa4f6ffa8fe94",
+      "sha256": "6fd1ed9bf6a24bdc11eb287c159cfbc57fdfe2fa5d307e46a941ab2667099a96"
+    },
+    {
+      "path": "docs/config/proxies/hysteria2.md",
+      "git_blob_sha1": "6a9042a79fecd47d096318666edd7f4ca8b1c54d",
+      "sha256": "b0bdd2a15fd4fff79471427f3dea851c161f57fcc7845a5bc1f28ca37517e41c"
+    },
+    {
+      "path": "docs/config/proxies/index.md",
+      "git_blob_sha1": "d51908a50835de3ef873236296819e0e3e381b37",
+      "sha256": "ebb4cf26f112e731c8e4923de95326c2438ce8679591b6d4b855b6958493a844"
+    },
+    {
+      "path": "docs/config/proxies/masque.md",
+      "git_blob_sha1": "cf4c17851f88930635ff75c1793f109e6dbbb207",
+      "sha256": "3a0023a74eed05e904808ccd08040e3c52a6b0b4e439e884771729f90ab9dc2c"
+    },
+    {
+      "path": "docs/config/proxies/mieru.md",
+      "git_blob_sha1": "e2b3238330f5a910beb833f9f92629e93dcf0fa8",
+      "sha256": "65a6c4679bde7469ac19a8bca1fdcde8dd9d5f187b8c5ab9efd37fdf7bd107cf"
+    },
+    {
+      "path": "docs/config/proxies/openvpn.md",
+      "git_blob_sha1": "2d440f4dfca24a30387e3efcd13962addd493489",
+      "sha256": "06801ef041758ba5158e625f37ae9979784357909f029f321eaad3b335becde4"
+    },
+    {
+      "path": "docs/config/proxies/rematch.md",
+      "git_blob_sha1": "2aa61f3610658155a9728f01ebdee4e3f1af92f6",
+      "sha256": "30eaec557e1a36803614468c5eed5a2fba334343226798dc965b5bb9b5c86778"
+    },
+    {
+      "path": "docs/config/proxies/shadowquic.md",
+      "git_blob_sha1": "c8999be08fcc69d17d52c665bc2b34158f090bdf",
+      "sha256": "69af6eaf20b47f31b5cce860d9a2467a8e634aaad79a81169f60e4fb538fb518"
+    },
+    {
+      "path": "docs/config/proxies/snell.md",
+      "git_blob_sha1": "981208805f13ad5ab5fb7009256c60d63fc28776",
+      "sha256": "f8c40b2cc58941661fe60b89af750c20dffa553ec7370088b7aa35bc4c237763",
+      "original_local_sha256": "1e63daa7aeb9a480acea820c488c73783f3363fddd87e42cf950d8bb615b5249"
+    },
+    {
+      "path": "docs/config/proxies/socks.md",
+      "git_blob_sha1": "ddf1e46dd2aa049e385d0aa2cd92766e326a300a",
+      "sha256": "be0f223e064613eb69527a841c8f0fc6a5526a906110f4b9b4da3ddc547a8aca"
+    },
+    {
+      "path": "docs/config/proxies/ss.md",
+      "git_blob_sha1": "c355acda03642fe7aa538be75b9c3c18561d6586",
+      "sha256": "844e52c39a23905fac2c6b794b609c19fdcc2c0d61847d1632dfed6f3452c2b9"
+    },
+    {
+      "path": "docs/config/proxies/ssh.md",
+      "git_blob_sha1": "0d818595522ee91320c6a4f548d7e7c10f82a5d3",
+      "sha256": "2d4be03bbc196ff4fa6e6ec15bec2474ee3357b8ddd90596b76485b7e6e3a73d"
+    },
+    {
+      "path": "docs/config/proxies/ssr.md",
+      "git_blob_sha1": "94ca8a8bd5e097a1154eecbea498c469fdee5641",
+      "sha256": "e9d9bd5135c39e5686122bfaa554ddcf81c13d821783c237be5b73ee4eb8de8e"
+    },
+    {
+      "path": "docs/config/proxies/sudoku.md",
+      "git_blob_sha1": "9985168ba1382b86469b52fe05ae2341b65a23d4",
+      "sha256": "96ca516835e67ca3ecbef0424da203318cdf84454e6fee30298ccdfb97782bc5"
+    },
+    {
+      "path": "docs/config/proxies/tailscale.md",
+      "git_blob_sha1": "cf5f4857848c0a1531229fc9703a8648c7fe62bb",
+      "sha256": "303e0c3a2285851963832cfb6d57a19cd98540f199fa6cda0b508adaf1c45b3c"
+    },
+    {
+      "path": "docs/config/proxies/tls.md",
+      "git_blob_sha1": "bf33a186d3044c5ae73b567ca1549a3acd0d4ed9",
+      "sha256": "d75f5dd93ba0ec3d7332401fa6f7133f974f3a3c8b8bf80b4023c57794340b61"
+    },
+    {
+      "path": "docs/config/proxies/transport.md",
+      "git_blob_sha1": "28b813f2e02f45818813dcca670ed5a7f6a890da",
+      "sha256": "fea1bed85835cf22bd71ea67c80b75fbdb0f07ad57255fa0c450591181d482be"
+    },
+    {
+      "path": "docs/config/proxies/trojan.md",
+      "git_blob_sha1": "cc0256bf848d0105e14d173292a04bab77ca4e26",
+      "sha256": "6947e02dcbcf7e26eaf2572cccacd9bb38837e86553f65618e88bdfb13d77fdf"
+    },
+    {
+      "path": "docs/config/proxies/trusttunnel.md",
+      "git_blob_sha1": "62d6d38d92088a39cabb69362fd222f77a44de41",
+      "sha256": "eab773259465e17eb7a6a2bf4252b15d28451d56b42b742e27a83c1b40bd6ab6"
+    },
+    {
+      "path": "docs/config/proxies/tuic.md",
+      "git_blob_sha1": "a9c97bd5b85207a892a10fb599de088ba6bbac44",
+      "sha256": "105441d1d5339e1c998479963f1dace006786f349292bc297c0457ffeaffe311"
+    },
+    {
+      "path": "docs/config/proxies/vless.md",
+      "git_blob_sha1": "ff5ca3b7abf8d73fa0cd2f511189223dbdff8015",
+      "sha256": "a8a8dfb9caf4c8dbeb5e70fba1ec9986fdc723591b1b1fd47f0854c06d7d6e82"
+    },
+    {
+      "path": "docs/config/proxies/vmess.md",
+      "git_blob_sha1": "fb347da8aa4c67bcd9170dcb0bcb0045b74a9b6e",
+      "sha256": "34562bc631873a199b376c93111b7a953d66967d834ac2209425ceb075c8d4b9"
+    },
+    {
+      "path": "docs/config/proxies/wg.md",
+      "git_blob_sha1": "c40a33f7eaa17e9d93a030ce962d48eb487ec445",
+      "sha256": "268fe70757210001c90276914467bb6b0a3eb00f8e3756774bc6a34f8061ddb3"
+    },
+    {
+      "path": "docs/config/proxies/zerotier.md",
+      "git_blob_sha1": "15442e81c0091754326cea0e8ef145c3751a3411",
+      "sha256": "786a2e4d1cd6c01ae4e89441ec28ae6aed082f8b3c9d37ee0f1b92dba11c0517"
+    },
+    {
+      "path": "docs/config/proxy-groups/built-in.md",
+      "git_blob_sha1": "fdafa9c66347e4f2bdb5d018959e1ab1255064c7",
+      "sha256": "9988b2059b409ebb36076f589359d14dcab04e5071f4e0219bb6d1a5b47ea93c"
+    },
+    {
+      "path": "docs/config/proxy-groups/index.md",
+      "git_blob_sha1": "f726b282efdaa5baaea6e9ea6f28f80e63e2bac7",
+      "sha256": "a2400a4c35a4eb147ac465d43ed0c35b8eeb3c8735a0b9cb09a84012b35922a6"
+    },
+    {
+      "path": "docs/config/proxy-groups/load-balance.md",
+      "git_blob_sha1": "739a9fbddb24d94b029b6ea6b429deb16f71b311",
+      "sha256": "2d1f1a5bde62b9509149138137bcc1001ed10a549fb182f006f32d732b9a7219",
+      "original_local_sha256": "57014d775d933572907f84414a80219f68047dd3fb1b310279cc73de5cda1b20"
+    },
+    {
+      "path": "docs/config/proxy-groups/url-test.md",
+      "git_blob_sha1": "bc87abb1874babe7f39ed3a98c1b73e434cf0e7a",
+      "sha256": "4937bed6d0b788a006d98566d297c774c3e22670f164be7d3e2d6ee47e1de4df"
+    },
+    {
+      "path": "docs/config/rule-providers/index.md",
+      "git_blob_sha1": "cc12646961a4b6760a888c6881b9a2e7f0d4c0fc",
+      "sha256": "7887b285599c1e85db6e1b3391599e3ec1d542e3fa2a204a48bfa01dbcfe549f"
+    },
+    {
+      "path": "docs/config/rules/index.md",
+      "git_blob_sha1": "e37d1d5bb68b39c6a7a5f44f1849531bca227d62",
+      "sha256": "4fe7623e28ae281317fa1d8ca5920c824bf14693db087490d34b489843340461"
+    },
+    {
+      "path": "docs/config/sniff/index.md",
+      "git_blob_sha1": "9a7656995d720721edba590a5f2d41c73973892d",
+      "sha256": "fab0af6d3ef93a5d780437490e9200bbe187a71c2c5ebb1962b09fca1ef901bf"
+    }
+  ]
+}
