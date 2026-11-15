@@ -107,22 +107,44 @@ func persistCoreConfiguration(_ config: Data) async throws {
     try await privilegedOperation(.persist(config))
 }
 
-struct RuleFileUpdate {
+// Saved before the helper can replace any rule file; retained until full recovery succeeds.
+struct RuleFileUpdate: Codable {
+    let schemaVersion: Int
     let id: UUID
     let filenames: [String]
+    let previousSettings: Settings
+    var committed: Bool
 
+    static func load(directory: URL) throws -> RuleFileUpdate? {
+        let url = directory.appendingPathComponent("rule-update-pending.json")
+        guard FileManager.default.fileExists(atPath: url.path) else { return nil }
+        let update = try JSONDecoder().decode(Self.self, from: Data(contentsOf: url))
+        guard update.schemaVersion == 1 else { throw MihomoGUIError("规则恢复记录版本不受支持，原文件未修改") }
+        return update
+    }
+    func save(directory: URL) throws {
+        let url = directory.appendingPathComponent("rule-update-pending.json")
+        try JSONEncoder().encode(self).write(to: url, options: .atomic)
+        try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
+    }
+    func clear(directory: URL) throws {
+        let url = directory.appendingPathComponent("rule-update-pending.json")
+        if FileManager.default.fileExists(atPath: url.path) { try FileManager.default.removeItem(at: url) }
+    }
     func finish(restore: Bool) async throws {
         try await privilegedOperation(.finishRules(id: id, filenames: filenames, restore: restore))
     }
 }
 
-func prepareRuleFileUpdate(_ settings: Settings) async throws -> RuleFileUpdate? {
+func prepareRuleFileUpdate(_ settings: Settings, previousSettings: Settings, directory: URL) async throws -> RuleFileUpdate? {
     let resources = settings.options?["rule-providers"]?.object ?? [:]
     guard resources.values.contains(where: { $0.object["type"] == .string("file") }) else { return nil }
+    guard try RuleFileUpdate.load(directory: directory) == nil else { throw MihomoGUIError("请先完成上一次规则文件事务恢复") }
     let staging = FileManager.default.temporaryDirectory.appendingPathComponent("MihomoGUI-rules-" + UUID().uuidString)
     defer { try? FileManager.default.removeItem(at: staging) }
     let filenames = try await Task.detached { try stageRuleProviderFiles(settings, directory: staging) }.value
-    let update = RuleFileUpdate(id: UUID(), filenames: filenames)
+    let update = RuleFileUpdate(schemaVersion: 1, id: UUID(), filenames: filenames, previousSettings: previousSettings, committed: false)
+    try update.save(directory: directory)
     try await privilegedOperation(.prepareRules(staging: staging.path, id: update.id, filenames: filenames))
     return update
 }

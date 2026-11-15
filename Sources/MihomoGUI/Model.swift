@@ -51,7 +51,7 @@ final class MihomoGUIModel: ObservableObject {
     init(directory: URL? = nil) {
         self.directory = directory ?? ((try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MihomoGUI"))
         let directory = self.directory
-        runtimeConfigurationUncertain = FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path)
+        runtimeConfigurationUncertain = FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path) || FileManager.default.fileExists(atPath: directory.appendingPathComponent("rule-update-pending.json").path)
         do {
             settings = try loadSettings(from: directory)
             settings.stableProxyAliases = true
@@ -475,6 +475,18 @@ final class MihomoGUIModel: ObservableObject {
         }
     }
     func cancelDelayTests() { delayTask?.cancel() }
+    private func recoverRuleFileUpdate(reload: Bool) async throws {
+        guard let update = try RuleFileUpdate.load(directory: directory) else { return }
+        try await update.finish(restore: !update.committed)
+        if !update.committed {
+            let previous = try generateConfig(update.previousSettings)
+            if reload { try await CoreAPI(settings: update.previousSettings).reload(previous) }
+            try await persistCoreConfiguration(previous)
+            try saveRuntimeSettings(update.previousSettings, to: directory)
+            runtimeSettings = update.previousSettings
+        }
+        try update.clear(directory: directory)
+    }
     func startCore() {
         guard !coreActive, !configurationFormatUnsupported else { return }
         perform {
@@ -483,6 +495,7 @@ final class MihomoGUIModel: ObservableObject {
             self.serviceOperation = .starting
             defer { self.serviceOperation = nil }
             if self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
+            try await self.recoverRuleFileUpdate(reload: false)
             let snapshot = self.settings
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
             _ = try controllerEndpoint(snapshot)
@@ -550,8 +563,8 @@ final class MihomoGUIModel: ObservableObject {
                 let requestedSelections = self.requestedGroupSelections
                 self.busy = true
                 var ruleFiles: RuleFileUpdate?
-                var applied = false
                 do {
+                    try await self.recoverRuleFileUpdate(reload: true)
                     let config = try generateConfig(snapshot)
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
@@ -573,7 +586,7 @@ final class MihomoGUIModel: ObservableObject {
                     try saveRuntimeUpdateSelections(selections, directory: self.directory)
                     self.pendingGroupSelections = selections
                     if self.runtimeConfigurationUncertain || snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
-                        ruleFiles = try await prepareRuleFileUpdate(snapshot)
+                        ruleFiles = try await prepareRuleFileUpdate(snapshot, previousSettings: previousSettings, directory: self.directory)
                     }
                     // A lost response cannot prove that the core kept its previous configuration.
                     self.runtimeConfigurationUncertain = true
@@ -583,11 +596,21 @@ final class MihomoGUIModel: ObservableObject {
                         try await persistCoreConfiguration(config)
                         runtimeSaveAttempted = true
                         try saveRuntimeSettings(snapshot, to: self.directory)
+                        if var update = ruleFiles {
+                            update.committed = true
+                            try update.save(directory: self.directory)
+                            ruleFiles = update
+                        }
                     } catch {
                         let persistenceError = error
                         var failures: [String] = []
+                        if var update = ruleFiles {
+                            update.committed = false
+                            try update.save(directory: self.directory)
+                            ruleFiles = update
+                        }
                         if let update = ruleFiles {
-                            do { try await update.finish(restore: true); ruleFiles = nil }
+                            do { try await update.finish(restore: true) }
                             catch { failures.append("规则文件恢复失败：" + error.localizedDescription) }
                         }
                         do { try await controller.reload(previous) }
@@ -602,6 +625,8 @@ final class MihomoGUIModel: ObservableObject {
                         }
                         if failures.isEmpty {
                             do {
+                                try ruleFiles?.clear(directory: self.directory)
+                                ruleFiles = nil
                                 try FileManager.default.removeItem(at: pending)
                                 self.pendingGroupSelections.removeAll()
                             } catch { failures.append("更新标记清理失败：" + error.localizedDescription) }
@@ -618,13 +643,19 @@ final class MihomoGUIModel: ObservableObject {
                         self.legacyConnectionProxyNames = self.connectionProxyNames
                     }
                     self.runtimeSettings = snapshot
-                    applied = true
+                    var selectionsConfirmed = false
                     do {
                         let appliedController = try CoreAPI(settings: snapshot)
                         for name in selections.keys.sorted() {
                             if let target = selections[name] { try await appliedController.selectProxyGroup(name, target: target) }
                         }
                         self.requestedGroupSelections.subtract(requestedSelections)
+                        selectionsConfirmed = true
+                        if let update = ruleFiles {
+                            try await update.finish(restore: false)
+                            try update.clear(directory: self.directory)
+                            ruleFiles = nil
+                        }
                         do {
                             try FileManager.default.removeItem(at: pending)
                             self.pendingGroupSelections.removeAll()
@@ -635,26 +666,23 @@ final class MihomoGUIModel: ObservableObject {
                             self.error = "配置已应用，但恢复标记清理失败：" + error.localizedDescription + "。请重新应用以完成确认。"
                         }
                     } catch {
-                        self.message = "配置已保存，代理组选择尚未确认。"
-                        self.error = "配置已应用，但代理组选择尚未确认：" + error.localizedDescription + "。请重新应用以完成确认。"
+                        let phase = selectionsConfirmed ? "规则事务清理尚未完成" : "代理组选择尚未确认"
+                        self.message = "配置已保存，" + phase + "。"
+                        self.error = "配置已应用，但" + phase + "：" + error.localizedDescription + "。请重新应用以完成确认。"
                     }
                 } catch {
                     var detail = error.localizedDescription
-                    if let update = ruleFiles {
-                        do { try await update.finish(restore: true); ruleFiles = nil }
-                        catch {
-                            self.runtimeConfigurationUncertain = true
-                            detail += "；规则文件恢复失败：" + error.localizedDescription
-                        }
+                    // Preparation can finish while its reply is lost; recover using the
+                    // persisted ID even when no in-memory result was returned.
+                    do { try await self.recoverRuleFileUpdate(reload: true); ruleFiles = nil }
+                    catch {
+                        self.runtimeConfigurationUncertain = true
+                        detail += "；规则事务恢复失败：" + error.localizedDescription
                     }
                     if FileManager.default.fileExists(atPath: self.directory.appendingPathComponent("runtime-update-pending").path) {
                         self.runtimeConfigurationUncertain = true
                     }
                     self.error = "修改已保存在本地，但自动应用失败：\(detail)"
-                }
-                if applied, let update = ruleFiles {
-                    do { try await update.finish(restore: false) }
-                    catch { self.error = "配置已应用，但规则文件备份清理失败：" + error.localizedDescription }
                 }
                 self.busy = false
             }

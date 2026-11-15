@@ -82,42 +82,71 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
     case .prepareRules(let source, let id, let filenames):
         try checkRuleNames(filenames)
         try checkDirectory(rootDirectory)
-        let rules = rootDirectory + "/rules"
-        let backup = rootDirectory + "/rules-backup-" + id.uuidString
-        var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rules), "/bin/mkdir -p " + shellQuote(rules), "/bin/chmod 700 " + shellQuote(rules), "/bin/mkdir -m 700 " + shellQuote(backup)]
-        var rollback: [String] = []
         for name in filenames {
             try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner), name)
-            let target = rules + "/" + name
-            let saved = backup + "/" + name
-            commands.append("/bin/test ! -L " + shellQuote(target))
-            commands.append("if [ -e " + shellQuote(target) + " ]; then /bin/cp -p " + shellQuote(target) + " " + shellQuote(saved) + "; fi")
-            rollback.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target) + "; else /bin/rm -f " + shellQuote(target) + "; fi")
         }
-        commands.append("trap " + shellQuote(rollback.joined(separator: "\n")) + " EXIT")
-        for name in filenames { commands.append("/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent(name).path) + " " + shellQuote(rules + "/" + name)) }
-        commands.append("trap - EXIT")
-        command = commands.joined(separator: "\n")
+        try write(Data((filenames.sorted().joined(separator: "\n") + "\n").utf8), "rule-manifest")
+        command = ruleFilePrepareCommand(staging: stage, id: id, filenames: filenames)
     case .finishRules(let id, let filenames, let restore):
         try checkRuleNames(filenames)
         try checkDirectory(rootDirectory)
         let backup = rootDirectory + "/rules-backup-" + id.uuidString
-        try checkDirectory(backup)
-        var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rootDirectory + "/rules")]
-        if restore {
-            for name in filenames {
-                let target = rootDirectory + "/rules/" + name
-                let saved = backup + "/" + name
-                commands.append("/bin/test ! -L " + shellQuote(target))
-                commands.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target) + "; else /bin/rm -f " + shellQuote(target) + "; fi")
-            }
+        var info = stat()
+        if lstat(backup, &info) != 0 {
+            guard errno == ENOENT else { throw MihomoGUIError("无法读取规则事务备份") }
+            return 0 // Never prepared, or already retired after a lost reply.
         }
-        commands.append("/bin/rm -rf " + shellQuote(backup))
-        command = commands.joined(separator: "\n")
+        try checkDirectory(backup)
+        try write(Data((filenames.sorted().joined(separator: "\n") + "\n").utf8), "rule-manifest")
+        command = ruleFileFinishCommand(staging: stage, id: id, filenames: filenames, restore: restore)
+
     }
     let result = try runPrivilegedScript(command)
     guard result.status == 0 else { throw PrivilegedCommandFailure(diagnostic: result.diagnostic) }
     return result.status
+}
+
+// Back up every original before publishing the manifest and touching live files.
+// An interrupted prepare without a manifest has not changed any live file.
+func ruleFilePrepareCommand(staging: URL, id: UUID, filenames: [String], directory: String = rootDirectory) -> String {
+    let rules = directory + "/rules"
+    let backup = directory + "/rules-backup-" + id.uuidString
+    var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rules), "/bin/mkdir -p " + shellQuote(rules), "/bin/chmod 700 " + shellQuote(rules), "/bin/mkdir -m 700 " + shellQuote(backup)]
+    for name in filenames {
+        let target = rules + "/" + name
+        commands.append("/bin/test ! -L " + shellQuote(target))
+        commands.append("if [ -e " + shellQuote(target) + " ]; then /bin/cp -p " + shellQuote(target) + " " + shellQuote(backup + "/" + name) + "; fi")
+    }
+    commands.append("/usr/bin/install -m 600 " + shellQuote(staging.appendingPathComponent("rule-manifest").path) + " " + shellQuote(backup + "/manifest-pending"))
+    commands.append("/bin/mv " + shellQuote(backup + "/manifest-pending") + " " + shellQuote(backup + "/manifest"))
+    for name in filenames {
+        commands.append("/usr/bin/install -m 600 " + shellQuote(staging.appendingPathComponent(name).path) + " " + shellQuote(rules + "/" + name))
+    }
+    return commands.joined(separator: "\n")
+}
+
+func ruleFileFinishCommand(staging: URL, id: UUID, filenames: [String], restore: Bool, directory: String = rootDirectory) -> String {
+    let backup = directory + "/rules-backup-" + id.uuidString
+    // Rename only after all restorations finish. Interrupted cleanup must never
+    // turn a missing saved file into an instruction to remove a restored original.
+    let retired = directory + "/rules-retired-" + id.uuidString
+    var commands = ["set -eu", "/bin/test ! -L " + shellQuote(directory + "/rules"),
+                    "if [ ! -e " + shellQuote(backup) + " ]; then exit 0; fi",
+                    "/bin/test ! -L " + shellQuote(backup),
+                    "if [ -e " + shellQuote(backup + "/manifest") + " ]; then",
+                    "/bin/test ! -L " + shellQuote(backup + "/manifest"),
+                    "/usr/bin/cmp -s " + shellQuote(staging.appendingPathComponent("rule-manifest").path) + " " + shellQuote(backup + "/manifest")]
+    if restore {
+        for name in filenames {
+            let target = directory + "/rules/" + name
+            let saved = backup + "/" + name
+            commands.append("/bin/test ! -L " + shellQuote(target))
+            commands.append("/bin/test ! -L " + shellQuote(saved))
+            commands.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target) + "; else /bin/rm -f " + shellQuote(target) + "; fi")
+        }
+    }
+    commands += ["fi", "/bin/test ! -e " + shellQuote(retired), "/bin/mv " + shellQuote(backup) + " " + shellQuote(retired), "/bin/rm -rf " + shellQuote(retired)]
+    return commands.joined(separator: "\n")
 }
 
 // Bounded protocol and listener checks; no response body is returned in diagnostics.

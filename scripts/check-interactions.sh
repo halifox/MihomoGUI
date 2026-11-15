@@ -689,6 +689,33 @@ import MihomoGUICore
                 guard error.message == "规则文件标识无效" else { throw error }
             }
         }
+        let rulesRoot = source.appendingPathComponent("rule-transaction")
+        let ruleStage = source.appendingPathComponent("rule-input")
+        try FileManager.default.createDirectory(at: rulesRoot.appendingPathComponent("rules"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: ruleStage, withIntermediateDirectories: true)
+        let ruleNames = ["set-0.yaml", "set-1.text"]
+        let original = rulesRoot.appendingPathComponent("rules/set-0.yaml")
+        try Data("old".utf8).write(to: original)
+        try Data("new".utf8).write(to: ruleStage.appendingPathComponent("set-0.yaml"))
+        // Missing second staged input interrupts preparation after one live replacement.
+        try Data((ruleNames.sorted().joined(separator: "\n") + "\n").utf8).write(to: ruleStage.appendingPathComponent("rule-manifest"))
+        let ruleID = UUID()
+        let prepared = try runPrivilegedScript(ruleFilePrepareCommand(staging: ruleStage, id: ruleID, filenames: ruleNames, directory: rulesRoot.path))
+        guard prepared.status != 0, try Data(contentsOf: original) == Data("new".utf8) else { throw MihomoGUIError("partial preparation fixture did not fail as expected") }
+        // An incorrect list cannot omit originals or invent removal targets.
+        try Data("set-1.text\n".utf8).write(to: ruleStage.appendingPathComponent("rule-manifest"))
+        let mismatched = try runPrivilegedScript(ruleFileFinishCommand(staging: ruleStage, id: ruleID, filenames: ["set-1.text"], restore: true, directory: rulesRoot.path))
+        guard mismatched.status != 0, try Data(contentsOf: original) == Data("new".utf8) else { throw MihomoGUIError("manifest mismatch changed rules") }
+        try Data((ruleNames.sorted().joined(separator: "\n") + "\n").utf8).write(to: ruleStage.appendingPathComponent("rule-manifest"))
+        let restore = ruleFileFinishCommand(staging: ruleStage, id: ruleID, filenames: ruleNames, restore: true, directory: rulesRoot.path)
+        guard try runPrivilegedScript(restore).status == 0, try Data(contentsOf: original) == Data("old".utf8),
+              try runPrivilegedScript(restore).status == 0, try Data(contentsOf: original) == Data("old".utf8) else { throw MihomoGUIError("durable rule restore is not idempotent") }
+        // No published manifest means backup construction never reached live replacement.
+        let unfinishedID = UUID()
+        let unfinished = rulesRoot.appendingPathComponent("rules-backup-" + unfinishedID.uuidString)
+        try FileManager.default.createDirectory(at: unfinished, withIntermediateDirectories: false)
+        guard try runPrivilegedScript(ruleFileFinishCommand(staging: ruleStage, id: unfinishedID, filenames: ruleNames, restore: true, directory: rulesRoot.path)).status == 0,
+              try Data(contentsOf: original) == Data("old".utf8) else { throw MihomoGUIError("unfinished backup removed an untouched original") }
         let target = source.appendingPathComponent("mihomo")
         try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: "/bin/sh")
         do {
