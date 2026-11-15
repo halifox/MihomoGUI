@@ -551,11 +551,17 @@ final class MihomoGUIModel: ObservableObject {
                         }
                         throw persistenceError
                     }
-                    try FileManager.default.removeItem(at: pending)
+                    // Core, disk and runtime snapshot now agree. Cleanup failures must
+                    // not send only the rule files back to their previous contents.
                     self.runtimeSettings = snapshot
                     self.runtimeConfigurationUncertain = false
                     self.message = "修改已自动应用。"
                     applied = true
+                    do { try FileManager.default.removeItem(at: pending) }
+                    catch {
+                        self.runtimeConfigurationUncertain = true
+                        self.error = "配置已应用，但恢复标记清理失败：" + error.localizedDescription + "。请重新应用以完成确认。"
+                    }
                 } catch {
                     var detail = error.localizedDescription
                     if let update = ruleFiles {

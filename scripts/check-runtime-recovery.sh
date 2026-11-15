@@ -43,11 +43,13 @@ cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
 
-enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure }
+enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure }
 @MainActor var failureMode = FailureMode.afterWrite
 @MainActor var persistCalls = 0
 @MainActor var installCalls = 0
 @MainActor var markerPresentAtInstallation = false
+@MainActor var rulesRestored: Bool?
+@MainActor var previousRuleData = Data()
 @MainActor var fixtureDirectory = URL(fileURLWithPath: "/")
 
 // Replace the XPC boundary only; the production model, API and persistence run unchanged.
@@ -57,13 +59,27 @@ enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFa
         markerPresentAtInstallation = FileManager.default.fileExists(atPath: fixtureDirectory.appendingPathComponent("runtime-update-pending").path)
         return
     }
+    if case .prepareRules(let staging, _, let filenames) = operation, failureMode == .markerCleanupFailure {
+        guard let name = filenames.first else { throw MihomoGUIError("missing fixture rule") }
+        let active = fixtureDirectory.appendingPathComponent("active-rule.yaml")
+        previousRuleData = try Data(contentsOf: active)
+        try Data(contentsOf: URL(fileURLWithPath: staging).appendingPathComponent(name)).write(to: active, options: .atomic)
+        return
+    }
+    if case .finishRules(_, _, let restore) = operation, failureMode == .markerCleanupFailure {
+        rulesRestored = restore
+        if restore { try previousRuleData.write(to: fixtureDirectory.appendingPathComponent("active-rule.yaml"), options: .atomic) }
+        return
+    }
     guard case .persist(let data) = operation else { throw MihomoGUIError("unexpected privileged operation in fixture") }
     persistCalls += 1
     if failureMode == .beforeWrite && persistCalls == 1 || failureMode == .restoreFailure && persistCalls == 2 {
         throw MihomoGUIError("injected write failure")
     }
     try data.write(to: fixtureDirectory.appendingPathComponent("disk.yaml"), options: .atomic)
-    if persistCalls == 1 { throw MihomoGUIError("injected lost reply after successful write") }
+    if failureMode == .markerCleanupFailure {
+        try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fixtureDirectory.appendingPathComponent("runtime-update-pending").path)
+    } else if persistCalls == 1 { throw MihomoGUIError("injected lost reply after successful write") }
 }
 func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throws {
     guard try condition() else { throw MihomoGUIError("CHECK FAILED: " + message) }
@@ -102,6 +118,43 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
                       "recovery marker cleared only after confirmed restoration")
             try check(model.hasUnappliedChanges, "new draft remains unapplied after rollback")
         }
+        failureMode = .markerCleanupFailure; persistCalls = 0
+        let cleanupDirectory = root.appendingPathComponent("marker-cleanup")
+        fixtureDirectory = cleanupDirectory
+        try FileManager.default.createDirectory(at: cleanupDirectory, withIntermediateDirectories: true)
+        let marker = cleanupDirectory.appendingPathComponent("runtime-update-pending")
+        defer { try? FileManager.default.setAttributes([.immutable: false], ofItemAtPath: marker.path) }
+        let oldRule = cleanupDirectory.appendingPathComponent("old-rule.yaml")
+        let newRule = cleanupDirectory.appendingPathComponent("new-rule.yaml")
+        let activeRule = cleanupDirectory.appendingPathComponent("active-rule.yaml")
+        try Data("payload: [old.example]".utf8).write(to: oldRule)
+        try Data("payload: [new.example]".utf8).write(to: newRule)
+        try Data(contentsOf: oldRule).write(to: activeRule)
+        var cleanupSettings = Settings()
+        cleanupSettings.defaultPolicy = "DIRECT"
+        cleanupSettings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0), "external-controller": .string("127.0.0.1:" + port),
+                                   "rule-providers": .object(["fixture": .object(["type": .string("file"), "behavior": .string("domain"), "path": .string(oldRule.path)])])]
+        try saveSettings(cleanupSettings, to: cleanupDirectory)
+        try saveRuntimeSettings(cleanupSettings, to: cleanupDirectory)
+        let cleanupModel = MihomoGUIModel(directory: cleanupDirectory)
+        cleanupModel.corePID = 123
+        cleanupSettings.defaultPolicy = "REJECT"
+        cleanupSettings.options?["rule-providers"] = .object(["fixture": .object(["type": .string("file"), "behavior": .string("domain"), "path": .string(newRule.path)])])
+        cleanupModel.settings = cleanupSettings
+        for _ in 0..<200 {
+            if cleanupModel.error != nil && !cleanupModel.busy { break }
+            try await Task.sleep(nanoseconds: 50_000_000)
+        }
+        try check(cleanupModel.error?.contains("恢复标记清理失败") == true && !cleanupModel.busy, "cleanup failure is reported separately from commit failure")
+        try check(persistCalls == 1 && rulesRestored == false, "completed update retires rule backup without restoring old rules")
+        try check(try Data(contentsOf: activeRule) == Data(contentsOf: newRule), "active rule files retain the committed contents")
+        try check(try loadRuntimeSettings(from: cleanupDirectory).defaultPolicy == "REJECT", "runtime snapshot remains committed")
+        let committedDisk = try String(contentsOf: cleanupDirectory.appendingPathComponent("disk.yaml"), encoding: .utf8)
+        let committedRunning = try String(contentsOf: root.appendingPathComponent("running.yaml"), encoding: .utf8)
+        try check(committedDisk.contains("MATCH,REJECT") && committedRunning.contains("MATCH,REJECT"), "disk and core retain the committed configuration")
+        try check(cleanupModel.runtimeConfigurationUncertain && FileManager.default.fileExists(atPath: marker.path), "failed cleanup retains a visible retry state")
+        try FileManager.default.setAttributes([.immutable: false], ofItemAtPath: marker.path)
+
         failureMode = .startupSnapshotFailure
         let directory = root.appendingPathComponent("startup-snapshot")
         fixtureDirectory = directory
@@ -132,7 +185,7 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
         try check(model.message != "配置已校验并启动。", "unconfirmed startup never reports success")
         let reopened = MihomoGUIModel(directory: directory)
         try check(reopened.runtimeConfigurationUncertain, "reopening preserves unconfirmed startup recovery state")
-        print("PASS: persist reply failures and startup runtime-save failures preserve disk/runtime recovery invariants")
+        print("PASS: persist replies, startup snapshots and post-commit cleanup preserve core/disk/rule recovery invariants")
     }
 }
 SWIFT
