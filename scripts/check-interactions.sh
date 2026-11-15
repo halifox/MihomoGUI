@@ -42,6 +42,44 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         for version in ["v1.19.32", "v1.19.35", "v1.19.34-dirty", "", "unexpected"] {
             try expectFailure("unreviewed core version is rejected") { try validateConfigurationCoreVersion(version) }
         }
+        let geoBundle = directory.appendingPathComponent("geo-bundle")
+        let geoCache = directory.appendingPathComponent("geo-cache")
+        try FileManager.default.createDirectory(at: geoBundle, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: geoCache, withIntermediateDirectories: true)
+        let geoSource = geoBundle.appendingPathComponent("Country.mmdb")
+        let geoTarget = geoCache.appendingPathComponent("Country.mmdb")
+        let geoMarker = geoCache.appendingPathComponent("Country.mmdb.source")
+        try Data("new-a".utf8).write(to: geoSource)
+        try Data("old-a".utf8).write(to: geoTarget)
+        // Legacy empty source markers must be refreshed even with an existing cache.
+        try "".write(to: geoMarker, atomically: true, encoding: .utf8)
+        let fixtureCore = geoBundle.appendingPathComponent("mihomo").path
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try Data(contentsOf: geoTarget) == Data("new-a".utf8), "legacy bundled cache refreshes")
+        let firstIdentity = try String(contentsOf: geoMarker, encoding: .utf8)
+        try check(firstIdentity.hasPrefix("bundled-sha256:"), "bundled source marker identifies content")
+        let stamp = Date(timeIntervalSince1970: 1_000_000)
+        try FileManager.default.setAttributes([.modificationDate: stamp], ofItemAtPath: geoTarget.path)
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try geoTarget.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == stamp, "unchanged bundle does not rewrite cache")
+        // Same path and byte count, different bundled contents (an application update).
+        try Data("new-b".utf8).write(to: geoSource, options: .atomic)
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8) && String(contentsOf: geoMarker, encoding: .utf8) != firstIdentity, "bundle content changes invalidate cache")
+        let customGeoURL = "https://example.com/custom.mmdb"
+        try Data("custom".utf8).write(to: geoTarget, options: .atomic)
+        try customGeoURL.write(to: geoMarker, atomically: true, encoding: .utf8)
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"], urls: ["Country.mmdb": customGeoURL])
+        try check(try Data(contentsOf: geoTarget) == Data("custom".utf8), "explicit custom GEO source is not replaced by bundle")
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8), "switching back to bundled source refreshes cache")
+        try Data().write(to: geoSource, options: .atomic)
+        do {
+            try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+            throw MihomoGUIError("empty bundle accepted")
+        } catch let error as MihomoGUIError { try check(error.message == "内置 GEO 数据文件大小无效", "invalid bundled data is explicit") }
+        try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8), "invalid bundle preserves previous cache")
+        try check(try FileManager.default.attributesOfItem(atPath: geoTarget.path)[.posixPermissions] as? NSNumber == NSNumber(value: 0o600), "refreshed GEO cache stays owner-only")
         let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
         let damaged = directory.appendingPathComponent("damaged")
