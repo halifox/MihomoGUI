@@ -3,6 +3,23 @@ import Darwin
 import Security
 import MihomoGUICore
 
+let operationInputMaximumBytes = 128 * 1024 * 1024
+
+// Bound actual bytes independently of an earlier fstat: regular files can grow.
+func readOperationInput(_ file: FileHandle, deadline: PrivilegedOperationDeadline, maximumBytes: Int = operationInputMaximumBytes) throws -> Data {
+    guard (0...operationInputMaximumBytes).contains(maximumBytes) else { throw MihomoGUIError("操作输入大小限制无效") }
+    var data = Data()
+    while true {
+        try deadline.check()
+        // Read one byte beyond the remaining allowance to distinguish EOF from growth.
+        let chunk = try file.read(upToCount: min(65_536, maximumBytes - data.count + 1)) ?? Data()
+        try deadline.check()
+        guard chunk.count <= maximumBytes - data.count else { throw MihomoGUIError("操作输入超过大小限制") }
+        if chunk.isEmpty { return data }
+        data.append(chunk)
+    }
+}
+
 // Read through one descriptor so a user-controlled symlink cannot redirect a root read.
 private func readInput(_ path: String, owner: uid_t, deadline: PrivilegedOperationDeadline) throws -> Data {
     try deadline.check()
@@ -12,17 +29,11 @@ private func readInput(_ path: String, owner: uid_t, deadline: PrivilegedOperati
     defer { try? file.close() }
     var info = stat()
     guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-          info.st_uid == owner, info.st_size >= 0, info.st_size <= 128 * 1024 * 1024 else {
+          info.st_uid == owner, info.st_size >= 0 else {
         throw MihomoGUIError("操作输入必须是安装用户拥有的普通文件")
     }
-    var data = Data()
-    while true {
-        try deadline.check()
-        let chunk = try file.read(upToCount: 65_536) ?? Data()
-        try deadline.check()
-        if chunk.isEmpty { return data }
-        data.append(chunk)
-    }
+    guard info.st_size <= operationInputMaximumBytes else { throw MihomoGUIError("操作输入超过大小限制") }
+    return try readOperationInput(file, deadline: deadline)
 }
 
 private func checkRuleNames(_ names: [String]) throws {
@@ -387,6 +398,7 @@ func safePrivilegedDiagnostic(status: Int32, output: String) -> String {
     let categories: [(String, String)] = [
         ("操作超时", "操作超时，结果可能未知，请检查系统服务状态后重试"),
         ("无法读取操作输入", "无法读取安装输入文件，请重新安装应用"),
+        ("操作输入超过大小限制", "安装输入文件超过128MiB限制，请检查资源文件"),
         ("操作输入必须是安装用户拥有的普通文件", "安装输入文件的所有者或文件类型无效"),
         ("系统操作目录权限无效", "系统服务目录所有者或权限无效"),
         ("签名与授权版本不匹配", "内核签名与管理员授权版本不匹配，请重新安装应用"),

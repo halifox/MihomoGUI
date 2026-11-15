@@ -855,6 +855,41 @@ import MihomoGUICore
         try FileManager.default.createDirectory(at: unfinished, withIntermediateDirectories: false)
         guard try runPrivilegedScript(ruleFileFinishCommand(staging: ruleStage, id: unfinishedID, filenames: ruleNames, restore: true, directory: rulesRoot.path)).status == 0,
               try Data(contentsOf: original) == Data("old".utf8) else { throw MihomoGUIError("unfinished backup removed an untouched original") }
+        // Simulate content growing after metadata was checked. The same bounded
+        // reader handles real files; small test limits exercise every byte boundary.
+        for bytes in [0, 1024, 1025] {
+            let input = Pipe()
+            let written = DispatchSemaphore(value: 0)
+            DispatchQueue.global(qos: .utility).async {
+                defer { try? input.fileHandleForWriting.close(); written.signal() }
+                if bytes > 0 {
+                    try? input.fileHandleForWriting.write(contentsOf: Data(repeating: 97, count: min(bytes, 512)))
+                    Thread.sleep(forTimeInterval: 0.02)
+                    if bytes > 512 { try? input.fileHandleForWriting.write(contentsOf: Data(repeating: 97, count: bytes - 512)) }
+                }
+            }
+            do {
+                let data = try readOperationInput(input.fileHandleForReading, deadline: PrivilegedOperationDeadline(timeout: 2), maximumBytes: 1024)
+                guard bytes <= 1024, data.count == bytes else { throw MihomoGUIError("growing input exceeded actual-byte bound") }
+            } catch let error as MihomoGUIError {
+                guard bytes == 1025, error.message == "操作输入超过大小限制" else { throw error }
+            }
+            try input.fileHandleForReading.close()
+            guard written.wait(timeout: .now() + 1) == .success else { throw MihomoGUIError("input producer did not finish") }
+        }
+        let oversizedStage = source.appendingPathComponent("oversized-input")
+        try FileManager.default.createDirectory(at: oversizedStage, withIntermediateDirectories: true)
+        let oversizedFile = oversizedStage.appendingPathComponent("mihomo")
+        FileManager.default.createFile(atPath: oversizedFile.path, contents: nil)
+        let sparse = try FileHandle(forWritingTo: oversizedFile)
+        try sparse.truncate(atOffset: UInt64(operationInputMaximumBytes + 1))
+        try sparse.close()
+        do {
+            _ = try executeOperation(.install(staging: oversizedStage.path, settings: Settings()), owner: getuid(), coreRequirement: "invalid")
+            throw MihomoGUIError("initially oversized file accepted")
+        } catch let error as MihomoGUIError {
+            guard error.message == "操作输入超过大小限制" else { throw error }
+        }
         let alreadyExpired = PrivilegedOperationDeadline(timeout: 0)
         do {
             _ = try executeOperation(.install(staging: source.path, settings: Settings()), owner: getuid(), coreRequirement: "invalid", deadline: alreadyExpired)
