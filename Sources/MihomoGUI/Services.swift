@@ -46,7 +46,7 @@ func stageRuleProviderFiles(_ settings: Settings, directory: URL) throws -> [Str
     return ruleFiles
 }
 
-func installAndStartCore(settings: Settings, config: Data, directory: URL) async throws {
+func installAndStartCore(settings: Settings, config: Data, directory: URL, groupSelections: [String: String] = [:]) async throws {
     guard FileManager.default.isExecutableFile(atPath: settings.corePath) else { throw MihomoGUIError("应用内置 mihomo 内核缺失或不可执行，请重新安装应用") }
     // Stage immutable inputs for this operation, never interpolate unquoted user values into a shell.
     let staging = directory.appendingPathComponent("install-" + UUID().uuidString)
@@ -76,15 +76,17 @@ func installAndStartCore(settings: Settings, config: Data, directory: URL) async
     _ = try await runCommand(binary.path, ["-t", "-d", staging.path, "-f", configFile.path])
     // Installation may succeed even if its reply or the local runtime save fails.
     // Persist recovery intent before the first system-service side effect.
-    let pending = directory.appendingPathComponent("runtime-update-pending")
-    try Data().write(to: pending, options: .atomic)
-    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
+    var selections = try applicableProxyGroupSelections(groupSelections, settings: settings)
+    for group in settings.proxyGroups ?? [] where group.type == "select" && selections[group.name] == nil {
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty {
+            selections[group.name] = try proxyTargetName(selected, settings: settings)
+        }
+    }
+    try saveRuntimeUpdateSelections(selections, directory: directory)
     try await privilegedOperation(.install(staging: staging.path, settings: settings))
     let controller = try CoreAPI(settings: settings)
-    for group in settings.proxyGroups ?? [] where group.type == "select" {
-        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty {
-            try await controller.selectProxyGroup(group.name, target: proxyTargetName(selected, settings: settings))
-        }
+    for name in selections.keys.sorted() {
+        if let target = selections[name] { try await controller.selectProxyGroup(name, target: target) }
     }
     try saveRuntimeSettings(settings, to: directory)
 }

@@ -60,7 +60,7 @@ cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
 
-enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure }
+enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure, legacyAliasMigration, legacyMigrationFailure }
 @MainActor var failureMode = FailureMode.afterWrite
 @MainActor var persistCalls = 0
 @MainActor var installCalls = 0
@@ -96,7 +96,7 @@ enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFa
     try data.write(to: fixtureDirectory.appendingPathComponent("disk.yaml"), options: .atomic)
     if failureMode == .markerCleanupFailure {
         try FileManager.default.setAttributes([.immutable: true], ofItemAtPath: fixtureDirectory.appendingPathComponent("runtime-update-pending").path)
-    } else if persistCalls == 1 && ![FailureMode.selectionSuccess, .selectionFailure, .selectionReadbackFailure].contains(failureMode) {
+    } else if persistCalls == 1 && ![FailureMode.selectionSuccess, .selectionFailure, .selectionReadbackFailure, .legacyAliasMigration, .legacyMigrationFailure].contains(failureMode) {
         throw MihomoGUIError("injected lost reply after successful write")
     }
 }
@@ -182,6 +182,58 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
                       "only confirmed actual selection clears pending state")
         }
 
+        for mode in [FailureMode.legacyAliasMigration, .legacyMigrationFailure] {
+            failureMode = mode; persistCalls = 0
+            let migrationDirectory = root.appendingPathComponent(mode.rawValue)
+            fixtureDirectory = migrationDirectory
+            try FileManager.default.createDirectory(at: migrationDirectory, withIntermediateDirectories: true)
+            var legacy = Settings()
+            legacy.stableProxyAliases = nil
+            legacy.corePath = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo").path
+            legacy.defaultPolicy = "DIRECT"
+            legacy.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0), "external-controller": .string("127.0.0.1:" + port)]
+            let source = Subscription(name: "fixture", url: "https://example.invalid/subscription")
+            legacy.subscriptions = [source]
+            legacy.subscriptionProxies = [source.id: [.object(["name": .string("A"), "type": .string("direct")]), .object(["name": .string("B"), "type": .string("direct")])]]
+            legacy.proxyGroups = [ProxyGroup(name: "fixture", targets: ["node:" + Node(provider: source.provider, name: "A").id, "node:" + Node(provider: source.provider, name: "B").id])]
+            try saveSettings(legacy, to: migrationDirectory)
+            try saveRuntimeSettings(legacy, to: migrationDirectory)
+            let legacyController = try CoreAPI(settings: legacy)
+            let oldAlias = subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 1)
+            try await legacyController.selectProxyGroup("fixture", target: oldAlias)
+            let migrationModel = MihomoGUIModel(directory: migrationDirectory)
+            migrationModel.corePID = 123
+            try check(migrationModel.settings.stableProxyAliases == true && migrationModel.runtimeSettings.stableProxyAliases == nil, "new draft and previous runtime keep separate alias contracts")
+            try check(migrationModel.connectionProxyNames[oldAlias] == "B", "old running connections retain their original names")
+            let rejectMigration = root.appendingPathComponent("reject-selection")
+            if mode == .legacyMigrationFailure { try Data().write(to: rejectMigration) }
+            migrationModel.retryLiveUpdate()
+            for _ in 0..<200 {
+                if persistCalls > 0 && !migrationModel.busy { break }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            let stableAlias = subscriptionProxyAlias(subscriptionID: source.id, proxyName: "B")
+            try check(persistCalls == 1 && migrationModel.runtimeSettings.stableProxyAliases == true, "legacy update commits the stable runtime snapshot")
+            try check(migrationModel.connectionProxyNames[oldAlias] == "B" && migrationModel.connectionProxyNames[stableAlias] == "B", "connections on both sides of migration use truthful labels")
+            if mode == .legacyMigrationFailure {
+                try check(migrationModel.error != nil && migrationModel.runtimeConfigurationUncertain, "failed alias selection remains uncertain")
+                try check(try loadRuntimeUpdateSelections(directory: migrationDirectory)["fixture"] == stableAlias, "migration target is durable before selector mutation")
+                try FileManager.default.removeItem(at: rejectMigration)
+                let reopened = MihomoGUIModel(directory: migrationDirectory)
+                reopened.corePID = 123
+                reopened.retryLiveUpdate()
+                for _ in 0..<200 {
+                    if persistCalls == 2 && !reopened.busy { break }
+                    try await Task.sleep(nanoseconds: 50_000_000)
+                }
+                try check(persistCalls == 2 && reopened.error == nil && !reopened.hasUnappliedChanges, "reopened GUI replays the saved migration target")
+            } else {
+                try check(migrationModel.error == nil && !migrationModel.hasUnappliedChanges, "legacy live update is confirmed as one transaction")
+            }
+            let migratedChoice = try await legacyController.proxyGroupSelections()["fixture"]
+            try check(migratedChoice == stableAlias, "actual old cached choice is remapped before confirmation")
+        }
+
         failureMode = .markerCleanupFailure; persistCalls = 0
         let cleanupDirectory = root.appendingPathComponent("marker-cleanup")
         fixtureDirectory = cleanupDirectory
@@ -249,7 +301,7 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
         try check(model.message != "配置已校验并启动。", "unconfirmed startup never reports success")
         let reopened = MihomoGUIModel(directory: directory)
         try check(reopened.runtimeConfigurationUncertain, "reopening preserves unconfirmed startup recovery state")
-        print("PASS: persist replies, startup snapshots and post-commit cleanup preserve core/disk/rule recovery invariants")
+        print("PASS: persistence, startup, cleanup, selector confirmation and legacy alias migration preserve runtime invariants")
     }
 }
 SWIFT

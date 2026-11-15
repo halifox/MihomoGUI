@@ -118,7 +118,7 @@ struct ProxyGroupsView: View {
         let targets = proxyGroupTargets(group, settings: model.settings)
         if model.coreActive {
             guard let actual = activeSelections[group.name] else { return nil }
-            return targets.first { (try? proxyTargetName($0, settings: model.settings)) == actual }
+            return targets.first { (try? proxyTargetName($0, settings: model.runtimeSettings)) == actual }
         }
         let selected = group.fields["default-selected"]?.text ?? ""
         return selected.isEmpty ? targets.first : selected

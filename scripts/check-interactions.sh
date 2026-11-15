@@ -141,6 +141,18 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         let confirmed = MihomoGUIModel(directory: uncertainDirectory)
         try check(!confirmed.runtimeConfigurationUncertain, "confirmed configuration needs no recovery marker")
 
+        let markerDirectory = directory.appendingPathComponent("marker-format")
+        try FileManager.default.createDirectory(at: markerDirectory, withIntermediateDirectories: true)
+        let markerFile = markerDirectory.appendingPathComponent("runtime-update-pending")
+        try Data().write(to: markerFile)
+        try check(try loadRuntimeUpdateSelections(directory: markerDirectory).isEmpty, "legacy empty marker remains readable")
+        try saveRuntimeUpdateSelections(["fixture": "DIRECT"], directory: markerDirectory)
+        try check(try loadRuntimeUpdateSelections(directory: markerDirectory)["fixture"] == "DIRECT", "recovery selection intent round-trips")
+        let futureMarker = Data(#"{"schemaVersion":99,"selections":{"fixture":"DIRECT"}}"#.utf8)
+        try futureMarker.write(to: markerFile)
+        try expectFailure("unknown recovery format cannot be overwritten") { try saveRuntimeUpdateSelections([:], directory: markerDirectory) }
+        try check(try Data(contentsOf: markerFile) == futureMarker, "unsupported recovery intent stays untouched")
+
         let commaProxy = ManualProxy(type: "ss", fields: ["name": .string("node,comma"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
         try expectFailure("manual proxy names cannot break CSV rule targets") { _ = try commaProxy.configuration() }
         try check(replacingSubRuleTarget("DOMAIN,example.com,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,renamed", "option-like proxy name remains a target")
@@ -471,17 +483,49 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         func filterProxy(_ name: String) -> ConfigValue {
             .object(["name": .string(name), "type": .string("ss"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
         }
+        var legacyAliases = Settings()
+        legacyAliases.stableProxyAliases = nil
+        legacyAliases.options = selectorSettings.options
+        let otherSource = Subscription(name: "other", url: "https://example.com/other")
+        legacyAliases.subscriptions = [filterSource, otherSource]
+        legacyAliases.subscriptionProxies = [filterSource.id: [filterProxy("HongKong-01"), filterProxy("Tokyo-01")], otherSource.id: [filterProxy("Tokyo-01")]]
+        let tokyo = "node:" + Node(provider: filterSource.provider, name: "Tokyo-01").id
+        let hongKong = "node:" + Node(provider: filterSource.provider, name: "HongKong-01").id
+        legacyAliases.proxyGroups = [ProxyGroup(name: "AliasMigration", targets: [hongKong, tokyo])]
+        try await controller.reload(generateConfig(legacyAliases))
+        let oldTokyo = subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 1)
+        try await controller.selectProxyGroup("AliasMigration", target: oldTokyo)
+        try await controller.selectProxyGroup("GLOBAL", target: oldTokyo)
+        let oldSelections = try await controller.proxyGroupSelections()
+        var stableAliases = legacyAliases
+        stableAliases.stableProxyAliases = true
+        stableAliases.subscriptions.reverse()
+        stableAliases.subscriptionProxies?[filterSource.id]?.reverse()
+        let stableTokyo = subscriptionProxyAlias(subscriptionID: filterSource.id, proxyName: "Tokyo-01")
+        try check(try proxyTargetName(tokyo, settings: stableAliases) == stableTokyo, "node resolution uses source identity after both reorderings")
+        try check(stableTokyo != subscriptionProxyAlias(subscriptionID: otherSource.id, proxyName: "Tokyo-01"), "same node names from different subscriptions stay distinct")
+        let migration = try migratedSubscriptionSelections(oldSelections, from: legacyAliases, to: stableAliases)
+        try check(migration["AliasMigration"] == stableTokyo && migration["GLOBAL"] == stableTokyo, "live legacy and GLOBAL caches follow the previous confirmed snapshot")
+        try await controller.reload(generateConfig(stableAliases))
+        for (name, target) in migration { try await controller.selectProxyGroup(name, target: target) }
+        stableAliases.subscriptions.reverse()
+        stableAliases.subscriptionProxies?[filterSource.id]?.reverse()
+        try await controller.reload(generateConfig(stableAliases))
+        let reorderedSelections = try await controller.proxyGroupSelections()
+        try check(reorderedSelections["AliasMigration"] == stableTokyo && reorderedSelections["GLOBAL"] == stableTokyo, "real cached choices survive subscription and node reordering")
+        try check(try proxyTargetName(tokyo, settings: stableAliases) == stableTokyo, "stable name resolves to the same original node after reload")
+        try check(try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(legacyAliases)).stableProxyAliases == nil, "missing legacy marker retains the old alias contract")
         filteredSettings.subscriptionProxies = [filterSource.id: [filterProxy("HongKong-01"), filterProxy("Tokyo-01")]]
         let filteredGroup = ProxyGroup(name: "HK", fields: ["include-all-proxies": .boolean(true), "filter": .string("^HongKong")])
         filteredSettings.proxyGroups = [filteredGroup]
         try check(proxyGroupTargets(filteredGroup, settings: filteredSettings) == ["node:" + Node(provider: filterSource.provider, name: "HongKong-01").id], "group filtering matches original subscription name")
         try await controller.reload(generateConfig(filteredSettings))
         let filteredResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
-        try check(filteredResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 0)], "real core group contains matching original-name alias only")
+        try check(filteredResponse?["all"] as? [String] == [subscriptionProxyAlias(subscriptionID: filterSource.id, proxyName: "HongKong-01")], "real core group contains matching original-name alias only")
         filteredSettings.proxyGroups?[0].fields = ["include-all-proxies": .boolean(true), "exclude-filter": .string("^HongKong")]
         try await controller.reload(generateConfig(filteredSettings))
         var exclusionResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
-        try check(exclusionResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 1)], "real core excludes subscription original name")
+        try check(exclusionResponse?["all"] as? [String] == [subscriptionProxyAlias(subscriptionID: filterSource.id, proxyName: "Tokyo-01")], "real core excludes subscription original name")
         filteredSettings.proxyGroups?[0].fields["default-selected"] = .string("node:" + Node(provider: filterSource.provider, name: "HongKong-01").id)
         try expectFailure("excluded default selection is rejected") { _ = try generateConfig(filteredSettings) }
         filteredSettings.proxyGroups?[0].fields["default-selected"] = nil

@@ -1,13 +1,20 @@
 import Foundation
+import CryptoKit
 
 public let coreLabel = "local.MihomoGUI.core"
 public let defaultGroup = "MihomoGUI.Default"
 public let rootDirectory = "/Library/Application Support/MihomoGUI"
 public let installedCore = "/Library/PrivilegedHelperTools/MihomoGUI/mihomo"
 
-// Both config generation and the GUI's reverse name mapping use this alias contract.
+// Historical positional contract, retained for confirmed legacy runtime snapshots.
 public func subscriptionProxyAlias(sourceIndex: Int, proxyIndex: Int) -> String {
     "MihomoGUI.Proxy.\(sourceIndex).\(proxyIndex)"
+}
+
+// The source UUID and original node name are identities; list positions are not.
+public func subscriptionProxyAlias(subscriptionID: String, proxyName: String) -> String {
+    let identity = Data((subscriptionID + "\0" + proxyName).utf8)
+    return "MihomoGUI.Proxy." + SHA256.hash(data: identity).map { String(format: "%02x", $0) }.joined()
 }
 
 // Resolve the same target IDs for generated configuration, runtime selection and display.
@@ -16,6 +23,7 @@ public func proxyTargetName(_ target: String, settings: Settings) throws -> Stri
         if node.provider == "manual", (settings.manualProxies ?? []).contains(where: { $0.name == node.name }) { return node.name }
         if let sourceIndex = settings.subscriptions.firstIndex(where: { $0.provider == node.provider }),
            let proxyIndex = settings.subscriptionProxies?[settings.subscriptions[sourceIndex].id]?.firstIndex(where: { $0.object["name"]?.text == node.name }) {
+            if settings.stableProxyAliases == true { return subscriptionProxyAlias(subscriptionID: settings.subscriptions[sourceIndex].id, proxyName: node.name) }
             return subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)
         }
         throw MihomoGUIError("引用的代理节点已失效，请重新选择出口：" + node.name)
@@ -145,6 +153,8 @@ public struct RouteRule: Codable, Identifiable {
 
 public struct Settings: Codable {
     public var schemaVersion: Int? = 1
+    // Missing in the shipped positional-alias format; runtime snapshots retain that contract.
+    public var stableProxyAliases: Bool? = true
     public var delayTestURL: String?
     public var delayTestTimeoutMilliseconds: Int?
     public var corePath = ""
@@ -258,6 +268,29 @@ public func saveSettings(_ settings: Settings, to directory: URL) throws {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
 
+private struct RuntimeUpdateState: Codable {
+    let schemaVersion: Int
+    let selections: [String: String]
+}
+
+public func loadRuntimeUpdateSelections(directory: URL) throws -> [String: String] {
+    let marker = directory.appendingPathComponent("runtime-update-pending")
+    guard FileManager.default.fileExists(atPath: marker.path) else { return [:] }
+    let data = try Data(contentsOf: marker)
+    // The shipped marker was empty and carried only the uncertainty flag.
+    guard !data.isEmpty else { return [:] }
+    let state = try JSONDecoder().decode(RuntimeUpdateState.self, from: data)
+    guard state.schemaVersion == 1 else { throw MihomoGUIError("运行恢复记录版本不受支持，原文件未修改") }
+    return state.selections
+}
+
+public func saveRuntimeUpdateSelections(_ selections: [String: String], directory: URL) throws {
+    _ = try loadRuntimeUpdateSelections(directory: directory)
+    let marker = directory.appendingPathComponent("runtime-update-pending")
+    try JSONEncoder().encode(RuntimeUpdateState(schemaVersion: 1, selections: selections)).write(to: marker, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: marker.path)
+}
+
 public struct MihomoGUIError: LocalizedError {
     public var message: String
     public init(_ message: String) { self.message = message }
@@ -316,7 +349,9 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             guard let name = entry.object["name"]?.text, !name.isEmpty, names[name] == nil else {
                 throw MihomoGUIError("订阅包含空名称或重复名称节点")
             }
-            names[name] = subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)
+            names[name] = settings.stableProxyAliases == true
+                ? subscriptionProxyAlias(subscriptionID: subscription.id, proxyName: name)
+                : subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)
         }
         for entry in entries {
             var proxy = entry.object.mapValues(\.native)
@@ -426,6 +461,36 @@ public func generateConfig(_ settings: Settings) throws -> Data {
         "unified-delay", "external-controller-cors", "bind-address", "profile", "tun", "tcp-concurrent",
         "dns", "sniffer", "find-process-mode", "proxies", "proxy-providers", "proxy-groups", "rule-providers", "sub-rules", "rules"
     ])
+}
+
+// Recovery intent is replayed only for selectors and members still present in the draft.
+public func applicableProxyGroupSelections(_ selections: [String: String], settings: Settings) throws -> [String: String] {
+    guard !selections.isEmpty else { return [:] }
+    let config = try configurationObject(settings)
+    let groups = config["proxy-groups"] as? [[String: Any]] ?? []
+    let proxies = config["proxies"] as? [[String: Any]] ?? []
+    let globalMembers = Set(proxies.compactMap { $0["name"] as? String } + groups.compactMap { $0["name"] as? String } + ["DIRECT", "REJECT", "REJECT-DROP", "COMPATIBLE"])
+    return selections.filter { name, target in
+        if name == "GLOBAL" { return globalMembers.contains(target) }
+        return groups.contains { $0["type"] as? String == "select" && $0["name"] as? String == name && ($0["proxies"] as? [String])?.contains(target) == true }
+    }
+}
+
+// Only the known positional format needs this one-time migration. Read actual choices
+// before reloading so an old cached alias cannot silently select the first new member.
+public func migratedSubscriptionSelections(_ selections: [String: String], from previous: Settings, to settings: Settings) throws -> [String: String] {
+    guard previous.stableProxyAliases != true, settings.stableProxyAliases == true else { return [:] }
+    var renamed: [String: String] = [:]
+    for (sourceIndex, source) in previous.subscriptions.enumerated() {
+        for (proxyIndex, entry) in (previous.subscriptionProxies?[source.id] ?? []).enumerated() {
+            guard let name = entry.object["name"]?.text else { continue }
+            let target = "node:" + Node(provider: source.provider, name: name).id
+            if let resolved = try? proxyTargetName(target, settings: settings) {
+                renamed[subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)] = resolved
+            }
+        }
+    }
+    return try applicableProxyGroupSelections(selections.compactMapValues { renamed[$0] }, settings: settings)
 }
 
 public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings) -> Bool {

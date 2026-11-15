@@ -34,7 +34,7 @@ final class MihomoGUIModel: ObservableObject {
     @Published var coreVersion: String?
     @Published var coreServiceLoaded = false
     @Published var corePID: Int?
-    private var runtimeSettings = MihomoGUICore.Settings()
+    private(set) var runtimeSettings = MihomoGUICore.Settings()
     private var diagnosticsDate = Date.distantPast
     private(set) var configurationFormatUnsupported = false
     let directory: URL
@@ -44,6 +44,8 @@ final class MihomoGUIModel: ObservableObject {
     private var liveUpdateTask: Task<Void, Never>?
     private var liveUpdatePending = false
     private var requestedGroupSelections: Set<String> = []
+    private var pendingGroupSelections: [String: String] = [:]
+    private var legacyConnectionProxyNames: [String: String] = [:]
     var configurationLocked: Bool { coreActive }
 
     init(directory: URL? = nil) {
@@ -52,9 +54,11 @@ final class MihomoGUIModel: ObservableObject {
         runtimeConfigurationUncertain = FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path)
         do {
             settings = try loadSettings(from: directory)
+            settings.stableProxyAliases = true
             let bundledCore = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo")
             settings.corePath = bundledCore.path
             runtimeSettings = try loadRuntimeSettings(from: directory)
+            pendingGroupSelections = try loadRuntimeUpdateSelections(directory: directory)
             if settings.ruleOrderMigrated == nil {
                 settings.rules = settings.rules.filter { $0.kind.isProcess } + settings.rules.filter { !$0.kind.isProcess }
                 settings.ruleOrderMigrated = true
@@ -130,11 +134,14 @@ final class MihomoGUIModel: ObservableObject {
         for (sourceIndex, subscription) in runtimeSettings.subscriptions.enumerated() {
             for (proxyIndex, proxy) in (runtimeSettings.subscriptionProxies?[subscription.id] ?? []).enumerated() {
                 if let name = proxy.object["name"]?.text {
-                    names[subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)] = name
+                    let alias = runtimeSettings.stableProxyAliases == true
+                        ? subscriptionProxyAlias(subscriptionID: subscription.id, proxyName: name)
+                        : subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)
+                    names[alias] = name
                 }
             }
         }
-        return names
+        return names.merging(legacyConnectionProxyNames, uniquingKeysWith: { current, _ in current })
     }
     func refresh() async {
         let refreshID = UUID()
@@ -160,6 +167,8 @@ final class MihomoGUIModel: ObservableObject {
             connectionsDate = now
             uploadTotal = snapshot.uploadTotal; downloadTotal = snapshot.downloadTotal
             connections = live; coreRunning = true; connectionsError = nil; connectionsLoaded = true
+            let activeNames = Set(live.flatMap { $0.chains ?? [] })
+            legacyConnectionProxyNames = legacyConnectionProxyNames.filter { activeNames.contains($0.key) }
         } catch {
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
             let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
@@ -470,10 +479,16 @@ final class MihomoGUIModel: ObservableObject {
             _ = try controllerEndpoint(snapshot)
             let pending = self.directory.appendingPathComponent("runtime-update-pending")
             do {
-                try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
+                let selections = self.pendingGroupSelections.filter { name, _ in
+                    guard let old = self.runtimeSettings.proxyGroups?.first(where: { $0.name == name }),
+                          let current = snapshot.proxyGroups?.first(where: { $0.id == old.id }) else { return true }
+                    return old.fields["default-selected"] == current.fields["default-selected"]
+                }
+                try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory, groupSelections: selections)
                 if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
                 self.runtimeSettings = snapshot
                 self.requestedGroupSelections.removeAll()
+                self.pendingGroupSelections.removeAll()
                 self.runtimeConfigurationUncertain = false
                 self.message = "配置已校验并启动。"
             } catch {
@@ -495,6 +510,10 @@ final class MihomoGUIModel: ObservableObject {
         var updated = group
         updated.fields["default-selected"] = .string(target)
         try saveProxyGroup(updated)
+        if pendingGroupSelections[group.name] != nil {
+            pendingGroupSelections[group.name] = try proxyTargetName(target, settings: settings)
+            try saveRuntimeUpdateSelections(pendingGroupSelections, directory: directory)
+        }
         if coreActive {
             // An explicit user choice is meaningful even when its saved default is unchanged.
             requestedGroupSelections.insert(group.id)
@@ -528,18 +547,22 @@ final class MihomoGUIModel: ObservableObject {
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
                     let controller = try self.api
-                    var selections: [String: String] = [:]
+                    var selections = try applicableProxyGroupSelections(self.pendingGroupSelections, settings: snapshot)
+                    if previousSettings.stableProxyAliases != true, snapshot.stableProxyAliases == true, !previousSettings.subscriptions.isEmpty {
+                        let migrated = try migratedSubscriptionSelections(await controller.proxyGroupSelections(), from: previousSettings, to: snapshot)
+                        selections.merge(migrated, uniquingKeysWith: { pending, _ in pending })
+                    }
                     for group in snapshot.proxyGroups ?? [] where group.type == "select" {
                         guard let selected = group.fields["default-selected"]?.text, !selected.isEmpty else { continue }
                         let old = previousSettings.proxyGroups?.first(where: { $0.id == group.id })
-                        if self.runtimeConfigurationUncertain || requestedSelections.contains(group.id) || old?.type != "select" || old?.name != group.name || old?.fields["default-selected"] != group.fields["default-selected"] {
+                        if (self.runtimeConfigurationUncertain && selections[group.name] == nil) || requestedSelections.contains(group.id) || old?.type != "select" || old?.name != group.name || old?.fields["default-selected"] != group.fields["default-selected"] {
                             selections[group.name] = try proxyTargetName(selected, settings: snapshot)
                         }
                     }
                     // This marker survives GUI termination between reload and durable confirmation.
                     let pending = self.directory.appendingPathComponent("runtime-update-pending")
-                    try Data().write(to: pending, options: .atomic)
-                    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
+                    try saveRuntimeUpdateSelections(selections, directory: self.directory)
+                    self.pendingGroupSelections = selections
                     if self.runtimeConfigurationUncertain || snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
                         ruleFiles = try await prepareRuleFileUpdate(snapshot)
                     }
@@ -569,8 +592,10 @@ final class MihomoGUIModel: ObservableObject {
                             catch { failures.append("运行配置恢复失败：" + error.localizedDescription) }
                         }
                         if failures.isEmpty {
-                            do { try FileManager.default.removeItem(at: pending) }
-                            catch { failures.append("更新标记清理失败：" + error.localizedDescription) }
+                            do {
+                                try FileManager.default.removeItem(at: pending)
+                                self.pendingGroupSelections.removeAll()
+                            } catch { failures.append("更新标记清理失败：" + error.localizedDescription) }
                         }
                         self.runtimeConfigurationUncertain = !failures.isEmpty
                         if !failures.isEmpty {
@@ -580,6 +605,9 @@ final class MihomoGUIModel: ObservableObject {
                     }
                     // Core, disk and runtime snapshot now agree. Cleanup failures must
                     // not send only the rule files back to their previous contents.
+                    if self.runtimeSettings.stableProxyAliases != true, snapshot.stableProxyAliases == true {
+                        self.legacyConnectionProxyNames = self.connectionProxyNames
+                    }
                     self.runtimeSettings = snapshot
                     applied = true
                     do {
@@ -590,6 +618,7 @@ final class MihomoGUIModel: ObservableObject {
                         self.requestedGroupSelections.subtract(requestedSelections)
                         do {
                             try FileManager.default.removeItem(at: pending)
+                            self.pendingGroupSelections.removeAll()
                             self.runtimeConfigurationUncertain = false
                             self.message = "修改已自动应用。"
                         } catch {
