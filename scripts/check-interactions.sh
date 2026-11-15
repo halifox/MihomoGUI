@@ -271,6 +271,38 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
                   "restart restores removed credential cache")
         try check(!FileManager.default.fileExists(atPath: transactionDirectory.appendingPathComponent("new.yaml").path),
                   "restart removes partially committed new file")
+        // A tampered recovery manifest must fail before touching any valid target.
+        let outside = directory.appendingPathComponent("outside-transaction.txt")
+        try Data("outside".utf8).write(to: outside)
+        let outsideDirectory = directory.appendingPathComponent("outside-directory")
+        try FileManager.default.createDirectory(at: outsideDirectory, withIntermediateDirectories: true)
+        try Data("outside".utf8).write(to: outsideDirectory.appendingPathComponent("victim"))
+        try FileManager.default.createSymbolicLink(at: transactionDirectory.appendingPathComponent("escape"), withDestinationURL: outsideDirectory)
+        try FileManager.default.createSymbolicLink(at: transactionDirectory.appendingPathComponent("linked-file"), withDestinationURL: outside)
+        try FileManager.default.createSymbolicLink(at: transactionDirectory.appendingPathComponent("dangling"), withDestinationURL: outsideDirectory.appendingPathComponent("missing"))
+        for unsafe in ["../outside-transaction.txt", outside.path, "./settings.json", "a/../settings.json", "a//b", "", "settings.json", "file-commit/manifest.json", "file-commit-done-fake/x", "escape/victim", "linked-file", "dangling", "settings.json/child"] {
+            try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false)
+            try JSONEncoder().encode(["settings.json", unsafe]).write(to: journal.appendingPathComponent("manifest.json"))
+            try Data().write(to: journal.appendingPathComponent("ready"))
+            try expectFailure("unsafe recovery manifest") { try recoverFileCommit(directory: transactionDirectory) }
+            try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("settings.json")) == oldSettings, "all paths are checked before any recovery mutation")
+            try check(try Data(contentsOf: outside) == Data("outside".utf8) && Data(contentsOf: outsideDirectory.appendingPathComponent("victim")) == Data("outside".utf8), "recovery cannot modify outside files")
+            try check(FileManager.default.fileExists(atPath: journal.path), "rejected journal remains available for inspection")
+            try FileManager.default.removeItem(at: journal)
+        }
+        for unsafe in ["escape/victim", "linked-file", "file-commit/ready"] {
+            try expectFailure("commit rejects link or reserved path") { try commitFiles([(unsafe, Data("bad".utf8))], directory: transactionDirectory) }
+        }
+        try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false)
+        try JSONEncoder().encode(["settings.json"]).write(to: journal.appendingPathComponent("manifest.json"))
+        try Data().write(to: journal.appendingPathComponent("ready"))
+        try FileManager.default.createSymbolicLink(at: journal.appendingPathComponent("old-0"), withDestinationURL: outside)
+        try expectFailure("symlink recovery backup") { try recoverFileCommit(directory: transactionDirectory) }
+        try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("settings.json")) == oldSettings, "backup links cannot import outside bytes")
+        try FileManager.default.removeItem(at: journal)
+        try FileManager.default.createSymbolicLink(at: journal, withDestinationURL: outsideDirectory)
+        try expectFailure("symlink journal") { try recoverFileCommit(directory: transactionDirectory) }
+        try FileManager.default.removeItem(at: journal)
         deletionModel.deleteSubscription(deletedSource)
         try check(deletionModel.error == nil && deletionModel.settings.subscriptions.isEmpty,
                   "subscription deletion commits settings")

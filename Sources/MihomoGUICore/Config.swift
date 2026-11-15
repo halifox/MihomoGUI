@@ -1,5 +1,6 @@
 import Foundation
 import CryptoKit
+import Darwin
 
 public let coreLabel = "local.MihomoGUI.core"
 public let defaultGroup = "MihomoGUI.Default"
@@ -502,11 +503,50 @@ public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings)
     return current != previous
 }
 
+// lstat rejects links (including dangling ones) without following their targets.
+private func checkFileCommitItem(_ url: URL, directory: Bool) throws -> Bool {
+    var info = stat()
+    if lstat(url.path, &info) != 0 {
+        if errno == ENOENT { return false }
+        throw MihomoGUIError("无法检查文件事务路径")
+    }
+    guard info.st_mode & S_IFMT == (directory ? S_IFDIR : S_IFREG) else {
+        throw MihomoGUIError("文件事务路径不是预期的普通文件或目录")
+    }
+    return true
+}
+
+private func validateFileCommitPaths(_ names: [String], directory: URL) throws {
+    let paths = Set(names)
+    guard paths.count == names.count else { throw MihomoGUIError("文件事务包含重复或无效路径") }
+    for name in names {
+        let parts = name.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !name.contains("\0"), parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+              let first = parts.first, first != "file-commit", !first.hasPrefix("file-commit-done-") else {
+            throw MihomoGUIError("文件事务包含重复或无效路径")
+        }
+        var target = directory
+        var prefix: [String] = []
+        for (index, part) in parts.enumerated() {
+            prefix.append(part)
+            let isParent = index < parts.count - 1
+            guard !isParent || !paths.contains(prefix.joined(separator: "/")) else { throw MihomoGUIError("文件事务目标路径互相包含") }
+            target.appendPathComponent(part)
+            _ = try checkFileCommitItem(target, directory: isParent)
+        }
+    }
+}
+
 // A journal survives interrupted commits; readers recover before loading settings.
 public func recoverFileCommit(directory: URL) throws {
     let journal = directory.appendingPathComponent("file-commit")
-    guard FileManager.default.fileExists(atPath: journal.appendingPathComponent("ready").path) else { return }
+    guard try checkFileCommitItem(journal, directory: true),
+          try checkFileCommitItem(journal.appendingPathComponent("ready"), directory: false) else { return }
+    guard try checkFileCommitItem(journal.appendingPathComponent("manifest.json"), directory: false) else { throw MihomoGUIError("文件事务缺少恢复清单") }
     let names = try JSONDecoder().decode([String].self, from: Data(contentsOf: journal.appendingPathComponent("manifest.json")))
+    // Validate the entire journal before restoring or deleting even the first target.
+    try validateFileCommitPaths(names, directory: directory)
+    for index in names.indices { _ = try checkFileCommitItem(journal.appendingPathComponent("old-\(index)"), directory: false) }
     for (index, name) in names.enumerated() {
         let target = directory.appendingPathComponent(name)
         let backup = journal.appendingPathComponent("old-\(index)")
@@ -523,16 +563,7 @@ public func recoverFileCommit(directory: URL) throws {
 public func commitFiles(_ files: [(String, Data)], directory: URL, removing: [String] = [], write: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws {
     try recoverFileCommit(directory: directory)
     let names = files.map { $0.0 } + removing
-    guard Set(names).count == names.count, names.allSatisfy({ name in
-        !name.hasPrefix("/") && !name.isEmpty && name.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
-    }) else { throw MihomoGUIError("文件事务包含重复或无效路径") }
-    for name in names {
-        let target = directory.appendingPathComponent(name)
-        if FileManager.default.fileExists(atPath: target.path),
-           try target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true {
-            throw MihomoGUIError("保存目标不是普通文件：" + name)
-        }
-    }
+    try validateFileCommitPaths(names, directory: directory)
     let journal = directory.appendingPathComponent("file-commit")
     if FileManager.default.fileExists(atPath: journal.path) { try FileManager.default.removeItem(at: journal) }
     try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
