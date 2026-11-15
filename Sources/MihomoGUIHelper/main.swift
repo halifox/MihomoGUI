@@ -24,13 +24,17 @@ final class Service: NSObject, NSXPCListenerDelegate, PrivilegedService {
         return true
     }
 
-    func execute(_ payload: Data, reply: @escaping (Int32) -> Void) {
+    func execute(_ payload: Data, reply: @escaping (Int32, String?) -> Void) {
         queue.async {
             do {
-                guard payload.count <= 32 * 1024 * 1024 else { reply(64); return }
+                guard payload.count <= 32 * 1024 * 1024 else { reply(64, "特权请求超过大小限制"); return }
                 let operation = try JSONDecoder().decode(PrivilegedOperation.self, from: payload)
-                reply(try executeOperation(operation, owner: self.owner, coreRequirement: self.coreRequirement))
-            } catch { reply(-1) }
+                reply(try executeOperation(operation, owner: self.owner, coreRequirement: self.coreRequirement), nil)
+            } catch let error as PrivilegedCommandFailure {
+                reply(-1, error.diagnostic)
+            } catch let error as MihomoGUIError {
+                reply(-1, safePrivilegedDiagnostic(status: -1, output: error.message))
+            } catch { reply(-1, "特权操作输入无效或文件读写失败，请检查安装文件和系统权限") }
         }
     }
 

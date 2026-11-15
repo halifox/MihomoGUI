@@ -4,7 +4,7 @@ public let privilegedServiceLabel = "local.MihomoGUI.helper"
 
 // Shared wire contract for the authenticated GUI and its root LaunchDaemon.
 @objc public protocol PrivilegedService {
-    func execute(_ payload: Data, reply: @escaping (Int32) -> Void)
+    func execute(_ payload: Data, reply: @escaping (Int32, String?) -> Void)
 }
 
 // Only these operations cross the privileged boundary; shell text is never accepted.

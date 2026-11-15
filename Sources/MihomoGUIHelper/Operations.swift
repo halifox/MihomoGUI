@@ -115,14 +115,9 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
         commands.append("/bin/rm -rf " + shellQuote(backup))
         command = commands.joined(separator: "\n")
     }
-    let process = Process()
-    process.executableURL = URL(fileURLWithPath: "/bin/sh")
-    process.arguments = ["-c", command]
-    process.standardOutput = FileHandle.nullDevice
-    process.standardError = FileHandle.nullDevice
-    try process.run()
-    process.waitUntilExit()
-    return process.terminationStatus
+    let result = try runPrivilegedScript(command)
+    guard result.status == 0 else { throw PrivilegedCommandFailure(diagnostic: result.diagnostic) }
+    return result.status
 }
 
 // Kept separate so rollback can be exercised against temporary files without administrator access.
@@ -202,7 +197,11 @@ func coreInstallCommand(staging: URL, seedCommands: [String],
         if /usr/bin/curl --noproxy '*' --fail --silent --output /dev/null --max-time 1 --config \(shellQuote(health.path)); then ready=1; break; fi
         /bin/sleep 1
     done
-    [ "$ready" -eq 1 ] || { echo "内核启动后控制接口未就绪" >&2; exit 1; }
+    if [ "$ready" -ne 1 ]; then
+        echo "内核启动后控制接口未就绪" >&2
+        /bin/launchctl print system/\(coreLabel) 2>/dev/null | /usr/bin/awk '/^[[:space:]]*(state|runs|pid|last exit code|last terminating signal) = / {print}' >&2 || true
+        exit 1
+    fi
     """
 }
 
@@ -228,4 +227,55 @@ func verifyCore(at url: URL, requirement: String) throws {
           SecStaticCodeCheckValidity(code, SecCSFlags(rawValue: kSecCSStrictValidate), expected) == errSecSuccess else {
         throw MihomoGUIError("暂存内核签名与授权版本不匹配，请重新安装应用")
     }
+}
+
+struct PrivilegedCommandFailure: Error {
+    let diagnostic: String
+}
+
+// Commands are generated locally. Retain a bounded tail and expose only known diagnostic categories.
+func runPrivilegedScript(_ command: String) throws -> (status: Int32, diagnostic: String) {
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: "/bin/sh")
+    process.arguments = ["-c", command]
+    let pipe = Pipe()
+    process.standardOutput = pipe
+    process.standardError = pipe
+    try process.run()
+    try pipe.fileHandleForWriting.close()
+    defer { try? pipe.fileHandleForReading.close() }
+    var output = Data()
+    while let chunk = try pipe.fileHandleForReading.read(upToCount: 4096), !chunk.isEmpty {
+        output.append(chunk)
+        if output.count > 16384 { output.removeFirst(output.count - 16384) }
+    }
+    process.waitUntilExit()
+    return (process.terminationStatus, safePrivilegedDiagnostic(status: process.terminationStatus, output: String(decoding: output, as: UTF8.self)))
+}
+
+func safePrivilegedDiagnostic(status: Int32, output: String) -> String {
+    let categories: [(String, String)] = [
+        ("无法读取操作输入", "无法读取安装输入文件，请重新安装应用"),
+        ("操作输入必须是安装用户拥有的普通文件", "安装输入文件的所有者或文件类型无效"),
+        ("系统操作目录权限无效", "系统服务目录所有者或权限无效"),
+        ("签名与授权版本不匹配", "内核签名与管理员授权版本不匹配，请重新安装应用"),
+        ("Bootstrap failed", "launchd 加载失败，请检查服务文件和系统权限"),
+        ("Boot-out failed", "launchd 卸载失败"),
+        ("Permission denied", "文件或服务访问被拒绝，请检查系统权限"),
+        ("Operation not permitted", "系统拒绝操作，请检查管理员授权"),
+        ("No space left on device", "磁盘空间不足"),
+        ("Read-only file system", "目标文件系统只读"),
+        ("内核启动后控制接口未就绪", "内核控制接口未就绪，请检查端口占用、监听地址和内核退出状态"),
+        ("恢复失败", "恢复旧服务失败，请检查系统服务状态"),
+        ("已恢复旧配置和服务", "已恢复旧配置和服务")
+    ]
+    var messages = ["特权操作失败（\(status)）"]
+    for (marker, description) in categories where output.contains(marker) { messages.append(description) }
+    for line in output.components(separatedBy: .newlines) {
+        let field = line.trimmingCharacters(in: .whitespaces)
+        if field.range(of: "^(runs|pid|last exit code|last terminating signal) = -?[0-9]+$", options: .regularExpression) != nil {
+            messages.append(field)
+        }
+    }
+    return messages.joined(separator: "；")
 }

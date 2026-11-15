@@ -128,8 +128,8 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
             failed()
             return
         }
-        proxy.execute(payload) { status in
-            request.finish(status == 0 ? nil : MihomoGUIError("特权操作失败（\(status)），请检查内核状态和日志"))
+        proxy.execute(payload) { status, diagnostic in
+            request.finish(status == 0 ? nil : MihomoGUIError(diagnostic ?? "特权操作失败（\(status)），请检查内核状态和日志"))
         }
     }
 }

@@ -429,6 +429,15 @@ import MihomoGUICore
         } catch let error as MihomoGUIError {
             guard error.message.contains("签名") else { throw error }
         }
+        let diagnostic = safePrivilegedDiagnostic(status: 5, output: "password=fixture-private-value\nhttps://example.com/private-subscription\nBootstrap failed: 5: Input/output error\nlast exit code = 78")
+        guard diagnostic.contains("launchd 加载失败"), diagnostic.contains("last exit code = 78"),
+              !diagnostic.contains("fixture-private-value"), !diagnostic.contains("https://") else {
+            throw MihomoGUIError("privileged diagnostics leak input or omit failure category")
+        }
+        let bounded = try runPrivilegedScript("/usr/bin/head -c 65536 /dev/zero; echo 'No space left on device' >&2; exit 7")
+        guard bounded.status == 7, bounded.diagnostic.contains("磁盘空间不足") else {
+            throw MihomoGUIError("bounded diagnostics lost final failure")
+        }
         print("PASS: privileged boundary rejects arbitrary commands, path traversal and symlink inputs")
     }
 }
