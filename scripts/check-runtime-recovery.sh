@@ -60,10 +60,11 @@ cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
 
-enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure, legacyAliasMigration, legacyMigrationFailure }
+enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFailure, startupSnapshotFailure, markerCleanupFailure, selectionSuccess, selectionFailure, selectionReadbackFailure, legacyAliasMigration, legacyMigrationFailure, futureFormatStop }
 @MainActor var failureMode = FailureMode.afterWrite
 @MainActor var persistCalls = 0
 @MainActor var installCalls = 0
+@MainActor var stopCalls = 0
 @MainActor var markerPresentAtInstallation = false
 @MainActor var rulesRestored: Bool?
 @MainActor var previousRuleData = Data()
@@ -71,6 +72,10 @@ enum FailureMode: String, CaseIterable { case afterWrite, beforeWrite, restoreFa
 
 // Replace the XPC boundary only; the production model, API and persistence run unchanged.
 @MainActor func privilegedOperation(_ operation: PrivilegedOperation) async throws {
+    if case .stop = operation, failureMode == .futureFormatStop {
+        stopCalls += 1
+        return
+    }
     if case .install = operation, failureMode == .startupSnapshotFailure {
         installCalls += 1
         markerPresentAtInstallation = FileManager.default.fileExists(atPath: fixtureDirectory.appendingPathComponent("runtime-update-pending").path)
@@ -301,7 +306,37 @@ func check(_ condition: @autoclosure () throws -> Bool, _ message: String) throw
         try check(model.message != "配置已校验并启动。", "unconfirmed startup never reports success")
         let reopened = MihomoGUIModel(directory: directory)
         try check(reopened.runtimeConfigurationUncertain, "reopening preserves unconfirmed startup recovery state")
-        print("PASS: persistence, startup, cleanup, selector confirmation and legacy alias migration preserve runtime invariants")
+        failureMode = .futureFormatStop
+        for futureFile in ["settings.json", "runtime.json"] {
+            let directory = root.appendingPathComponent("future-" + futureFile)
+            try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+            var current = Settings()
+            current.options = ["external-controller": .string("127.0.0.1:" + port)]
+            var future = current; future.schemaVersion = 99
+            let currentData = try JSONEncoder().encode(current)
+            let futureData = try JSONEncoder().encode(future)
+            for name in ["settings.json", "runtime.json"] {
+                try (name == futureFile ? futureData : currentData).write(to: directory.appendingPathComponent(name))
+            }
+            let model = MihomoGUIModel(directory: directory)
+            try check(model.configurationFormatUnsupported && !model.coreActive, "future format enters read-only state before service discovery")
+            model.startCore()
+            try check(!model.busy, "future format still refuses startup")
+            model.startMonitor()
+            try await Task.sleep(nanoseconds: 200_000_000)
+            let previousStops = stopCalls
+            model.toggleCore()
+            for _ in 0..<200 {
+                if stopCalls > previousStops && !model.busy { break }
+                try await Task.sleep(nanoseconds: 50_000_000)
+            }
+            try check(stopCalls == previousStops + 1 && !model.busy, "stop remains available independently of configuration and initial service state")
+            for name in ["settings.json", "runtime.json"] {
+                try check(try Data(contentsOf: directory.appendingPathComponent(name)) == (name == futureFile ? futureData : currentData), "monitoring and stopping never rewrite either configuration")
+            }
+            try check(!FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path), "stop does not create a configuration update transaction")
+        }
+        print("PASS: persistence, startup, cleanup, selectors, alias migration and future-format stop preserve runtime invariants")
     }
 }
 SWIFT

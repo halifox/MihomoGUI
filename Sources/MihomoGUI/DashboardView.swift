@@ -13,6 +13,7 @@ struct DashboardView: View {
     }
 
     private var status: String {
+        if model.configurationFormatUnsupported { return model.coreActive ? "服务已加载，配置格式不受支持" : "服务未加载，配置格式不受支持" }
         if model.coreRunning { return model.connectionsError == nil ? "已连接" : "控制接口异常" }
         return model.coreActive ? "内核服务已加载，等待连接" : "未连接"
     }
@@ -23,7 +24,7 @@ struct DashboardView: View {
                 information("连接状态", status)
                 information("内核版本", model.coreVersion ?? "暂不可用")
                 information("内存占用", model.coreMemory.map { bytes($0) } ?? "暂不可用")
-                information("控制接口", model.activeController)
+                information("控制接口", model.configurationFormatUnsupported ? "配置格式不受支持，暂不可用" : model.activeController)
                 if let pid = model.corePID { information("内核进程 PID", String(pid)) }
                 Text("关闭窗口或退出 GUI 后，mihomo 内核继续运行。")
                     .font(.caption).foregroundStyle(.secondary)
@@ -53,7 +54,7 @@ struct DashboardView: View {
                 } label: {
                     Label("查看配置文件", systemImage: "doc.text")
                 }
-                .disabled(model.busy)
+                .disabled(model.busy || model.configurationFormatUnsupported)
                 .help("查看当前设置生成的完整配置文件")
                 .labelStyle(.iconOnly)
             }
@@ -65,7 +66,7 @@ struct DashboardView: View {
                         if model.serviceOperation != nil {
                             ProgressView().controlSize(.small)
                         } else {
-                            Image(systemName: model.coreActive ? "stop.fill" : "play.fill")
+                            Image(systemName: model.coreActive || model.configurationFormatUnsupported ? "stop.fill" : "play.fill")
                         }
                     }
                 }
@@ -114,7 +115,7 @@ struct DashboardView: View {
         switch model.serviceOperation {
         case .starting: return "正在启动…"
         case .stopping: return "正在停止…"
-        case nil: return model.coreActive ? "停止 mihomo 内核" : "启动 mihomo 内核"
+        case nil: return model.coreActive || model.configurationFormatUnsupported ? "停止 mihomo 内核" : "启动 mihomo 内核"
         }
     }
 

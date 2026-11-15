@@ -74,12 +74,12 @@ final class MihomoGUIModel: ObservableObject {
         }
     }
     func startMonitor() {
-        guard monitor == nil, !configurationFormatUnsupported else { return }
+        guard monitor == nil else { return }
         monitor = Task { [weak self] in
             if let self {
                 await self.refresh()
             }
-            if let self, self.settings.subscriptionProxies == nil {
+            if let self, !self.configurationFormatUnsupported, self.settings.subscriptionProxies == nil {
                 let snapshot = self.settings; let folder = self.directory
                 do {
                     let cached = try await Task.detached {
@@ -93,7 +93,7 @@ final class MihomoGUIModel: ObservableObject {
                     }
                 } catch { self.error = error.localizedDescription }
             }
-            if let self, self.nodes.contains(where: { $0.server == nil }) {
+            if let self, !self.configurationFormatUnsupported, self.nodes.contains(where: { $0.server == nil }) {
                 let folder = self.directory
                 do {
                     let populated = try await Task.detached { try loadNodeCache(directory: folder) }.value
@@ -105,7 +105,7 @@ final class MihomoGUIModel: ObservableObject {
                     }
                 } catch { self.error = error.localizedDescription }
             }
-            if let self, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty, !self.settings.corePath.isEmpty { self.refreshSubscriptions() }
+            if let self, !self.configurationFormatUnsupported, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty, !self.settings.corePath.isEmpty { self.refreshSubscriptions() }
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.refresh()
@@ -118,7 +118,7 @@ final class MihomoGUIModel: ObservableObject {
     var coreActive: Bool { coreRunning || coreServiceLoaded || corePID != nil }
     var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || !requestedGroupSelections.isEmpty || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
     func toggleCore() {
-        if !coreActive { startCore(); return }
+        if !coreActive && !configurationFormatUnsupported { startCore(); return }
         perform {
             self.serviceOperation = .stopping
             defer { self.serviceOperation = nil }
@@ -144,6 +144,10 @@ final class MihomoGUIModel: ObservableObject {
         return names.merging(legacyConnectionProxyNames, uniquingKeysWith: { current, _ in current })
     }
     func refresh() async {
+        if configurationFormatUnsupported {
+            await refreshDiagnostics()
+            return
+        }
         let refreshID = UUID()
         connectionsRefreshID = refreshID
         do {
@@ -190,6 +194,11 @@ final class MihomoGUIModel: ObservableObject {
         diagnosticsDate = Date()
         coreServiceLoaded = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
         async let core = servicePID(domain: "system", label: coreLabel)
+        if configurationFormatUnsupported {
+            corePID = await core
+            coreRunning = false; coreMemory = nil; coreVersion = nil
+            return
+        }
         async let memory = try? api.memory()
         async let version = try? api.version()
         corePID = await core
