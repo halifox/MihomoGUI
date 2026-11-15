@@ -33,7 +33,11 @@ public func readSubscriptionProxies(_ file: URL) throws -> [[String: Any]] {
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
     process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], false); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); def clean(v, depth=0); abort 'YAML nesting too deep' if depth > 64; case v; when Hash; v.each_with_object({}) { |(k,x),h| h[k]=clean(x, depth+1) }; when Array; v.map { |x| clean(x, depth+1) }; else v; end; end; puts JSON.generate(clean(rows))"#, file.path]
     process.standardOutput = handle; process.standardError = FileHandle.nullDevice
-    try process.run(); process.waitUntilExit()
+    try process.run()
+    let deadline = ProcessDeadline(process: process, timeout: 30)
+    defer { deadline.invalidate() }
+    process.waitUntilExit()
+    try deadline.check()
     guard process.terminationStatus == 0,
           let proxies = try JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [[String: Any]],
           proxies.allSatisfy({ $0["name"] is String && $0["type"] is String }) else {
@@ -63,7 +67,11 @@ public func populateNodeEndpoints(_ nodes: inout [Node], provider: String, file:
     process.executableURL = URL(fileURLWithPath: "/usr/bin/ruby")
     process.arguments = ["-ryaml", "-rjson", "-e", #"doc = YAML.safe_load(File.read(ARGV[0]), [], [], false); rows = doc.is_a?(Hash) ? doc['proxies'] : doc; abort unless rows.is_a?(Array); puts JSON.generate(rows.select { |p| p.is_a?(Hash) && p['name'].is_a?(String) }.map { |p| {name: p['name'], server: p['server']&.to_s, port: (p['port'] || p['ports'])&.to_s} })"#, file.path]
     process.standardOutput = handle; process.standardError = FileHandle.nullDevice
-    try process.run(); process.waitUntilExit()
+    try process.run()
+    let deadline = ProcessDeadline(process: process, timeout: 30)
+    defer { deadline.invalidate() }
+    process.waitUntilExit()
+    try deadline.check()
     guard process.terminationStatus == 0 else { throw MihomoGUIError("无法读取订阅节点的服务器与端口") }
     let endpoints = try JSONDecoder().decode([Endpoint].self, from: Data(contentsOf: output))
     let indexed = Dictionary(endpoints.map { ($0.name, $0) }, uniquingKeysWith: { first, _ in first })
@@ -184,7 +192,14 @@ public func withProviderCore<T>(corePath: String, providers: [(String, URL)],
     process.environment = environment
     process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
     try process.run()
-    defer { if process.isRunning { process.terminate(); process.waitUntilExit() } }
+    defer {
+        if process.isRunning {
+            let deadline = ProcessDeadline(process: process, timeout: 5)
+            process.terminate()
+            process.waitUntilExit()
+            deadline.invalidate()
+        }
+    }
     let api = CoreAPI(secret: secret, port: port)
     let deadline = Date().addingTimeInterval(15)
     while Date() < deadline {

@@ -234,7 +234,7 @@ struct PrivilegedCommandFailure: Error {
 }
 
 // Commands are generated locally. Retain a bounded tail and expose only known diagnostic categories.
-func runPrivilegedScript(_ command: String) throws -> (status: Int32, diagnostic: String) {
+func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120) throws -> (status: Int32, diagnostic: String) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
     process.arguments = ["-c", command]
@@ -242,6 +242,8 @@ func runPrivilegedScript(_ command: String) throws -> (status: Int32, diagnostic
     process.standardOutput = pipe
     process.standardError = pipe
     try process.run()
+    let deadline = ProcessDeadline(process: process, timeout: timeout)
+    defer { deadline.invalidate() }
     try pipe.fileHandleForWriting.close()
     defer { try? pipe.fileHandleForReading.close() }
     var output = Data()
@@ -250,11 +252,13 @@ func runPrivilegedScript(_ command: String) throws -> (status: Int32, diagnostic
         if output.count > 16384 { output.removeFirst(output.count - 16384) }
     }
     process.waitUntilExit()
+    try deadline.check()
     return (process.terminationStatus, safePrivilegedDiagnostic(status: process.terminationStatus, output: String(decoding: output, as: UTF8.self)))
 }
 
 func safePrivilegedDiagnostic(status: Int32, output: String) -> String {
     let categories: [(String, String)] = [
+        ("操作超时", "操作超时，结果可能未知，请检查系统服务状态后重试"),
         ("无法读取操作输入", "无法读取安装输入文件，请重新安装应用"),
         ("操作输入必须是安装用户拥有的普通文件", "安装输入文件的所有者或文件类型无效"),
         ("系统操作目录权限无效", "系统服务目录所有者或权限无效"),

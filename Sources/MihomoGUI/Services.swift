@@ -1,7 +1,7 @@
 import Foundation
 import MihomoGUICore
 
-func runCommand(_ executable: String, _ arguments: [String]) async throws -> String {
+func runCommand(_ executable: String, _ arguments: [String], timeout: TimeInterval = 45) async throws -> String {
     try await Task.detached {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: executable); process.arguments = arguments
@@ -10,7 +10,11 @@ func runCommand(_ executable: String, _ arguments: [String]) async throws -> Str
         let handle = try FileHandle(forWritingTo: output)
         defer { try? handle.close(); try? FileManager.default.removeItem(at: output) }
         process.standardOutput = handle; process.standardError = handle
-        try process.run(); process.waitUntilExit()
+        try process.run()
+        let deadline = ProcessDeadline(process: process, timeout: timeout)
+        defer { deadline.invalidate() }
+        process.waitUntilExit()
+        try deadline.check()
         let data = try Data(contentsOf: output)
         let text = String(decoding: data.prefix(16_384), as: UTF8.self)
         guard process.terminationStatus == 0 else {
@@ -22,7 +26,7 @@ func runCommand(_ executable: String, _ arguments: [String]) async throws -> Str
 
 func administratorCommand(_ command: String) async throws {
     let script = "on run argv\n do shell script (item 1 of argv) with administrator privileges\nend run"
-    _ = try await runCommand("/usr/bin/osascript", ["-e", script, command])
+    _ = try await runCommand("/usr/bin/osascript", ["-e", script, command], timeout: 180)
 }
 
 // Shared by initial installation and live reloads; keep generated file paths in sync.

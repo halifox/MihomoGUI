@@ -21,6 +21,13 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
     do { try operation() } catch { return }
     throw MihomoGUIError("EXPECTED FAILURE: " + message)
 }
+func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
+    do { try await operation() } catch let error as MihomoGUIError {
+        try check(error.message.contains("超时"), "process timeout is explicit")
+        return
+    }
+    throw MihomoGUIError("expected process timeout")
+}
 @main struct InteractionChecks {
     @MainActor static func main() async throws {
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("fixture")
@@ -167,6 +174,23 @@ func expectFailure(_ message: String, _ operation: () throws -> Void) throws {
         try check(nullRoundTrip == nullValue, "persistent values round-trip explicit null")
         let nullYAML = String(decoding: try yamlData(["proxy": nullRoundTrip.native]), as: UTF8.self)
         try check(nullYAML.contains("explicit-null: null") && nullYAML.contains("- null"), "generated YAML preserves explicit null")
+        let timeoutStart = Date()
+        try await expectAsyncFailure {
+            _ = try await runCommand("/bin/sh", ["-c", "/bin/sleep 60; echo finished"], timeout: 0.1)
+        }
+        try check(Date().timeIntervalSince(timeoutStart) < 8, "process group timeout terminates waiting child")
+        var expiredRequest: PrivilegedRequest?
+        do {
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                let request = PrivilegedRequest(connection: NSXPCConnection(machServiceName: "local.MihomoGUI.timeout-fixture"), continuation: continuation)
+                expiredRequest = request
+                request.startTimeout(after: 0.05)
+            }
+            throw MihomoGUIError("XPC request did not time out")
+        } catch let error as MihomoGUIError {
+            try check(error.message.contains("请求超时"), "XPC timeout reports unknown operation outcome")
+        }
+        expiredRequest?.finish() // A late reply must not resume the continuation twice.
         let seed = RouteRule(kind: .suffix, value: "example.com", node: nil)
         try model.saveRule(seed)
         let single = RouteRule(kind: .domain, value: "api.example.com", node: nil)
@@ -433,6 +457,13 @@ import MihomoGUICore
         guard diagnostic.contains("launchd 加载失败"), diagnostic.contains("last exit code = 78"),
               !diagnostic.contains("fixture-private-value"), !diagnostic.contains("https://") else {
             throw MihomoGUIError("privileged diagnostics leak input or omit failure category")
+        }
+        let timeoutStart = Date()
+        do {
+            _ = try runPrivilegedScript("trap '' TERM; /bin/sleep 60", timeout: 0.1)
+            throw MihomoGUIError("privileged script did not time out")
+        } catch let error as MihomoGUIError {
+            guard error.message.contains("超时"), Date().timeIntervalSince(timeoutStart) < 8 else { throw error }
         }
         let bounded = try runPrivilegedScript("/usr/bin/head -c 65536 /dev/zero; echo 'No space left on device' >&2; exit 7")
         guard bounded.status == 7, bounded.diagnostic.contains("磁盘空间不足") else {

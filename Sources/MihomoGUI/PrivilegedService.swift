@@ -12,20 +12,32 @@ private func signingRequirement(_ code: SecStaticCode) throws -> String {
 }
 
 // One result owns the XPC connection until the reply or a transport failure arrives.
-private final class PrivilegedRequest {
+final class PrivilegedRequest {
     let connection: NSXPCConnection
     let lock = NSLock()
     var continuation: CheckedContinuation<Void, Error>?
+    private var timeout: DispatchWorkItem?
 
     init(connection: NSXPCConnection, continuation: CheckedContinuation<Void, Error>) {
         self.connection = connection
         self.continuation = continuation
     }
 
+    func startTimeout(after seconds: TimeInterval = 180) {
+        let timeout = DispatchWorkItem { [weak self] in
+            self?.finish(MihomoGUIError("特权服务请求超时；操作结果未知，请检查内核状态后重试"))
+        }
+        lock.lock()
+        self.timeout = timeout
+        lock.unlock()
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: .now() + seconds, execute: timeout)
+    }
+
     func finish(_ error: Error? = nil) {
         lock.lock()
         let pending = continuation
         continuation = nil
+        timeout?.cancel(); timeout = nil
         lock.unlock()
         guard let pending else { return }
         connection.invalidationHandler = nil
@@ -123,6 +135,7 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
         let failed = { request.finish(MihomoGUIError("特权辅助服务连接中断；操作结果未知，请检查内核状态后重试。若持续失败，请重新安装应用。")) }
         connection.invalidationHandler = failed
         connection.interruptionHandler = failed
+        request.startTimeout()
         connection.resume()
         guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in failed() }) as? PrivilegedService else {
             failed()
