@@ -53,6 +53,8 @@ jobs:
           if [ -n "$RELEASE_TAG" ]; then
             test "$RELEASE_TAG" = "v$(cat VERSION)"
           fi
+      - name: Check release failure paths
+        run: python3 scripts/check-release.py
       - name: Download bundled resources
         env:
           GH_TOKEN: ${{ github.token }}
@@ -162,17 +164,91 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           RELEASE_TAG: ${{ inputs.release_tag || github.ref_name }}
         run: |
-          if ! gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY"; then
-            gh release create "$RELEASE_TAG" --verify-tag --generate-notes --repo "$GITHUB_REPOSITORY"
-          fi
-          gh release view "$RELEASE_TAG" --repo "$GITHUB_REPOSITORY" --json assets --jq '[.assets[].name]' > "$RUNNER_TEMP/release-assets.json"
-          python3 - "$RUNNER_TEMP/release-assets.json" release/* <<'PYTHON'
+          python3 - <<'PYTHON'
+          import hashlib
           import json
+          import os
           from pathlib import Path
-          import sys
-          existing = set(json.loads(Path(sys.argv[1]).read_text()))
-          collisions = sorted(existing.intersection(Path(path).name for path in sys.argv[2:]))
+          import re
+          import subprocess
+
+          tag = os.environ['RELEASE_TAG']
+          repository = os.environ['GITHUB_REPOSITORY']
+          if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag):
+              raise SystemExit('Invalid release tag')
+          folder = Path('release')
+          archive = f'MihomoGUI-{tag}-macos-arm64.zip'
+          required = {archive, 'BUILD-METADATA.json', 'SHA256SUMS', 'provenance.sigstore.json'}
+          files = sorted(folder.iterdir())
+          if {path.name for path in files} != required or not all(path.is_file() for path in files):
+              raise SystemExit('Release artifact set is incomplete or contains unexpected files')
+
+          def digest(path):
+              result = hashlib.sha256()
+              with path.open('rb') as source:
+                  for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                      result.update(chunk)
+              return result.hexdigest()
+
+          checksums = {}
+          for line in (folder / 'SHA256SUMS').read_text().splitlines():
+              match = re.fullmatch(r'([0-9a-f]{64})  (.+)', line)
+              if not match or match[2] in checksums:
+                  raise SystemExit('Invalid release checksum file')
+              checksums[match[2]] = match[1]
+          if set(checksums) != {archive, 'BUILD-METADATA.json'}:
+              raise SystemExit('Release checksum subjects do not match expected artifacts')
+          for name, expected in checksums.items():
+              if digest(folder / name) != expected:
+                  raise SystemExit('Release checksum mismatch: ' + name)
+          for name in [archive, 'BUILD-METADATA.json']:
+              subprocess.run(['gh', 'attestation', 'verify', str(folder / name), '--repo', repository,
+                              '--bundle', str(folder / 'provenance.sigstore.json')], check=True)
+          metadata = json.loads((folder / 'BUILD-METADATA.json').read_text())
+          if not re.fullmatch(r'(?:[0-9a-f]{40}|[0-9a-f]{64})', metadata.get('source_commit', '')) or metadata.get('version') != tag[1:] or metadata.get('architecture') != 'arm64':
+              raise SystemExit('Invalid release build metadata')
+          remote_commit = json.loads(subprocess.check_output(['gh', 'api', f'repos/{repository}/commits/{tag}'], text=True))
+          if remote_commit.get('sha') != metadata.get('source_commit'):
+              raise SystemExit('Release tag no longer identifies the built source commit')
+
+          def release_state():
+              # Listing includes drafts for push-authorized callers; the tag endpoint is published-only.
+              response = subprocess.run(['gh', 'api', '--paginate', '--slurp', f'repos/{repository}/releases?per_page=100'],
+                                        capture_output=True, text=True)
+              if response.returncode != 0:
+                  raise SystemExit('Cannot inspect releases; refusing creation after a transport or authorization error')
+              pages = json.loads(response.stdout)
+              if not isinstance(pages, list) or not all(isinstance(page, list) for page in pages):
+                  raise SystemExit('Invalid release listing')
+              matches = []
+              for page in pages:
+                  for state in page:
+                      if not isinstance(state.get('tag_name'), str) or not isinstance(state.get('draft'), bool) or not isinstance(state.get('assets'), list):
+                          raise SystemExit('Invalid release state')
+                      if state['tag_name'] == tag:
+                          matches.append(state)
+              if len(matches) > 1:
+                  raise SystemExit('Multiple releases identify the same tag; refusing publication')
+              return matches[0] if matches else None
+
+          state = release_state()
+          if state is None:
+              subprocess.run(['gh', 'release', 'create', tag, '--draft', '--verify-tag', '--generate-notes', '--repo', repository], check=True)
+              state = release_state()
+          if state is None or not state['draft']:
+              raise SystemExit('Published releases are immutable; use a new version')
+          collisions = required.intersection(asset['name'] for asset in state['assets'])
           if collisions:
-              raise SystemExit('Release assets are immutable; use a new version. Conflicts: ' + ', '.join(collisions))
+              raise SystemExit('Release assets are immutable; conflicts: ' + ', '.join(sorted(collisions)))
+          release_id = state['id']
+          subprocess.run(['gh', 'release', 'upload', tag, *map(str, files), '--repo', repository], check=True)
+          uploaded = release_state()
+          if uploaded is None or uploaded['id'] != release_id or not uploaded['draft']:
+              raise SystemExit('Release state changed during upload')
+          assets = {asset['name']: asset for asset in uploaded['assets']}
+          for path in files:
+              asset = assets.get(path.name, {})
+              if asset.get('state') != 'uploaded' or asset.get('digest') != 'sha256:' + digest(path):
+                  raise SystemExit('Remote release asset missing, unfinished or mismatched: ' + path.name)
+          subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--verify-tag', '--repo', repository], check=True)
           PYTHON
-          gh release upload "$RELEASE_TAG" release/* --repo "$GITHUB_REPOSITORY"

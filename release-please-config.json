@@ -6,7 +6,9 @@
       "version-file": "VERSION",
       "initial-version": "1.0.0",
       "include-component-in-tag": false,
-      "include-v-in-tag": true
+      "include-v-in-tag": true,
+      "draft": true,
+      "force-tag-creation": true
     }
   }
 }
