@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.1.1](https://github.com/halifox/MihomoGUI/compare/v1.1.0...v1.1.1) (2026-11-16)
+
+
+### Bug Fixes
+
+* distribute a single DMG and retain verification in Actions ([#17](https://github.com/halifox/MihomoGUI/issues/17)) ([5b0c67a](https://github.com/halifox/MihomoGUI/commit/5b0c67a0246ff00fa3257f1a23a20855783b47d1))
+
 ## [1.1.0](https://github.com/halifox/MihomoGUI/compare/v1.0.0...v1.1.0) (2026-11-16)
 
 
