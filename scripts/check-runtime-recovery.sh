@@ -1,6 +1,7 @@
 #!/bin/bash
 # Fault-inject privileged replies using isolated files and a loopback controller only.
 set -euo pipefail
+trap 'printf "Runtime recovery check failed at line %s.\n" "$LINENO" >&2' ERR
 cd "$(dirname "$0")/.."
 test -s .build/manual/MihomoGUICore.o || { echo 'Run bash scripts/build.sh first.' >&2; exit 1; }
 CHECK_DIR="$(mktemp -d "${TMPDIR:-/tmp}/MihomoGUI-recovery.XXXXXX")"
@@ -55,7 +56,7 @@ for attempt in {1..100}; do
     kill -0 "$SERVER_PID"
     sleep 0.05
 done
-test -s "$CHECK_DIR/port"
+test -s "$CHECK_DIR/port" || { printf 'Recovery controller did not become ready within 5 seconds.\n' >&2; exit 1; }
 cat > "$CHECK_DIR/RecoveryChecks.swift" <<'SWIFT'
 import Foundation
 import MihomoGUICore
