@@ -65,12 +65,13 @@ else: raise SystemExit('Unexpected gh invocation')
 
 for mode in ['new', 'draft', 'published', 'collision', 'partial-upload', 'bad-digest',
              'missing-asset', 'invalid-proof', 'changed-tag', 'forbidden', 'transport', 'incomplete',
-             'bad-checksum', 'invalid-state', 'duplicate-drafts', 'paged-draft']:
+             'bad-checksum', 'invalid-state', 'duplicate-drafts', 'paged-draft',
+             'unexpected-asset', 'verification-collision']:
     with tempfile.TemporaryDirectory(prefix='MihomoGUI-release-') as temporary:
         folder = Path(temporary)
         release = folder / 'release'
         release.mkdir()
-        archive = 'MihomoGUI-v1.0.0-macos-arm64.zip'
+        archive = 'MihomoGUI-v1.0.0-macos-arm64.dmg'
         (release / archive).write_bytes(b'fixture archive')
         (release / 'BUILD-METADATA.json').write_text(json.dumps({
             'source_commit': 'a' * 40, 'version': '1.0.0', 'architecture': 'arm64'}))
@@ -81,6 +82,8 @@ for mode in ['new', 'draft', 'published', 'collision', 'partial-upload', 'bad-di
         state = {'mode': mode, 'calls': [], 'release': None if mode == 'new' else {
             'id': 1, 'tag_name': 'v1.0.0', 'draft': mode != 'published', 'assets': []}}
         if mode == 'collision': state['release']['assets'] = [{'name': archive}]
+        if mode == 'unexpected-asset': state['release']['assets'] = [{'name': 'unrelated.txt'}]
+        if mode == 'verification-collision': state['release']['assets'] = [{'name': 'SHA256SUMS'}]
         if mode == 'incomplete': (release / 'provenance.sigstore.json').unlink()
         if mode == 'bad-checksum': (release / archive).write_bytes(b'changed')
         (folder / 'state.json').write_text(json.dumps(state))
@@ -96,10 +99,11 @@ for mode in ['new', 'draft', 'published', 'collision', 'partial-upload', 'bad-di
         if mode in ['new', 'draft', 'paged-draft']:
             assert result.returncode == 0 and published, (mode, result.stderr)
             assert final['release']['draft'] is False
+            assert [asset['name'] for asset in final['release']['assets']] == [archive], mode
         else:
             assert result.returncode != 0 and not published, (mode, result.stderr)
         if mode in ['forbidden', 'transport', 'invalid-proof', 'changed-tag', 'incomplete', 'bad-checksum', 'invalid-state', 'duplicate-drafts']:
             assert not any(args[:2] == ['release', 'create'] for args in final['calls']), mode
-        if mode == 'collision':
+        if mode in ['collision', 'unexpected-asset', 'verification-collision']:
             assert not any(args[:2] == ['release', 'upload'] for args in final['calls'])
 print('PASS: draft publication gates, immutable assets, partial uploads, digests, proof, tags and API failures')

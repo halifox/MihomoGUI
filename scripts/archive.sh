@@ -11,7 +11,13 @@ test "$(/usr/libexec/PlistBuddy -c 'Print CFBundleShortVersionString' "$APP_DIR/
 test ! -L "$RELEASE_DIR"
 rm -rf "$RELEASE_DIR"
 mkdir -p "$RELEASE_DIR"
-ditto -c -k --sequesterRsrc --keepParent "$APP_DIR" "$RELEASE_DIR/MihomoGUI-v$VERSION-macos-$ARCH.zip"
+STAGING_DIR="$(mktemp -d "${TMPDIR:-/tmp}/MihomoGUI-dmg.XXXXXX")"
+trap 'rm -rf "$STAGING_DIR"' EXIT
+ditto "$APP_DIR" "$STAGING_DIR/MihomoGUI.app"
+ln -s /Applications "$STAGING_DIR/Applications"
+IMAGE="$RELEASE_DIR/MihomoGUI-v$VERSION-macos-$ARCH.dmg"
+hdiutil create -volname "MihomoGUI $VERSION" -srcfolder "$STAGING_DIR" -fs HFS+ -format UDZO "$IMAGE"
+hdiutil verify "$IMAGE"
 python3 - <<'PY'
 import hashlib
 import json
@@ -38,6 +44,6 @@ Path('dist/release/BUILD-METADATA.json').write_text(json.dumps(metadata, indent=
 PY
 (
   cd "$RELEASE_DIR"
-  shasum -a 256 *.zip BUILD-METADATA.json > SHA256SUMS
+  shasum -a 256 *.dmg BUILD-METADATA.json > SHA256SUMS
   shasum -a 256 -c SHA256SUMS
 )

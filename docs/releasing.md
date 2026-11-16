@@ -19,13 +19,13 @@
 手动运行时：
 
 - `release_tag` 留空：构建所选分支，不上传 Release 附件。
-- `release_tag` 填写已有标签（例如 `v1.0.0`）：检出该标签，检查其与 `VERSION` 一致，构建并上传 ZIP。
+- `release_tag` 填写已有标签（例如 `v1.1.1`）：检出该标签，检查其与 `VERSION` 一致，构建并上传 DMG。
 
-标签推送同样构建标签对应源码并上传。文件名为 `MihomoGUI-v版本号-macos-arm64.zip`，Actions 构建产物保留 7 天。同一发布标签的构建串行执行。上传前检查已有附件；同名冲突时失败，不覆盖或删除原文件。成功分页列出发布记录并确认目标标签不存在后，才基于已有标签创建草稿；查询或授权错误直接失败。已经公开的 Release 不再添加或替换附件。
+标签推送同样构建标签对应源码并上传。文件名为 `MihomoGUI-v版本号-macos-arm64.dmg`，Release 仅上传这一份 DMG。Actions 构建传输产物保留 7 天；`MihomoGUI-verification` 校验资料包含 `SHA256SUMS`、`BUILD-METADATA.json` 和 `provenance.sigstore.json`，保留 90 天（受仓库保留期限限制，过期后需使用自行保存的副本）。同一发布标签的构建串行执行。上传前检查已有附件；同名冲突时失败，不覆盖或删除原文件。成功分页列出发布记录并确认目标标签不存在后，才基于已有标签创建草稿；查询或授权错误直接失败。已经公开的 Release 不再添加或替换附件。
 
-构建依次执行资源下载与摘要校验、应用打包、交互回归、签名验证、SDK 与应用版本检查，然后生成 ZIP。归档脚本生成 ZIP、`SHA256SUMS` 及 `BUILD-METADATA.json`。每次构建都会上传产物，再由独立 job 下载并核对 `SHA256SUMS`；发布的来源证明与上传步骤须等待该检查通过。发布时额外生成 `provenance.sigstore.json`，由 GitHub OIDC 身份签署 ZIP 和构建元数据的来源证明。
+构建依次执行资源下载与摘要校验、应用打包、交互回归、签名验证、SDK 与应用版本检查，然后生成 DMG。归档脚本使用系统 `hdiutil` 生成包含应用与 Applications 快捷入口的 DMG、`SHA256SUMS` 及 `BUILD-METADATA.json`。每次构建都会上传产物，再由独立 job 下载并核对 `SHA256SUMS`；发布的来源证明与上传步骤须等待该检查通过。发布时额外生成 `provenance.sigstore.json`，由 GitHub OIDC 身份签署 DMG 和构建元数据的来源证明。
 
-Release 在构建期间保持草稿。上传前核验完整附件集合、校验和、来源证明及标签对应的源码提交，上传后逐个核对远端资产状态与 SHA-256，全部通过后才公开。前置检查失败不会执行公开操作；最终公开请求失败时需人工核对实际状态，不自动重试。构建失败时先查明原因；若是临时下载或 runner 故障且尚未上传附件，可重新运行原任务。已有同名附件时不得通过删除或覆盖它们来重试，应排查上传状态并使用新版本发布变更。源码修复需要新的提交与版本，不应移动已发布标签来替换源码。
+Release 在构建期间保持草稿。上传前核验完整附件集合、校验和、来源证明及标签对应的源码提交，校验资料先保存到 Actions；只向 Release 上传 DMG，并确认远端附件恰好只有该文件，核对其资产状态与 SHA-256，全部通过后才公开。前置检查失败不会执行公开操作；最终公开请求失败时需人工核对实际状态，不自动重试。构建失败时先查明原因；若是临时下载或 runner 故障且尚未上传附件，可重新运行原任务。已有同名附件时不得通过删除或覆盖它们来重试，应排查上传状态并使用新版本发布变更。源码修复需要新的提交与版本，不应移动已发布标签来替换源码。
 
 ## 资源与工作流更新
 
@@ -51,7 +51,7 @@ bash scripts/check-interactions.sh
 NOTARY_PROFILE="your-stored-profile" bash scripts/notarize.sh
 ```
 
-公证凭据通过 `xcrun notarytool store-credentials` 存入钥匙串，勿将证书、私钥或密码写入仓库。使用自定义钥匙串时再设置 `NOTARY_KEYCHAIN`。构建对 GUI、辅助服务及内核启用 hardened runtime；正式签名附加安全时间戳。公证脚本检查 Developer ID 签名，提交后要求状态为 `Accepted`，再执行 stapler 和 Gatekeeper 验证；报告保存在忽略目录 `.build/notarization-result.json`。公证成功后应重新生成分发 ZIP，以包含 stapled ticket。具体要求见 [Apple 公证工作流文档](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
+公证凭据通过 `xcrun notarytool store-credentials` 存入钥匙串，勿将证书、私钥或密码写入仓库。使用自定义钥匙串时再设置 `NOTARY_KEYCHAIN`。构建对 GUI、辅助服务及内核启用 hardened runtime；正式签名附加安全时间戳。公证脚本检查 Developer ID 签名，提交后要求状态为 `Accepted`，再执行 stapler 和 Gatekeeper 验证；报告保存在忽略目录 `.build/notarization-result.json`。公证成功后应重新生成分发 DMG，以包含 stapled ticket。具体要求见 [Apple 公证工作流文档](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)。
 
 CI 可通过手动输入 `signed_release: true` 启用。自动发布需设置仓库变量 `ENABLE_SIGNED_RELEASES=true`，并在 GitHub Actions Secrets 中配置：
 
@@ -69,13 +69,15 @@ CI 在临时钥匙串导入身份，仅在非 PR 构建中使用签名凭据，�
 
 本地通过 `bash scripts/archive.sh` 生成 `dist/release/` 下的归档、SHA-256 校验文件和构建元数据。该目录是本次构建产物，脚本会重新创建。元数据区分实际检出源码提交与触发工作流的提交，并记录工具链、架构、资源清单摘要和工作区是否存在未提交修改。
 
-下载同一 Release 的 ZIP、`SHA256SUMS` 和 `BUILD-METADATA.json` 到同一目录后执行：
+从 Release 下载 DMG，并从对应发布 Actions 运行的 `MihomoGUI-verification` artifact 下载三份校验资料，放到同一目录后执行：
 
 ```bash
 shasum -a 256 -c SHA256SUMS
-gh attestation verify MihomoGUI-v版本号-macos-arm64.zip --repo halifox/mihomoGUI
-gh attestation verify BUILD-METADATA.json --repo halifox/mihomoGUI
+gh attestation verify MihomoGUI-v版本号-macos-arm64.dmg --repo halifox/mihomoGUI --bundle provenance.sigstore.json
+gh attestation verify BUILD-METADATA.json --repo halifox/mihomoGUI --bundle provenance.sigstore.json
 ```
+
+DMG 不要求 Developer ID 证书即可创建；默认仍使用临时签名应用，制作 DMG 不等于 Developer ID 签名或公证，也不消除 Gatekeeper 的未识别开发者提示。
 
 SHA-256 检查文件完整性，来源证明检查发布工作流身份；二者不能替代对代码行为的审核。手动构建历史标签时，工作流提交可能不同于检出源码提交，应同时检查元数据中的 `source_commit`、`workflow_commit`、`workflow_ref`。本地归档不伪造 GitHub 证明，证明签发需要在 GitHub Actions 实际运行，使用方式见 [官方 attest 文档](https://github.com/actions/attest)。
 
@@ -86,3 +88,7 @@ SHA-256 检查文件完整性，来源证明检查发布工作流身份；二者
 `v1.0.0` 公开时只有应用 ZIP。针对该历史版本，补充 SHA256SUMS、重建的 BUILD-METADATA.json、LEGACY-PROVENANCE.json、原始 CI 归档和 VERIFICATION.md；原始 ZIP 和标签保持不变。记录与独立校验步骤见 [v1.0.0 历史验证](releases/v1.0.0/VERIFICATION.md)。
 
 这次补充仅恢复从原始成功运行、检出日志及逐字节匹配 CI 归档可验证的事实；原始构建没有签发步骤，未补造 Sigstore 证明，未知原始字段明确保留。此历史附件补全是对既有缺失记录的维护，不放宽常规发布对已公开版本、完整附件及签名来源证明的门禁。
+
+## 历史附件整理（2026-11-16）
+
+按维护者要求，`v1.0.0` 与 `v1.1.0` 的校验附件归档到 [Actions 运行 43878826012](https://github.com/halifox/MihomoGUI/actions/runs/43878826012)，artifact 分别为 `MihomoGUI-verification-v1.0.0` 和 `MihomoGUI-verification-v1.1.0`，保留 90 天。归档使用原始 CI 产物及已跟踪的历史记录，逐文件核对原 Release 附件的 SHA-256；不重新签发旧版本来源证明。Release 仅保留各自原始安装 ZIP，资产 ID、摘要和标签不变。历史记录中的“从 Release 下载校验资料”现在应改为从上述 Actions 下载。新版本使用单个 DMG，不替换已发布的旧安装包。

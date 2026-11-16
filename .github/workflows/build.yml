@@ -152,19 +152,22 @@ jobs:
         id: attest
         with:
           subject-path: |
-            release/*.zip
+            release/*.dmg
             release/BUILD-METADATA.json
           create-storage-record: false
       - name: Collect provenance bundle
         env:
           ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
-        run: cp "$ATTESTATION_BUNDLE" provenance.sigstore.json
+        run: cp "$ATTESTATION_BUNDLE" release/provenance.sigstore.json
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: MihomoGUI-provenance
-          path: provenance.sigstore.json
+          name: MihomoGUI-verification
+          path: |
+            release/BUILD-METADATA.json
+            release/SHA256SUMS
+            release/provenance.sigstore.json
           if-no-files-found: error
-          retention-days: 7
+          retention-days: 90
   upload:
     needs: [build, verify-artifact, provenance]
     if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')
@@ -178,7 +181,7 @@ jobs:
           path: release
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: MihomoGUI-provenance
+          name: MihomoGUI-verification
           path: release
       - name: Upload release archive
         env:
@@ -198,7 +201,7 @@ jobs:
           if not re.fullmatch(r'v[0-9]+\.[0-9]+\.[0-9]+', tag):
               raise SystemExit('Invalid release tag')
           folder = Path('release')
-          archive = f'MihomoGUI-{tag}-macos-arm64.zip'
+          archive = f'MihomoGUI-{tag}-macos-arm64.dmg'
           required = {archive, 'BUILD-METADATA.json', 'SHA256SUMS', 'provenance.sigstore.json'}
           files = sorted(folder.iterdir())
           if {path.name for path in files} != required or not all(path.is_file() for path in files):
@@ -258,18 +261,18 @@ jobs:
               state = release_state()
           if state is None or not state['draft']:
               raise SystemExit('Published releases are immutable; use a new version')
-          collisions = required.intersection(asset['name'] for asset in state['assets'])
-          if collisions:
-              raise SystemExit('Release assets are immutable; conflicts: ' + ', '.join(sorted(collisions)))
+          if state['assets']:
+              raise SystemExit('Release assets are immutable; draft must have no existing attachments')
           release_id = state['id']
-          subprocess.run(['gh', 'release', 'upload', tag, *map(str, files), '--repo', repository], check=True)
+          subprocess.run(['gh', 'release', 'upload', tag, str(folder / archive), '--repo', repository], check=True)
           uploaded = release_state()
           if uploaded is None or uploaded['id'] != release_id or not uploaded['draft']:
               raise SystemExit('Release state changed during upload')
           assets = {asset['name']: asset for asset in uploaded['assets']}
-          for path in files:
-              asset = assets.get(path.name, {})
-              if asset.get('state') != 'uploaded' or asset.get('digest') != 'sha256:' + digest(path):
-                  raise SystemExit('Remote release asset missing, unfinished or mismatched: ' + path.name)
+          if len(uploaded['assets']) != 1 or set(assets) != {archive}:
+              raise SystemExit('Release must contain exactly one application DMG')
+          asset = assets[archive]
+          if asset.get('state') != 'uploaded' or asset.get('digest') != 'sha256:' + digest(folder / archive):
+              raise SystemExit('Remote release archive missing, unfinished or mismatched')
           subprocess.run(['gh', 'release', 'edit', tag, '--draft=false', '--verify-tag', '--repo', repository], check=True)
           PYTHON
