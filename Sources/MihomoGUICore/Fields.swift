@@ -174,7 +174,7 @@ public struct ManualProxy: Codable, Identifiable {
     }
     public func configuration() throws -> [String: Any] {
         guard !fields.keys.contains(where: { $0 == "type" || $0.hasPrefix("type.") }) else { throw MihomoGUIError("代理类型由协议选择器设置，额外字段不能覆盖 type") }
-        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !name.hasPrefix("MihomoGUI."), !name.contains(","), !["DIRECT", "REJECT", "REJECT-DROP", "GLOBAL", "PASS"].contains(name),
+        guard !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, !name.hasPrefix("MihomoGUI."), !name.contains(","), !["DIRECT", "REJECT", "REJECT-DROP", "GLOBAL", "PASS", "COMPATIBLE"].contains(name),
               !name.unicodeScalars.contains(where: { CharacterSet.controlCharacters.contains($0) }) else { throw MihomoGUIError("代理名称不能为空，不能使用保留名称、逗号或控制字符") }
         guard let schema = documentSchemas.proxies.first(where: { $0.key == type }) else { throw MihomoGUIError("未知代理类型：\(type)") }
         let fields = fields.filter { entry in
@@ -194,7 +194,9 @@ public struct ManualProxy: Codable, Identifiable {
            ((fields["uuid"]?.text ?? "").isEmpty || (fields["password"]?.text ?? "").isEmpty) { throw MihomoGUIError("TUIC 需要 token，或 uuid 与 password") }
         if type == "hysteria2", fields["obfs"] != nil, (fields["obfs-password"]?.text ?? "").isEmpty { throw MihomoGUIError("启用 Hysteria2 混淆需要 obfs-password") }
         var object: [String: Any] = ["type": type]
-        for (path, value) in fields {
+        // Match global configuration: parent maps first, explicit child paths override.
+        for path in fields.keys.sorted() {
+            guard let value = fields[path] else { continue }
             guard validConfigPath(path) else { throw MihomoGUIError("额外字段路径无效，请使用点号分隔非空字段名") }
             setConfigPath(path, value: value.native, in: &object)
         }

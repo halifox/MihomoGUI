@@ -11,6 +11,7 @@ DOWNLOAD_SERVER_PID=""
 trap 'if [ -n "$DOWNLOAD_SERVER_PID" ]; then kill "$DOWNLOAD_SERVER_PID" 2>/dev/null || true; wait "$DOWNLOAD_SERVER_PID" 2>/dev/null || true; fi; rm -rf "$CHECK_DIR"' EXIT
 python3 scripts/download-fixture.py "$CHECK_DIR/download-port" &
 DOWNLOAD_SERVER_PID=$!
+printf '%s' "$DOWNLOAD_SERVER_PID" > "$CHECK_DIR/download-pid"
 cat > "$CHECK_DIR/InteractionChecks.swift" <<'SWIFT'
 import Foundation
 import Darwin
@@ -33,6 +34,13 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
 }
 @main struct InteractionChecks {
     @MainActor static func main() async throws {
+        if CommandLine.arguments.count == 3, CommandLine.arguments[2] == "command-output-probe" {
+            let script = "STDOUT.sync=true; STDERR.sync=true; STDOUT.write('prefix'); n=Integer(ARGV[0]); while n>0; size=[n,4096].min; ((n/4096).even? ? STDOUT : STDERR).write('x'*size); n-=size; end"
+            let output = try await runCommand("/usr/bin/ruby", ["-e", script, CommandLine.arguments[1]], timeout: 15)
+            let expected = CommandLine.arguments[1] == "0" ? 6 : 16_384
+            try check(output.utf8.count == expected && output.hasPrefix("prefix"), "command output retains only its bounded prefix")
+            return
+        }
         let directory = URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("fixture")
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -41,8 +49,69 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         for version in ["v1.19.32", "v1.19.35", "v1.19.34-dirty", "", "unexpected"] {
             try expectFailure("unreviewed core version is rejected") { try validateConfigurationCoreVersion(version) }
         }
+        let geoBundle = directory.appendingPathComponent("geo-bundle")
+        let geoCache = directory.appendingPathComponent("geo-cache")
+        try FileManager.default.createDirectory(at: geoBundle, withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: geoCache, withIntermediateDirectories: true)
+        let geoSource = geoBundle.appendingPathComponent("Country.mmdb")
+        let geoTarget = geoCache.appendingPathComponent("Country.mmdb")
+        let geoMarker = geoCache.appendingPathComponent("Country.mmdb.source")
+        try Data("new-a".utf8).write(to: geoSource)
+        try Data("old-a".utf8).write(to: geoTarget)
+        // Legacy empty source markers must be refreshed even with an existing cache.
+        try "".write(to: geoMarker, atomically: true, encoding: .utf8)
+        let fixtureCore = geoBundle.appendingPathComponent("mihomo").path
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try Data(contentsOf: geoTarget) == Data("new-a".utf8), "legacy bundled cache refreshes")
+        let firstIdentity = try String(contentsOf: geoMarker, encoding: .utf8)
+        try check(firstIdentity.hasPrefix("bundled-sha256:"), "bundled source marker identifies content")
+        let stamp = Date(timeIntervalSince1970: 1_000_000)
+        try FileManager.default.setAttributes([.modificationDate: stamp], ofItemAtPath: geoTarget.path)
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try geoTarget.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate == stamp, "unchanged bundle does not rewrite cache")
+        // Same path and byte count, different bundled contents (an application update).
+        try Data("new-b".utf8).write(to: geoSource, options: .atomic)
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8) && String(contentsOf: geoMarker, encoding: .utf8) != firstIdentity, "bundle content changes invalidate cache")
+        let customGeoURL = "https://example.com/custom.mmdb"
+        try Data("custom".utf8).write(to: geoTarget, options: .atomic)
+        try customGeoURL.write(to: geoMarker, atomically: true, encoding: .utf8)
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"], urls: ["Country.mmdb": customGeoURL])
+        try check(try Data(contentsOf: geoTarget) == Data("custom".utf8), "explicit custom GEO source is not replaced by bundle")
+        try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+        try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8), "switching back to bundled source refreshes cache")
+        try Data().write(to: geoSource, options: .atomic)
+        do {
+            try await prepareGeoAssets(corePath: fixtureCore, directory: geoCache, names: ["Country.mmdb"])
+            throw MihomoGUIError("empty bundle accepted")
+        } catch let error as MihomoGUIError { try check(error.message == "内置 GEO 数据文件大小无效", "invalid bundled data is explicit") }
+        try check(try Data(contentsOf: geoTarget) == Data("new-b".utf8), "invalid bundle preserves previous cache")
+        try check(try FileManager.default.attributesOfItem(atPath: geoTarget.path)[.posixPermissions] as? NSNumber == NSNumber(value: 0o600), "refreshed GEO cache stays owner-only")
+        do {
+            let envelope = try encodePrivilegedOperation(.persist(Data())).count
+            let largestRaw = ((privilegedPayloadMaximumBytes - envelope) / 4) * 3
+            let acceptedBytes = try encodePrivilegedOperation(.persist(Data(repeating: 0, count: largestRaw))).count
+            try check(acceptedBytes <= privilegedPayloadMaximumBytes && acceptedBytes > privilegedPayloadMaximumBytes - 4, "actual encoded persist payload accepts its exact boundary")
+            try expectFailure("base64 expansion exceeds shared XPC limit") {
+                _ = try encodePrivilegedOperation(.persist(Data(repeating: 0, count: largestRaw + 3)))
+            }
+        }
         let model = MihomoGUIModel(directory: directory)
         try check(model.error == nil, "isolated model initializes")
+        let ruleAddress = "https://user:fixture-secret@example.com/private-rules?token=fixture-token"
+        let ruleRow = ResourceRow(id: "private", name: "private", type: "http", fields: ["url": .string(ruleAddress)])
+        let ruleView = RuleProvidersView()
+        try check(ruleView.source(ruleRow) == "••••••••", "rule provider table, tooltip and width use masked URL by default")
+        let fileRow = ResourceRow(id: "file", name: "file", type: "file", fields: ["path": .string("/tmp/rules.yaml")])
+        try check(ruleView.source(fileRow) == "/tmp/rules.yaml", "file provider paths remain readable")
+        let ruleEditor = ResourceEditorView(groups: false, original: ruleRow)
+        try check(ruleEditor.schema.first(where: { $0.path == "url" })?.kind == "secret", "rule URL editor uses secret control")
+        for path in ["header", "headers", "ws-opts.headers"] {
+            for elementKind in ["list", "string"] {
+                let headerEditor = ValueMap(field: EditorField(path, kind: "map", elementKind: elementKind), value: .constant(.object([:])))
+                try check(headerEditor.item.kind == "secret", "all header values including custom authentication names default to secret controls")
+            }
+        }
         let damaged = directory.appendingPathComponent("damaged")
         try FileManager.default.createDirectory(at: damaged, withIntermediateDirectories: true)
         let original = Data("broken settings fixture".utf8)
@@ -141,8 +210,45 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         let confirmed = MihomoGUIModel(directory: uncertainDirectory)
         try check(!confirmed.runtimeConfigurationUncertain, "confirmed configuration needs no recovery marker")
 
+        let markerDirectory = directory.appendingPathComponent("marker-format")
+        try FileManager.default.createDirectory(at: markerDirectory, withIntermediateDirectories: true)
+        let markerFile = markerDirectory.appendingPathComponent("runtime-update-pending")
+        try Data().write(to: markerFile)
+        try check(try loadRuntimeUpdateSelections(directory: markerDirectory).isEmpty, "legacy empty marker remains readable")
+        try saveRuntimeUpdateSelections(["fixture": "DIRECT"], directory: markerDirectory)
+        try check(try loadRuntimeUpdateSelections(directory: markerDirectory)["fixture"] == "DIRECT", "recovery selection intent round-trips")
+        let futureMarker = Data(#"{"schemaVersion":99,"selections":{"fixture":"DIRECT"}}"#.utf8)
+        try futureMarker.write(to: markerFile)
+        try expectFailure("unknown recovery format cannot be overwritten") { try saveRuntimeUpdateSelections([:], directory: markerDirectory) }
+        try check(try Data(contentsOf: markerFile) == futureMarker, "unsupported recovery intent stays untouched")
+
         let commaProxy = ManualProxy(type: "ss", fields: ["name": .string("node,comma"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
         try expectFailure("manual proxy names cannot break CSV rule targets") { _ = try commaProxy.configuration() }
+        var reservedProxy = commaProxy
+        reservedProxy.fields["name"] = .string("COMPATIBLE")
+        try expectFailure("manual proxy cannot replace builtin COMPATIBLE") { _ = try reservedProxy.configuration() }
+        let beforeReservedSave = try Data(contentsOf: directory.appendingPathComponent("settings.json"))
+        try expectFailure("manual proxy editor rejects reserved builtin") { try model.saveManualProxy(reservedProxy) }
+        try check(try Data(contentsOf: directory.appendingPathComponent("settings.json")) == beforeReservedSave, "reserved-name rejection leaves settings unchanged")
+        reservedProxy.fields["name"] = .string("compatible")
+        var compatibleSettings = Settings()
+        compatibleSettings.defaultPolicy = "DIRECT"
+        compatibleSettings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0)]
+        compatibleSettings.manualProxies = [reservedProxy]
+        try generateConfig(compatibleSettings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("compatible.yaml"))
+        let overlapping: [(String, ConfigValue)] = [
+            ("smux", .object(["enabled": .boolean(false), "protocol": .string("smux"), "padding": .boolean(true)])),
+            ("smux.enabled", .boolean(true)), ("smux.protocol", .string("yamux"))]
+        for insertion in 0..<24 {
+            var fields = reservedProxy.fields
+            for (path, value) in insertion.isMultiple(of: 2) ? overlapping : overlapping.reversed() { fields[path] = value }
+            let proxy = ManualProxy(type: "ss", fields: fields)
+            let smux = try proxy.configuration()["smux"] as? [String: Any]
+            try check(smux?["enabled"] as? Bool == true && smux?["protocol"] as? String == "yamux" && smux?["padding"] as? Bool == true,
+                      "explicit child paths override parent values and preserve siblings regardless of dictionary order")
+            compatibleSettings.manualProxies = [proxy]
+        }
+        try generateConfig(compatibleSettings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("overlapping-fields.yaml"))
         try check(replacingSubRuleTarget("DOMAIN,example.com,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,renamed", "option-like proxy name remains a target")
         try check(replacingSubRuleTarget("DOMAIN,example.com,other,no-resolve", old: "no-resolve", new: "renamed") == "DOMAIN,example.com,other,no-resolve", "option is not mistaken for a proxy reference")
         try check(replacingSubRuleTarget("SUB-RULE,(NETWORK,tcp),old", old: "old", new: "new") == "SUB-RULE,(NETWORK,tcp),old", "sub-rule names are not proxy references")
@@ -159,6 +265,44 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         referenceModel.deleteManualProxy(referencedProxy)
         try check(referenceModel.error != nil && referenceModel.settings.manualProxies?.count == 1, "sub-rule references prevent proxy deletion")
         try generateConfig(referenceModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("subrule-renamed.yaml"))
+        for (index, options) in [",no-resolve", ",no-resolve,src", ",src,no-resolve"].enumerated() {
+            let folder = directory.appendingPathComponent("group-subrule-\(index)")
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let referencedGroup = ProxyGroup(name: index == 1 ? "__reference_check__" : "referenced-group", targets: ["builtin:DIRECT"])
+            var settings = Settings()
+            settings.defaultPolicy = "DIRECT"
+            settings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0),
+                                "sub-rules": .object(["fixture": .array([.string("IP-CIDR,192.0.2.0/24," + referencedGroup.name + options)])])]
+            settings.proxyGroups = [referencedGroup]
+            var dispatch = RouteRule(kind: .subRule, value: "(NETWORK,tcp)", node: nil)
+            dispatch.subRuleTarget = "fixture"; settings.rules = [dispatch]
+            try saveSettings(settings, to: folder)
+            let groupModel = MihomoGUIModel(directory: folder)
+            let before = try Data(contentsOf: folder.appendingPathComponent("settings.json"))
+            let row = ResourceRow(id: referencedGroup.id, name: referencedGroup.name, type: referencedGroup.type, fields: referencedGroup.fields, group: referencedGroup)
+            groupModel.deleteResource(row, groups: true)
+            try check(groupModel.error != nil && groupModel.settings.proxyGroups?.count == 1, "option-bearing sub-rule references block group deletion")
+            try check(try Data(contentsOf: folder.appendingPathComponent("settings.json")) == before, "blocked group deletion leaves persisted settings unchanged")
+            try generateConfig(groupModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("group-reference-\(index).yaml"))
+            groupModel.settings.options?["sub-rules"] = .object(["fixture": .array([.string("MATCH,DIRECT")])])
+            groupModel.error = nil
+            groupModel.deleteResource(row, groups: true)
+            try check(groupModel.error == nil && groupModel.settings.proxyGroups?.isEmpty == true, "group can be deleted after removing its actual reference")
+        }
+        let dispatchFolder = directory.appendingPathComponent("subrule-dispatch")
+        try FileManager.default.createDirectory(at: dispatchFolder, withIntermediateDirectories: true)
+        var dispatchSettings = Settings()
+        let dispatchGroup = ProxyGroup(name: "same-name", targets: ["builtin:DIRECT"])
+        dispatchSettings.defaultPolicy = "DIRECT"
+        dispatchSettings.proxyGroups = [dispatchGroup]
+        dispatchSettings.options = ["dns.enable": .boolean(false), "tun.enable": .boolean(false), "mixed-port": .integer(0),
+                                   "sub-rules": .object(["same-name": .array([.string("MATCH,DIRECT")]), "outer": .array([.string("SUB-RULE,(NETWORK,tcp),same-name")])])]
+        try saveSettings(dispatchSettings, to: dispatchFolder)
+        let dispatchModel = MihomoGUIModel(directory: dispatchFolder)
+        dispatchModel.deleteResource(ResourceRow(id: dispatchGroup.id, name: dispatchGroup.name, type: dispatchGroup.type, fields: dispatchGroup.fields, group: dispatchGroup), groups: true)
+        try check(dispatchModel.error == nil && dispatchModel.settings.proxyGroups?.isEmpty == true, "SUB-RULE dispatch names are not group references")
+        try generateConfig(dispatchModel.settings).write(to: URL(fileURLWithPath: CommandLine.arguments[1]).appendingPathComponent("subrule-dispatch.yaml"))
+
         let deletionDirectory = directory.appendingPathComponent("subscription-deletion")
         try FileManager.default.createDirectory(at: deletionDirectory.appendingPathComponent("providers"), withIntermediateDirectories: true)
         let deletionModel = MihomoGUIModel(directory: deletionDirectory)
@@ -220,6 +364,38 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
                   "restart restores removed credential cache")
         try check(!FileManager.default.fileExists(atPath: transactionDirectory.appendingPathComponent("new.yaml").path),
                   "restart removes partially committed new file")
+        // A tampered recovery manifest must fail before touching any valid target.
+        let outside = directory.appendingPathComponent("outside-transaction.txt")
+        try Data("outside".utf8).write(to: outside)
+        let outsideDirectory = directory.appendingPathComponent("outside-directory")
+        try FileManager.default.createDirectory(at: outsideDirectory, withIntermediateDirectories: true)
+        try Data("outside".utf8).write(to: outsideDirectory.appendingPathComponent("victim"))
+        try FileManager.default.createSymbolicLink(at: transactionDirectory.appendingPathComponent("escape"), withDestinationURL: outsideDirectory)
+        try FileManager.default.createSymbolicLink(at: transactionDirectory.appendingPathComponent("linked-file"), withDestinationURL: outside)
+        try FileManager.default.createSymbolicLink(at: transactionDirectory.appendingPathComponent("dangling"), withDestinationURL: outsideDirectory.appendingPathComponent("missing"))
+        for unsafe in ["../outside-transaction.txt", outside.path, "./settings.json", "a/../settings.json", "a//b", "", "settings.json", "file-commit/manifest.json", "file-commit-done-fake/x", "escape/victim", "linked-file", "dangling", "settings.json/child"] {
+            try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false)
+            try JSONEncoder().encode(["settings.json", unsafe]).write(to: journal.appendingPathComponent("manifest.json"))
+            try Data().write(to: journal.appendingPathComponent("ready"))
+            try expectFailure("unsafe recovery manifest") { try recoverFileCommit(directory: transactionDirectory) }
+            try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("settings.json")) == oldSettings, "all paths are checked before any recovery mutation")
+            try check(try Data(contentsOf: outside) == Data("outside".utf8) && Data(contentsOf: outsideDirectory.appendingPathComponent("victim")) == Data("outside".utf8), "recovery cannot modify outside files")
+            try check(FileManager.default.fileExists(atPath: journal.path), "rejected journal remains available for inspection")
+            try FileManager.default.removeItem(at: journal)
+        }
+        for unsafe in ["escape/victim", "linked-file", "file-commit/ready"] {
+            try expectFailure("commit rejects link or reserved path") { try commitFiles([(unsafe, Data("bad".utf8))], directory: transactionDirectory) }
+        }
+        try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false)
+        try JSONEncoder().encode(["settings.json"]).write(to: journal.appendingPathComponent("manifest.json"))
+        try Data().write(to: journal.appendingPathComponent("ready"))
+        try FileManager.default.createSymbolicLink(at: journal.appendingPathComponent("old-0"), withDestinationURL: outside)
+        try expectFailure("symlink recovery backup") { try recoverFileCommit(directory: transactionDirectory) }
+        try check(try Data(contentsOf: transactionDirectory.appendingPathComponent("settings.json")) == oldSettings, "backup links cannot import outside bytes")
+        try FileManager.default.removeItem(at: journal)
+        try FileManager.default.createSymbolicLink(at: journal, withDestinationURL: outsideDirectory)
+        try expectFailure("symlink journal") { try recoverFileCommit(directory: transactionDirectory) }
+        try FileManager.default.removeItem(at: journal)
         deletionModel.deleteSubscription(deletedSource)
         try check(deletionModel.error == nil && deletionModel.settings.subscriptions.isEmpty,
                   "subscription deletion commits settings")
@@ -239,6 +415,15 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         let nullYAML = String(decoding: try yamlData(["proxy": nullRoundTrip.native]), as: UTF8.self)
         try check(nullYAML.contains("explicit-null: null") && nullYAML.contains("- null"), "generated YAML preserves explicit null")
         let timeoutStart = Date()
+        let mergedOutput = try await runCommand("/usr/bin/ruby", ["-e", "STDOUT.sync=true; STDERR.sync=true; STDOUT.write('out'); STDERR.write('err')"])
+        try check(mergedOutput == "outerr", "bounded capture preserves merged stdout and stderr")
+        do {
+            _ = try await runCommand("/usr/bin/ruby", ["-e", "STDERR.write('fixture failure'); exit 7"])
+            throw MihomoGUIError("nonzero command accepted")
+        } catch let error as MihomoGUIError { try check(error.message == "fixture failure", "nonzero exit retains diagnostics") }
+        let inheritedWriterStarted = Date()
+        let inheritedOutput = try await runCommand("/bin/sh", ["-c", "printf parent; /bin/sleep 2 &"], timeout: 0.5)
+        try check(inheritedOutput == "parent" && Date().timeIntervalSince(inheritedWriterStarted) < 1.5, "completed parent does not await inherited output handles")
         try await expectAsyncFailure {
             _ = try await runCommand("/bin/sh", ["-c", "/bin/sleep 60; echo finished"], timeout: 0.1)
         }
@@ -441,6 +626,26 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         }
         try check(first?.coreRunning == true, "GUI model connects to real existing core")
         let controller = try CoreAPI(settings: runtime)
+        var selectorSettings = Settings()
+        selectorSettings.options = runtime.options
+        selectorSettings.options?["dns.enable"] = .boolean(false)
+        selectorSettings.options?["tun.enable"] = .boolean(false)
+        selectorSettings.options?["mixed-port"] = .integer(0)
+        let selectorName = "选择 / fixture"
+        selectorSettings.proxyGroups = [ProxyGroup(name: selectorName, targets: ["builtin:DIRECT", "builtin:REJECT"], fields: ["default-selected": .string("builtin:DIRECT")])]
+        try await controller.reload(generateConfig(selectorSettings))
+        try await controller.selectProxyGroup(selectorName, target: "REJECT")
+        try await controller.reload(generateConfig(selectorSettings))
+        let cachedSelection = try await controller.proxyGroupSelections()[selectorName]
+        try check(cachedSelection == "REJECT", "real cached selection overrides default-selected on reload")
+        try await controller.selectProxyGroup(selectorName, target: "DIRECT")
+        try await controller.reload(generateConfig(selectorSettings))
+        let confirmedSelection = try await controller.proxyGroupSelections()[selectorName]
+        try check(confirmedSelection == "DIRECT", "confirmed selection updates the real cache and survives reload")
+        do {
+            try await controller.selectProxyGroup(selectorName, target: "missing-fixture")
+            throw MihomoGUIError("invalid selector member accepted")
+        } catch CoreAPIError.http(400) {}
         var filteredSettings = Settings()
         filteredSettings.options = runtime.options
         filteredSettings.options?["dns.enable"] = .boolean(false)
@@ -451,17 +656,49 @@ func expectAsyncFailure(_ operation: () async throws -> Void) async throws {
         func filterProxy(_ name: String) -> ConfigValue {
             .object(["name": .string(name), "type": .string("ss"), "server": .string("127.0.0.1"), "port": .integer(1), "cipher": .string("aes-128-gcm"), "password": .string("fixture")])
         }
+        var legacyAliases = Settings()
+        legacyAliases.stableProxyAliases = nil
+        legacyAliases.options = selectorSettings.options
+        let otherSource = Subscription(name: "other", url: "https://example.com/other")
+        legacyAliases.subscriptions = [filterSource, otherSource]
+        legacyAliases.subscriptionProxies = [filterSource.id: [filterProxy("HongKong-01"), filterProxy("Tokyo-01")], otherSource.id: [filterProxy("Tokyo-01")]]
+        let tokyo = "node:" + Node(provider: filterSource.provider, name: "Tokyo-01").id
+        let hongKong = "node:" + Node(provider: filterSource.provider, name: "HongKong-01").id
+        legacyAliases.proxyGroups = [ProxyGroup(name: "AliasMigration", targets: [hongKong, tokyo])]
+        try await controller.reload(generateConfig(legacyAliases))
+        let oldTokyo = subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 1)
+        try await controller.selectProxyGroup("AliasMigration", target: oldTokyo)
+        try await controller.selectProxyGroup("GLOBAL", target: oldTokyo)
+        let oldSelections = try await controller.proxyGroupSelections()
+        var stableAliases = legacyAliases
+        stableAliases.stableProxyAliases = true
+        stableAliases.subscriptions.reverse()
+        stableAliases.subscriptionProxies?[filterSource.id]?.reverse()
+        let stableTokyo = subscriptionProxyAlias(subscriptionID: filterSource.id, proxyName: "Tokyo-01")
+        try check(try proxyTargetName(tokyo, settings: stableAliases) == stableTokyo, "node resolution uses source identity after both reorderings")
+        try check(stableTokyo != subscriptionProxyAlias(subscriptionID: otherSource.id, proxyName: "Tokyo-01"), "same node names from different subscriptions stay distinct")
+        let migration = try migratedSubscriptionSelections(oldSelections, from: legacyAliases, to: stableAliases)
+        try check(migration["AliasMigration"] == stableTokyo && migration["GLOBAL"] == stableTokyo, "live legacy and GLOBAL caches follow the previous confirmed snapshot")
+        try await controller.reload(generateConfig(stableAliases))
+        for (name, target) in migration { try await controller.selectProxyGroup(name, target: target) }
+        stableAliases.subscriptions.reverse()
+        stableAliases.subscriptionProxies?[filterSource.id]?.reverse()
+        try await controller.reload(generateConfig(stableAliases))
+        let reorderedSelections = try await controller.proxyGroupSelections()
+        try check(reorderedSelections["AliasMigration"] == stableTokyo && reorderedSelections["GLOBAL"] == stableTokyo, "real cached choices survive subscription and node reordering")
+        try check(try proxyTargetName(tokyo, settings: stableAliases) == stableTokyo, "stable name resolves to the same original node after reload")
+        try check(try JSONDecoder().decode(Settings.self, from: JSONEncoder().encode(legacyAliases)).stableProxyAliases == nil, "missing legacy marker retains the old alias contract")
         filteredSettings.subscriptionProxies = [filterSource.id: [filterProxy("HongKong-01"), filterProxy("Tokyo-01")]]
         let filteredGroup = ProxyGroup(name: "HK", fields: ["include-all-proxies": .boolean(true), "filter": .string("^HongKong")])
         filteredSettings.proxyGroups = [filteredGroup]
         try check(proxyGroupTargets(filteredGroup, settings: filteredSettings) == ["node:" + Node(provider: filterSource.provider, name: "HongKong-01").id], "group filtering matches original subscription name")
         try await controller.reload(generateConfig(filteredSettings))
         let filteredResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
-        try check(filteredResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 0)], "real core group contains matching original-name alias only")
+        try check(filteredResponse?["all"] as? [String] == [subscriptionProxyAlias(subscriptionID: filterSource.id, proxyName: "HongKong-01")], "real core group contains matching original-name alias only")
         filteredSettings.proxyGroups?[0].fields = ["include-all-proxies": .boolean(true), "exclude-filter": .string("^HongKong")]
         try await controller.reload(generateConfig(filteredSettings))
         var exclusionResponse = try JSONSerialization.jsonObject(with: await controller.request("/proxies/HK")) as? [String: Any]
-        try check(exclusionResponse?["all"] as? [String] == [subscriptionProxyAlias(sourceIndex: 0, proxyIndex: 1)], "real core excludes subscription original name")
+        try check(exclusionResponse?["all"] as? [String] == [subscriptionProxyAlias(subscriptionID: filterSource.id, proxyName: "Tokyo-01")], "real core excludes subscription original name")
         filteredSettings.proxyGroups?[0].fields["default-selected"] = .string("node:" + Node(provider: filterSource.provider, name: "HongKong-01").id)
         try expectFailure("excluded default selection is rejected") { _ = try generateConfig(filteredSettings) }
         filteredSettings.proxyGroups?[0].fields["default-selected"] = nil
@@ -557,11 +794,30 @@ swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
   "${SOURCES[@]}" "$CHECK_DIR/InteractionChecks.swift" .build/manual/MihomoGUICore.o \
   -o "$CHECK_DIR/checks"
+/usr/bin/time -l "$CHECK_DIR/checks" 0 command-output-probe 2> "$CHECK_DIR/output-small.time"
+/usr/bin/time -l "$CHECK_DIR/checks" 67108864 command-output-probe 2> "$CHECK_DIR/output-large.time"
+python3 - "$CHECK_DIR" <<'PYMEM'
+from pathlib import Path
+import re
+import sys
+root = Path(sys.argv[1])
+def peak(name):
+    return int(re.search(r'(\d+)\s+maximum resident set size', (root / name).read_text())[1])
+assert peak('output-large.time') <= peak('output-small.time') + 32 * 1024 * 1024, 'command output memory grows with its full output'
+print('PASS: 64 MiB command output uses bounded capture memory')
+PYMEM
 "$CHECK_DIR/checks" "$CHECK_DIR" "$(uname -m)"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/config.yaml"
 "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-renamed.yaml"
+for index in 0 1 2; do
+  "resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/group-reference-$index.yaml"
+done
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/subrule-dispatch.yaml"
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/compatible.yaml"
+"resources/core/$(uname -m)/mihomo" -t -d "$CHECK_DIR" -f "$CHECK_DIR/overlapping-fields.yaml"
 cat > "$CHECK_DIR/PrivilegedChecks.swift" <<'SWIFT'
 import Foundation
+import Darwin
 import Security
 import MihomoGUICore
 
@@ -581,6 +837,157 @@ import MihomoGUICore
                 guard error.message == "规则文件标识无效" else { throw error }
             }
         }
+        let rulesRoot = source.appendingPathComponent("rule-transaction")
+        let ruleStage = source.appendingPathComponent("rule-input")
+        try FileManager.default.createDirectory(at: rulesRoot.appendingPathComponent("rules"), withIntermediateDirectories: true)
+        try FileManager.default.createDirectory(at: ruleStage, withIntermediateDirectories: true)
+        let ruleNames = ["set-0.yaml", "set-1.text"]
+        let original = rulesRoot.appendingPathComponent("rules/set-0.yaml")
+        try Data("old".utf8).write(to: original)
+        try Data("new".utf8).write(to: ruleStage.appendingPathComponent("set-0.yaml"))
+        // Missing second staged input interrupts preparation after one live replacement.
+        try Data((ruleNames.sorted().joined(separator: "\n") + "\n").utf8).write(to: ruleStage.appendingPathComponent("rule-manifest"))
+        let ruleID = UUID()
+        let prepared = try runPrivilegedScript(ruleFilePrepareCommand(staging: ruleStage, id: ruleID, filenames: ruleNames, directory: rulesRoot.path))
+        guard prepared.status != 0, try Data(contentsOf: original) == Data("new".utf8) else { throw MihomoGUIError("partial preparation fixture did not fail as expected") }
+        // An incorrect list cannot omit originals or invent removal targets.
+        try Data("set-1.text\n".utf8).write(to: ruleStage.appendingPathComponent("rule-manifest"))
+        let mismatched = try runPrivilegedScript(ruleFileFinishCommand(staging: ruleStage, id: ruleID, filenames: ["set-1.text"], restore: true, directory: rulesRoot.path))
+        guard mismatched.status != 0, try Data(contentsOf: original) == Data("new".utf8) else { throw MihomoGUIError("manifest mismatch changed rules") }
+        try Data((ruleNames.sorted().joined(separator: "\n") + "\n").utf8).write(to: ruleStage.appendingPathComponent("rule-manifest"))
+        let restore = ruleFileFinishCommand(staging: ruleStage, id: ruleID, filenames: ruleNames, restore: true, directory: rulesRoot.path)
+        guard try runPrivilegedScript(restore).status == 0, try Data(contentsOf: original) == Data("old".utf8),
+              try runPrivilegedScript(restore).status == 0, try Data(contentsOf: original) == Data("old".utf8) else { throw MihomoGUIError("durable rule restore is not idempotent") }
+        // No published manifest means backup construction never reached live replacement.
+        let unfinishedID = UUID()
+        let unfinished = rulesRoot.appendingPathComponent("rules-backup-" + unfinishedID.uuidString)
+        try FileManager.default.createDirectory(at: unfinished, withIntermediateDirectories: false)
+        guard try runPrivilegedScript(ruleFileFinishCommand(staging: ruleStage, id: unfinishedID, filenames: ruleNames, restore: true, directory: rulesRoot.path)).status == 0,
+              try Data(contentsOf: original) == Data("old".utf8) else { throw MihomoGUIError("unfinished backup removed an untouched original") }
+        // Simulate content growing after metadata was checked. The same bounded
+        // reader handles real files; small test limits exercise every byte boundary.
+        for bytes in [0, 1024, 1025] {
+            let input = Pipe()
+            let written = DispatchSemaphore(value: 0)
+            DispatchQueue.global(qos: .utility).async {
+                defer { try? input.fileHandleForWriting.close(); written.signal() }
+                if bytes > 0 {
+                    try? input.fileHandleForWriting.write(contentsOf: Data(repeating: 97, count: min(bytes, 512)))
+                    Thread.sleep(forTimeInterval: 0.02)
+                    if bytes > 512 { try? input.fileHandleForWriting.write(contentsOf: Data(repeating: 97, count: bytes - 512)) }
+                }
+            }
+            do {
+                let data = try readOperationInput(input.fileHandleForReading, deadline: PrivilegedOperationDeadline(timeout: 2), maximumBytes: 1024)
+                guard bytes <= 1024, data.count == bytes else { throw MihomoGUIError("growing input exceeded actual-byte bound") }
+            } catch let error as MihomoGUIError {
+                guard bytes == 1025, error.message == "操作输入超过大小限制" else { throw error }
+            }
+            try input.fileHandleForReading.close()
+            guard written.wait(timeout: .now() + 1) == .success else { throw MihomoGUIError("input producer did not finish") }
+        }
+        let oversizedStage = source.appendingPathComponent("oversized-input")
+        try FileManager.default.createDirectory(at: oversizedStage, withIntermediateDirectories: true)
+        let oversizedFile = oversizedStage.appendingPathComponent("mihomo")
+        FileManager.default.createFile(atPath: oversizedFile.path, contents: nil)
+        let sparse = try FileHandle(forWritingTo: oversizedFile)
+        try sparse.truncate(atOffset: UInt64(operationInputMaximumBytes + 1))
+        try sparse.close()
+        do {
+            _ = try executeOperation(.install(staging: oversizedStage.path, settings: Settings()), owner: getuid(), coreRequirement: "invalid")
+            throw MihomoGUIError("initially oversized file accepted")
+        } catch let error as MihomoGUIError {
+            guard error.message == "操作输入超过大小限制" else { throw error }
+        }
+        let alreadyExpired = PrivilegedOperationDeadline(timeout: 0)
+        do {
+            _ = try executeOperation(.install(staging: source.path, settings: Settings()), owner: getuid(), coreRequirement: "invalid", deadline: alreadyExpired)
+            throw MihomoGUIError("expired operation reached input handling")
+        } catch let error as MihomoGUIError {
+            guard error.message.contains("操作超时") else { throw error }
+        }
+        let service = Service(owner: getuid(), requirement: "invalid", coreRequirement: "invalid")
+        service.queue.async { Thread.sleep(forTimeInterval: 0.25) }
+        let replyArrived = DispatchSemaphore(value: 0)
+        let replyLock = NSLock()
+        var replyCount = 0
+        var replyDiagnostic: String?
+        let queuedDeadline = PrivilegedOperationDeadline(timeout: 0.04)
+        service.execute(Data("invalid fixture".utf8), deadline: queuedDeadline.end.uptimeNanoseconds) { _, diagnostic in
+            replyLock.lock(); replyCount += 1; replyDiagnostic = diagnostic; replyLock.unlock()
+            replyArrived.signal()
+        }
+        guard replyArrived.wait(timeout: .now() + 0.2) == .success else { throw MihomoGUIError("queued request timeout waited for the serial queue") }
+        service.queue.sync {}
+        replyLock.lock()
+        let queuedTimedOutOnce = replyCount == 1 && replyDiagnostic?.contains("操作超时") == true
+        replyLock.unlock()
+        guard queuedTimedOutOnce else { throw MihomoGUIError("queued timeout replied more than once or lost its diagnostic") }
+        let sizeRejected = DispatchSemaphore(value: 0)
+        var sizeStatus: Int32 = 0
+        service.execute(Data(repeating: 0, count: privilegedPayloadMaximumBytes + 1), deadline: (DispatchTime.now() + 2).uptimeNanoseconds) { status, _ in
+            replyLock.lock(); sizeStatus = status; replyLock.unlock(); sizeRejected.signal()
+        }
+        guard sizeRejected.wait(timeout: .now() + 1) == .success else { throw MihomoGUIError("oversized XPC payload did not reply") }
+        replyLock.lock(); let payloadRejected = sizeStatus == 64; replyLock.unlock()
+        guard payloadRejected else { throw MihomoGUIError("helper payload limit differs from client encoder") }
+        let longClientBudget = PrivilegedOperationDeadline(clientDeadline: (DispatchTime.now() + 1000).uptimeNanoseconds)
+        guard try longClientBudget.remaining <= 120 else { throw MihomoGUIError("helper accepted an unbounded client deadline") }
+        let cumulativeStart = Date()
+        let cumulativeDeadline = PrivilegedOperationDeadline(timeout: 0.2)
+        Thread.sleep(forTimeInterval: 0.14)
+        do {
+            _ = try runPrivilegedScript("/bin/sleep 2", timeout: 5, expiresAt: cumulativeDeadline.end)
+            throw MihomoGUIError("command received a fresh timeout after preparation")
+        } catch let error as MihomoGUIError {
+            guard error.message.contains("超时"), Date().timeIntervalSince(cumulativeStart) < 1 else { throw error }
+        }
+        let ownershipRoot = source.appendingPathComponent("service-ownership")
+        try FileManager.default.createDirectory(at: ownershipRoot, withIntermediateDirectories: true)
+        let ownershipPlist = ownershipRoot.appendingPathComponent("helper.plist")
+        let ownershipHelper = ownershipRoot.appendingPathComponent("helper")
+        let ownershipCore = ownershipRoot.appendingPathComponent("core.plist")
+        let ownershipData = ownershipRoot.appendingPathComponent("data")
+        let fixtureStat = ownershipRoot.appendingPathComponent("stat")
+        let fixtureMode = ownershipRoot.appendingPathComponent("mode")
+        try Data(("#!/bin/sh\nif [ \"$2\" = %u ]; then echo 0; else cat " + shellQuote(fixtureMode.path) + "; fi\n").utf8).write(to: fixtureStat)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixtureStat.path)
+        try Data("644\n".utf8).write(to: fixtureMode)
+        func ownershipCheck(_ owner: UInt32, simulatedRoot: Bool = true) throws -> Int32 {
+            var script = serviceOwnershipCheckCommand(owner: owner, helperPlist: ownershipPlist.path, installedHelper: ownershipHelper.path, corePlist: ownershipCore.path, dataDirectory: ownershipData.path)
+            if simulatedRoot { script = script.replacingOccurrences(of: "/usr/bin/stat", with: shellQuote(fixtureStat.path)) }
+            return try runPrivilegedScript(script).status
+        }
+        var ownershipProperties: [String: Any] = ["Label": privilegedServiceLabel, "ProgramArguments": [ownershipHelper.path, "501", "client", "core"]]
+        func saveOwnership() throws {
+            try PropertyListSerialization.data(fromPropertyList: ownershipProperties, format: .xml, options: 0).write(to: ownershipPlist, options: .atomic)
+        }
+        guard try ownershipCheck(501) == 0 else { throw MihomoGUIError("clean first installation blocked") }
+        try saveOwnership()
+        guard try ownershipCheck(501) == 0, try ownershipCheck(502) != 0 else { throw MihomoGUIError("service ownership permits cross-user takeover") }
+        if getuid() != 0 {
+            guard try ownershipCheck(501, simulatedRoot: false) != 0 else { throw MihomoGUIError("user-owned ownership record was trusted") }
+        }
+        try Data("666\n".utf8).write(to: fixtureMode)
+        guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("writable ownership record was trusted") }
+        try Data("644\n".utf8).write(to: fixtureMode)
+        ownershipProperties["Label"] = "other-service"; try saveOwnership()
+        guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("unrelated service label was accepted") }
+        ownershipProperties["Label"] = privilegedServiceLabel
+        for arguments in [[ownershipHelper.path, "0", "client", "core"], [ownershipHelper.path, "unknown", "client", "core"], [ownershipHelper.path, "501", "client"], [ownershipHelper.path, "501", "client", "core", "extra"]] {
+            ownershipProperties["ProgramArguments"] = arguments; try saveOwnership()
+            guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("malformed ownership record was accepted") }
+        }
+        try FileManager.default.removeItem(at: ownershipPlist)
+        try FileManager.default.createSymbolicLink(at: ownershipPlist, withDestinationURL: fixtureMode)
+        guard try ownershipCheck(501) != 0 else { throw MihomoGUIError("symlink ownership record was accepted") }
+        try FileManager.default.removeItem(at: ownershipPlist)
+        for leftover in [ownershipCore, ownershipHelper, ownershipData] {
+            try Data("legacy state".utf8).write(to: leftover)
+            guard try ownershipCheck(502) != 0 else { throw MihomoGUIError("unattributed system state was silently adopted") }
+            try FileManager.default.removeItem(at: leftover)
+        }
+        guard try ownershipCheck(502) == 0 else { throw MihomoGUIError("full cleanup did not permit another installation owner") }
         let target = source.appendingPathComponent("mihomo")
         try FileManager.default.createSymbolicLink(atPath: target.path, withDestinationPath: "/bin/sh")
         do {
@@ -622,12 +1029,103 @@ import MihomoGUICore
         guard bounded.status == 7, bounded.diagnostic.contains("磁盘空间不足") else {
             throw MihomoGUIError("bounded diagnostics lost final failure")
         }
-        print("PASS: privileged boundary rejects arbitrary commands, path traversal and symlink inputs")
+        let healthStage = source.appendingPathComponent("health-checks")
+        try FileManager.default.createDirectory(at: healthStage, withIntermediateDirectories: true)
+        let healthPortText = try String(contentsOf: source.appendingPathComponent("download-port"), encoding: .utf8)
+        let healthPID = try String(contentsOf: source.appendingPathComponent("download-pid"), encoding: .utf8)
+        guard let healthPort = Int(healthPortText), let fixturePID = Int(healthPID) else { throw MihomoGUIError("invalid health fixture") }
+        let launchctl = healthStage.appendingPathComponent("launchctl")
+        func stageHealth(_ route: String, pid: Int, changingPID: Bool = false) throws -> String {
+            let state = healthStage.appendingPathComponent("queried")
+            try? FileManager.default.removeItem(at: state)
+            let program = changingPID
+                ? "#!/bin/sh\nif [ -f " + shellQuote(state.path) + " ]; then echo 'pid = \(pid + 1)'; else touch " + shellQuote(state.path) + "; echo 'pid = \(pid)'; fi\n"
+                : "#!/bin/sh\necho 'pid = \(pid)'\n"
+            try program.write(to: launchctl, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launchctl.path)
+            try JSONSerialization.data(withJSONObject: ["version": configurationCoreVersion, "port": healthPort]).write(to: healthStage.appendingPathComponent("health.json"))
+            try route.write(to: source.appendingPathComponent("health-mode"), atomically: true, encoding: .utf8)
+            try "header = \"Authorization: Bearer fixture\"\n".write(to: healthStage.appendingPathComponent("health.curl"), atomically: true, encoding: .utf8)
+            let body = coreHealthCommand(staging: healthStage, controllerPort: healthPort).replacingOccurrences(of: "/bin/launchctl", with: shellQuote(launchctl.path))
+            return "check_health() {\n" + body + "\n}\ncheck_health"
+        }
+        let installer = coreInstallCommand(staging: healthStage, seedCommands: [], controllerPort: healthPort,
+                                           rootDirectory: healthStage.appendingPathComponent("root").path,
+                                           installedCore: healthStage.appendingPathComponent("helpers/mihomo").path,
+                                           coreLabel: "local.MihomoGUI.health-fixture",
+                                           destinationPlist: healthStage.appendingPathComponent("core.plist").path)
+        let syntax = try runPrivilegedScript("/bin/sh -n -c " + shellQuote(installer))
+        guard syntax.status == 0 else { throw MihomoGUIError("generated installation and health command syntax is invalid") }
+        let healthy = try runPrivilegedScript(stageHealth("valid", pid: fixturePID))
+        guard healthy.status == 0 else { throw MihomoGUIError("valid version and listener owner rejected") }
+        for route in ["text", "version", "meta", "unauthorized", "redirect", "oversized", "timeout"] {
+            let result = try runPrivilegedScript(stageHealth(route, pid: fixturePID))
+            guard result.status != 0 else { throw MihomoGUIError("invalid health response accepted: " + route) }
+            let size = try healthStage.appendingPathComponent("health-response.json").resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size <= 16385 else { throw MihomoGUIError("health response exceeded streaming cap") }
+        }
+        let healthRequests = try Data(contentsOf: source.appendingPathComponent("health-count"))
+        let wrongOwner = try runPrivilegedScript(stageHealth("valid", pid: fixturePID + 1))
+        guard wrongOwner.status != 0 else { throw MihomoGUIError("unrelated HTTP server accepted as launchd core") }
+        guard try Data(contentsOf: source.appendingPathComponent("health-count")) == healthRequests else { throw MihomoGUIError("credentials sent before listener ownership was verified") }
+        let changed = try runPrivilegedScript(stageHealth("valid", pid: fixturePID, changingPID: true))
+        guard changed.status != 0 else { throw MihomoGUIError("changing launchd PID accepted as healthy") }
+        for bindHost in ["127.0.0.1", "0.0.0.0", "[::1]", "[::]"] {
+            let reservation = socket(AF_INET, SOCK_STREAM, 0)
+            guard reservation >= 0 else { throw MihomoGUIError("health port allocation failed") }
+            var address = sockaddr_in()
+            address.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
+            address.sin_family = sa_family_t(AF_INET)
+            address.sin_addr.s_addr = inet_addr("127.0.0.1")
+            let bound = withUnsafePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(reservation, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) }
+            }
+            var length = socklen_t(MemoryLayout<sockaddr_in>.size)
+            let named = withUnsafeMutablePointer(to: &address) { pointer in
+                pointer.withMemoryRebound(to: sockaddr.self, capacity: 1) { getsockname(reservation, $0, &length) }
+            }
+            close(reservation)
+            guard bound == 0 && named == 0 else { throw MihomoGUIError("health port allocation failed") }
+            let port = Int(UInt16(bigEndian: address.sin_port))
+            let secret = UUID().uuidString
+            let configuration = healthStage.appendingPathComponent("core.yaml")
+            try yamlData(["mixed-port": 0, "external-controller": "\(bindHost):\(port)", "secret": secret, "mode": "direct", "dns": ["enable": false], "tun": ["enable": false]]).write(to: configuration)
+            let process = Process()
+            process.executableURL = core
+            process.arguments = ["-d", healthStage.path, "-f", configuration.path]
+            process.standardOutput = FileHandle.nullDevice; process.standardError = FileHandle.nullDevice
+            try process.run()
+            defer {
+                if process.isRunning {
+                    let deadline = ProcessDeadline(process: process, timeout: 5)
+                    process.terminate(); process.waitUntilExit(); deadline.invalidate()
+                }
+            }
+            try "#!/bin/sh\necho 'pid = \(process.processIdentifier)'\n".write(to: launchctl, atomically: true, encoding: .utf8)
+            try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: launchctl.path)
+            try JSONSerialization.data(withJSONObject: ["version": configurationCoreVersion, "port": port]).write(to: healthStage.appendingPathComponent("health.json"))
+            try "header = \"Authorization: Bearer \(secret)\"\n".write(to: healthStage.appendingPathComponent("health.curl"), atomically: true, encoding: .utf8)
+            let body = coreHealthCommand(staging: healthStage, controllerPort: port).replacingOccurrences(of: "/bin/launchctl", with: shellQuote(launchctl.path))
+            var ready = false
+            for _ in 0..<30 {
+                guard process.isRunning else { break }
+                if try runPrivilegedScript("check_health() {\n" + body + "\n}\ncheck_health", timeout: 5).status == 0 { ready = true; break }
+                Thread.sleep(forTimeInterval: 0.1)
+            }
+            guard ready else { throw MihomoGUIError("real core health check rejected " + bindHost) }
+        }
+        print("PASS: privileged boundary, cumulative deadline, bounded health protocol, stable listener identity and real-core IPv4/IPv6 wildcard checks")
     }
 }
 SWIFT
+python3 - "$CHECK_DIR/Service.swift" <<'PYSERVICE'
+from pathlib import Path
+import sys
+source = Path('Sources/MihomoGUIHelper/main.swift').read_text()
+Path(sys.argv[1]).write_text(source.split('\nguard getuid() == 0,')[0])
+PYSERVICE
 swiftc -parse-as-library -module-cache-path .build/manual/module-cache \
   -target "$(uname -m)-apple-macosx13.0" -I .build/manual \
-  Sources/MihomoGUIHelper/Operations.swift "$CHECK_DIR/PrivilegedChecks.swift" .build/manual/MihomoGUICore.o \
+  Sources/MihomoGUIHelper/Operations.swift "$CHECK_DIR/Service.swift" "$CHECK_DIR/PrivilegedChecks.swift" .build/manual/MihomoGUICore.o \
   -o "$CHECK_DIR/privileged-checks"
 "$CHECK_DIR/privileged-checks" "$CHECK_DIR"

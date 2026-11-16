@@ -11,11 +11,12 @@ public final class ProcessDeadline {
     private var expired = false
     private var invalidated = false
 
-    public init(process: Process, timeout: TimeInterval, terminationGrace: TimeInterval = 5) {
+    public init(process: Process, timeout: TimeInterval, terminationGrace: TimeInterval = 5, expiresAt: DispatchTime? = nil) {
         self.process = process
         let pid = process.processIdentifier
         group = getpgid(pid) == pid ? pid : nil
-        timer.schedule(deadline: .now() + timeout)
+        let localDeadline = DispatchTime.now() + timeout
+        timer.schedule(deadline: expiresAt.map { min($0, localDeadline) } ?? localDeadline)
         timer.setEventHandler { [weak self] in
             guard let self else { return }
             self.lock.lock()

@@ -21,7 +21,7 @@ struct ValueMap: View {
     @FocusState private var focusedName: UUID?
     var isHeader: Bool { ["header", "headers"].contains(field.path.components(separatedBy: ".").last ?? "") }
     var supportsList: Bool { field.elementKind == "list" }
-    var item: EditorField { EditorField("value", kind: supportsList ? "string" : field.elementKind ?? "string", children: field.children) }
+    var item: EditorField { EditorField("value", kind: isHeader ? "secret" : supportsList ? "string" : field.elementKind ?? "string", children: field.children) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -35,7 +35,7 @@ struct ValueMap: View {
                             .accessibilityLabel(isHeader ? "请求头名称" : "键名")
                         VStack(alignment: .leading, spacing: 4) {
                             if supportsList, case .array = entry.value {
-                                ValueList(field: EditorField("value", kind: "list", elementKind: "string"), value: $entry.value, compact: compact, addTitle: "添加值")
+                                ValueList(field: EditorField("value", kind: "list", elementKind: isHeader ? "secret" : "string"), value: $entry.value, compact: compact, addTitle: "添加值")
                             } else {
                                 VisualValue(field: item, value: $entry.value, compact: compact)
                             }

@@ -10,7 +10,7 @@
 
 [发布工作流](../.github/workflows/release-please.yml) 在推送 `main` 或手动触发时运行。合并发布 PR 后创建标签与草稿 GitHub Release，再调用 arm64 构建工作流。`draft` 与 `force-tag-creation` 同时启用，确保草稿阶段已有可构建的标签。工作流也会为新建或更新的发布 PR 主动触发分支构建。
 
-仓库 Settings → Actions → General 需要允许 GitHub Actions 创建和批准 Pull Request。工作流使用内置 `GITHUB_TOKEN`；默认构建使用本地临时签名；可选 Developer ID 签名和公证流程见下文。未启用正式签名时，附件仍是临时签名构建。
+仓库 Settings → Actions → General 已允许 GitHub Actions 创建和批准 Pull Request；默认令牌仍为只读，写权限仅由相应 job 显式声明，配置与回读方式见[仓库设置](repository-settings.md)。工作流使用内置 `GITHUB_TOKEN`；默认构建使用本地临时签名；可选 Developer ID 签名和公证流程见下文。未启用正式签名时，附件仍是临时签名构建。
 
 ## 构建与附件上传
 
@@ -80,3 +80,9 @@ gh attestation verify BUILD-METADATA.json --repo halifox/mihomoGUI
 SHA-256 检查文件完整性，来源证明检查发布工作流身份；二者不能替代对代码行为的审核。手动构建历史标签时，工作流提交可能不同于检出源码提交，应同时检查元数据中的 `source_commit`、`workflow_commit`、`workflow_ref`。本地归档不伪造 GitHub 证明，证明签发需要在 GitHub Actions 实际运行，使用方式见 [官方 attest 文档](https://github.com/actions/attest)。
 
 发布门禁的离线回归使用 `python3 scripts/check-release.py`。它从实际工作流读取发布步骤，以临时 `gh` 模拟新草稿、已有草稿、分页、公开版本、附件冲突、部分上传、摘要错误、来源证明失败、标签变化、权限和网络错误；不访问或修改远端 Release。
+
+## v1.0.0 历史验证附件
+
+`v1.0.0` 公开时只有应用 ZIP。针对该历史版本，补充 SHA256SUMS、重建的 BUILD-METADATA.json、LEGACY-PROVENANCE.json、原始 CI 归档和 VERIFICATION.md；原始 ZIP 和标签保持不变。记录与独立校验步骤见 [v1.0.0 历史验证](releases/v1.0.0/VERIFICATION.md)。
+
+这次补充仅恢复从原始成功运行、检出日志及逐字节匹配 CI 归档可验证的事实；原始构建没有签发步骤，未补造 Sigstore 证明，未知原始字段明确保留。此历史附件补全是对既有缺失记录的维护，不放宽常规发布对已公开版本、完整附件及签名来源证明的门禁。

@@ -1,5 +1,6 @@
 import Foundation
 import Darwin
+import CryptoKit
 
 public func providerFile(_ subscription: Subscription, directory: URL) -> URL {
     directory.appendingPathComponent("providers").appendingPathComponent(subscription.id + ".yaml")
@@ -102,12 +103,22 @@ public func prepareGeoAssets(corePath: String, directory: URL, names: [String] =
         let target = directory.appendingPathComponent(name)
         let sourceMarker = directory.appendingPathComponent(name + ".source")
         let sourceURL = urls[name] ?? ""
-        if ((try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0) > 0,
-           ((try? String(contentsOf: sourceMarker, encoding: .utf8)) ?? "") == sourceURL { continue }
         let candidates = sourceURL.isEmpty ? sourceFolders.flatMap { [$0.appendingPathComponent(name), $0.appendingPathComponent(name.lowercased())] } : []
-        if let source = candidates.first(where: { FileManager.default.isReadableFile(atPath: $0.path) }) {
-            if FileManager.default.fileExists(atPath: target.path) { try FileManager.default.removeItem(at: target) }
-            try FileManager.default.copyItem(at: source, to: target)
+        let source = candidates.first(where: { FileManager.default.isReadableFile(atPath: $0.path) })
+        var sourceIdentity = sourceURL
+        var bundledData: Data?
+        if let source {
+            let size = try source.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
+            guard size > 0, size <= 100 * 1024 * 1024 else { throw MihomoGUIError("内置 GEO 数据文件大小无效") }
+            let data = try Data(contentsOf: source, options: .mappedIfSafe)
+            sourceIdentity = "bundled-sha256:" + SHA256.hash(data: data).map { String(format: "%02x", $0) }.joined()
+            bundledData = data
+        }
+        if ((try? target.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0) ?? 0) > 0,
+           ((try? String(contentsOf: sourceMarker, encoding: .utf8)) ?? "") == sourceIdentity { continue }
+        if let bundledData {
+            // Atomic replacement preserves the previous cache if writing fails.
+            try bundledData.write(to: target, options: .atomic)
         } else {
             let defaultURL = name == "ASN.mmdb" ? "https://github.com/xishang0128/geoip/releases/download/latest/GeoLite2-ASN.mmdb"
                 : "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/" + name.lowercased()
@@ -123,7 +134,7 @@ public func prepareGeoAssets(corePath: String, directory: URL, names: [String] =
             try Data(contentsOf: download).write(to: target, options: .atomic)
         }
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
-        try sourceURL.write(to: sourceMarker, atomically: true, encoding: .utf8)
+        try sourceIdentity.write(to: sourceMarker, atomically: true, encoding: .utf8)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: sourceMarker.path)
     }
 }

@@ -3,18 +3,37 @@ import Darwin
 import Security
 import MihomoGUICore
 
+let operationInputMaximumBytes = 128 * 1024 * 1024
+
+// Bound actual bytes independently of an earlier fstat: regular files can grow.
+func readOperationInput(_ file: FileHandle, deadline: PrivilegedOperationDeadline, maximumBytes: Int = operationInputMaximumBytes) throws -> Data {
+    guard (0...operationInputMaximumBytes).contains(maximumBytes) else { throw MihomoGUIError("操作输入大小限制无效") }
+    var data = Data()
+    while true {
+        try deadline.check()
+        // Read one byte beyond the remaining allowance to distinguish EOF from growth.
+        let chunk = try file.read(upToCount: min(65_536, maximumBytes - data.count + 1)) ?? Data()
+        try deadline.check()
+        guard chunk.count <= maximumBytes - data.count else { throw MihomoGUIError("操作输入超过大小限制") }
+        if chunk.isEmpty { return data }
+        data.append(chunk)
+    }
+}
+
 // Read through one descriptor so a user-controlled symlink cannot redirect a root read.
-private func readInput(_ path: String, owner: uid_t) throws -> Data {
+private func readInput(_ path: String, owner: uid_t, deadline: PrivilegedOperationDeadline) throws -> Data {
+    try deadline.check()
     let descriptor = open(path, O_RDONLY | O_NOFOLLOW | O_NONBLOCK)
     guard descriptor >= 0 else { throw MihomoGUIError("无法读取操作输入") }
     let file = FileHandle(fileDescriptor: descriptor, closeOnDealloc: true)
     defer { try? file.close() }
     var info = stat()
     guard fstat(descriptor, &info) == 0, info.st_mode & S_IFMT == S_IFREG,
-          info.st_uid == owner, info.st_size >= 0, info.st_size <= 128 * 1024 * 1024 else {
+          info.st_uid == owner, info.st_size >= 0 else {
         throw MihomoGUIError("操作输入必须是安装用户拥有的普通文件")
     }
-    return try file.readToEnd() ?? Data()
+    guard info.st_size <= operationInputMaximumBytes else { throw MihomoGUIError("操作输入超过大小限制") }
+    return try readOperationInput(file, deadline: deadline)
 }
 
 private func checkRuleNames(_ names: [String]) throws {
@@ -30,15 +49,18 @@ private func checkDirectory(_ path: String) throws {
           info.st_mode & 0o022 == 0 else { throw MihomoGUIError("系统操作目录权限无效") }
 }
 
-func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequirement: String) throws -> Int32 {
+func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequirement: String, deadline: PrivilegedOperationDeadline = PrivilegedOperationDeadline(timeout: 120)) throws -> Int32 {
+    try deadline.check()
     let stage = URL(fileURLWithPath: "/private/tmp").appendingPathComponent("MihomoGUI-operation-" + UUID().uuidString)
     try FileManager.default.createDirectory(at: stage, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
     defer { try? FileManager.default.removeItem(at: stage) }
     func write(_ data: Data, _ name: String) throws {
+        try deadline.check()
         let target = stage.appendingPathComponent(name)
         try FileManager.default.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true, attributes: [.posixPermissions: 0o700])
         try data.write(to: target, options: .atomic)
         try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: target.path)
+        try deadline.check()
     }
     let command: String
     switch operation {
@@ -52,9 +74,11 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
         command = "set -eu\n/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent("config.yaml").path) + " " + shellQuote(pending)
             + "\n/bin/mv -f " + shellQuote(pending) + " " + shellQuote(target)
     case .install(let source, let settings):
-        try write(readInput(URL(fileURLWithPath: source).appendingPathComponent("mihomo").path, owner: owner), "mihomo")
+        try write(readInput(URL(fileURLWithPath: source).appendingPathComponent("mihomo").path, owner: owner, deadline: deadline), "mihomo")
         try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: stage.appendingPathComponent("mihomo").path)
+        try deadline.check()
         try verifyCore(at: stage.appendingPathComponent("mihomo"), requirement: coreRequirement)
+        try deadline.check()
 
         try write(generateConfig(settings), "config.yaml")
         let plist: [String: Any] = ["Label": coreLabel,
@@ -63,9 +87,9 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
             "StandardOutPath": "/dev/null", "StandardErrorPath": "/dev/null", "Umask": 0o077]
         try write(PropertyListSerialization.data(fromPropertyList: plist, format: .xml, options: 0), coreLabel + ".plist")
         let endpoint = try controllerEndpoint(settings)
-        let host = endpoint.host.contains(":") && !endpoint.host.hasPrefix("[") ? "[\(endpoint.host)]" : endpoint.host
         func escape(_ value: String) -> String { value.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"") }
-        try write(Data(("url = \"" + escape("http://\(host):\(endpoint.port)/version") + "\"\nheader = \"Authorization: Bearer " + escape(endpoint.secret) + "\"\n").utf8), "health.curl")
+        try write(Data(("header = \"Authorization: Bearer " + escape(endpoint.secret) + "\"\n").utf8), "health.curl")
+        try write(JSONSerialization.data(withJSONObject: ["version": configurationCoreVersion, "port": endpoint.port]), "health.json")
         var seeds = ["/bin/test ! -L " + shellQuote(rootDirectory + "/rules"), "/bin/mkdir -p " + shellQuote(rootDirectory + "/rules"), "/bin/chmod 700 " + shellQuote(rootDirectory + "/rules")]
         let providers = settings.options?["rule-providers"]?.object ?? [:]
         var names = geoAssetsNeeded(settings)
@@ -73,55 +97,167 @@ func executeOperation(_ operation: PrivilegedOperation, owner: uid_t, coreRequir
             names.append("rules/set-\(index)." + (providers[name]?.object["format"]?.text ?? "yaml"))
         }
         for name in names {
-            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner), name)
+            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner, deadline: deadline), name)
             let target = rootDirectory + "/" + name
             seeds.append("/bin/test ! -L " + shellQuote(target))
             seeds.append("/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent(name).path) + " " + shellQuote(target))
         }
-        command = coreInstallCommand(staging: stage, seedCommands: seeds)
+        command = coreInstallCommand(staging: stage, seedCommands: seeds, controllerPort: endpoint.port)
     case .prepareRules(let source, let id, let filenames):
         try checkRuleNames(filenames)
         try checkDirectory(rootDirectory)
-        let rules = rootDirectory + "/rules"
-        let backup = rootDirectory + "/rules-backup-" + id.uuidString
-        var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rules), "/bin/mkdir -p " + shellQuote(rules), "/bin/chmod 700 " + shellQuote(rules), "/bin/mkdir -m 700 " + shellQuote(backup)]
-        var rollback: [String] = []
         for name in filenames {
-            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner), name)
-            let target = rules + "/" + name
-            let saved = backup + "/" + name
-            commands.append("/bin/test ! -L " + shellQuote(target))
-            commands.append("if [ -e " + shellQuote(target) + " ]; then /bin/cp -p " + shellQuote(target) + " " + shellQuote(saved) + "; fi")
-            rollback.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target) + "; else /bin/rm -f " + shellQuote(target) + "; fi")
+            try write(readInput(URL(fileURLWithPath: source).appendingPathComponent(name).path, owner: owner, deadline: deadline), name)
         }
-        commands.append("trap " + shellQuote(rollback.joined(separator: "\n")) + " EXIT")
-        for name in filenames { commands.append("/usr/bin/install -o root -g wheel -m 600 " + shellQuote(stage.appendingPathComponent(name).path) + " " + shellQuote(rules + "/" + name)) }
-        commands.append("trap - EXIT")
-        command = commands.joined(separator: "\n")
+        try write(Data((filenames.sorted().joined(separator: "\n") + "\n").utf8), "rule-manifest")
+        command = ruleFilePrepareCommand(staging: stage, id: id, filenames: filenames)
     case .finishRules(let id, let filenames, let restore):
         try checkRuleNames(filenames)
         try checkDirectory(rootDirectory)
         let backup = rootDirectory + "/rules-backup-" + id.uuidString
-        try checkDirectory(backup)
-        var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rootDirectory + "/rules")]
-        if restore {
-            for name in filenames {
-                let target = rootDirectory + "/rules/" + name
-                let saved = backup + "/" + name
-                commands.append("/bin/test ! -L " + shellQuote(target))
-                commands.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target) + "; else /bin/rm -f " + shellQuote(target) + "; fi")
-            }
+        var info = stat()
+        if lstat(backup, &info) != 0 {
+            guard errno == ENOENT else { throw MihomoGUIError("无法读取规则事务备份") }
+            return 0 // Never prepared, or already retired after a lost reply.
         }
-        commands.append("/bin/rm -rf " + shellQuote(backup))
-        command = commands.joined(separator: "\n")
+        try checkDirectory(backup)
+        try write(Data((filenames.sorted().joined(separator: "\n") + "\n").utf8), "rule-manifest")
+        command = ruleFileFinishCommand(staging: stage, id: id, filenames: filenames, restore: restore)
+
     }
-    let result = try runPrivilegedScript(command)
+    let result = try runPrivilegedScript(command, timeout: deadline.remaining, expiresAt: deadline.end)
+    try deadline.check()
     guard result.status == 0 else { throw PrivilegedCommandFailure(diagnostic: result.diagnostic) }
     return result.status
 }
 
+// Back up every original before publishing the manifest and touching live files.
+// An interrupted prepare without a manifest has not changed any live file.
+func ruleFilePrepareCommand(staging: URL, id: UUID, filenames: [String], directory: String = rootDirectory) -> String {
+    let rules = directory + "/rules"
+    let backup = directory + "/rules-backup-" + id.uuidString
+    var commands = ["set -eu", "/bin/test ! -L " + shellQuote(rules), "/bin/mkdir -p " + shellQuote(rules), "/bin/chmod 700 " + shellQuote(rules), "/bin/mkdir -m 700 " + shellQuote(backup)]
+    for name in filenames {
+        let target = rules + "/" + name
+        commands.append("/bin/test ! -L " + shellQuote(target))
+        commands.append("if [ -e " + shellQuote(target) + " ]; then /bin/cp -p " + shellQuote(target) + " " + shellQuote(backup + "/" + name) + "; fi")
+    }
+    commands.append("/usr/bin/install -m 600 " + shellQuote(staging.appendingPathComponent("rule-manifest").path) + " " + shellQuote(backup + "/manifest-pending"))
+    commands.append("/bin/mv " + shellQuote(backup + "/manifest-pending") + " " + shellQuote(backup + "/manifest"))
+    for name in filenames {
+        commands.append("/usr/bin/install -m 600 " + shellQuote(staging.appendingPathComponent(name).path) + " " + shellQuote(rules + "/" + name))
+    }
+    return commands.joined(separator: "\n")
+}
+
+func ruleFileFinishCommand(staging: URL, id: UUID, filenames: [String], restore: Bool, directory: String = rootDirectory) -> String {
+    let backup = directory + "/rules-backup-" + id.uuidString
+    // Rename only after all restorations finish. Interrupted cleanup must never
+    // turn a missing saved file into an instruction to remove a restored original.
+    let retired = directory + "/rules-retired-" + id.uuidString
+    var commands = ["set -eu", "/bin/test ! -L " + shellQuote(directory + "/rules"),
+                    "if [ ! -e " + shellQuote(backup) + " ]; then exit 0; fi",
+                    "/bin/test ! -L " + shellQuote(backup),
+                    "if [ -e " + shellQuote(backup + "/manifest") + " ]; then",
+                    "/bin/test ! -L " + shellQuote(backup + "/manifest"),
+                    "/usr/bin/cmp -s " + shellQuote(staging.appendingPathComponent("rule-manifest").path) + " " + shellQuote(backup + "/manifest")]
+    if restore {
+        for name in filenames {
+            let target = directory + "/rules/" + name
+            let saved = backup + "/" + name
+            commands.append("/bin/test ! -L " + shellQuote(target))
+            commands.append("/bin/test ! -L " + shellQuote(saved))
+            commands.append("if [ -f " + shellQuote(saved) + " ]; then /bin/cp -p " + shellQuote(saved) + " " + shellQuote(target) + "; else /bin/rm -f " + shellQuote(target) + "; fi")
+        }
+    }
+    commands += ["fi", "/bin/test ! -e " + shellQuote(retired), "/bin/mv " + shellQuote(backup) + " " + shellQuote(retired), "/bin/rm -rf " + shellQuote(retired)]
+    return commands.joined(separator: "\n")
+}
+
+// Bounded protocol and listener checks; no response body is returned in diagnostics.
+let coreHealthCheckRuby = #"""
+begin
+  spec = JSON.parse(File.binread(ARGV[0]))
+  pid = Integer(ARGV[1])
+  body_path, listeners_path, remote_path, status_path = ARGV[2, 4]
+  exit 1 unless pid > 0 && File.size(listeners_path) <= 32768
+  current_pid = nil
+  family = nil
+  addresses = []
+  File.foreach(listeners_path) do |line|
+    field = line.strip
+    case field[0]
+    when 'p' then current_pid = Integer(field[1..-1]); family = nil
+    when 't' then family = field[1..-1]
+    when 'n'
+      next unless current_pid == pid
+      match = /\A(?:\[([^\]]+)\]|([^:]+)):(\d+)\z/.match(field[1..-1])
+      next unless match && Integer(match[3]) == spec['port']
+      address = match[1] || match[2]
+      wildcard = ['*', '0.0.0.0', '::'].include?(address)
+      if wildcard
+        next unless ['IPv4', 'IPv6'].include?(family)
+        address = family == 'IPv6' ? '::1' : '127.0.0.1'
+      end
+      numeric, zone = address.split('%', 2)
+      ip = IPAddr.new(numeric).native
+      addresses << [ip, wildcard, zone]
+    end
+  end
+  exit 1 if addresses.empty?
+  if ARGV[6] == 'listener'
+    ip, _, zone = addresses.first
+    host = ip.ipv6? ? '[' + ip.to_s + (zone ? '%25' + zone : '') + ']' : ip.to_s
+    puts 'http://' + host + ':' + spec['port'].to_s + '/version'
+    exit 0
+  end
+  exit 1 unless File.binread(status_path) == '0' && File.size(body_path) <= 16384
+  body = JSON.parse(File.binread(body_path))
+  exit 1 unless body.is_a?(Hash) && body['meta'] == true && [spec['version'], 'v' + spec['version']].include?(body['version'])
+  http_status, remote_ip = File.binread(remote_path).strip.split(/\s+/, 2)
+  exit 1 unless http_status == '200' && remote_ip
+  peer = IPAddr.new(remote_ip.split('%').first).native
+  owned = addresses.any? { |ip, wildcard, _| ip == peer || (wildcard && ip.ipv4? == peer.ipv4?) }
+  exit(owned ? 0 : 1)
+rescue StandardError
+  exit 1
+end
+"""#
+
+// This body runs inside a shell function, including in unprivileged health fixtures.
+func coreHealthCommand(staging: URL, controllerPort: Int, coreLabel: String = MihomoGUICore.coreLabel) -> String {
+    let context = staging.appendingPathComponent("health.json").path
+    let response = staging.appendingPathComponent("health-response.json").path
+    let listeners = staging.appendingPathComponent("health-listeners").path
+    let remote = staging.appendingPathComponent("health-remote").path
+    let status = staging.appendingPathComponent("health-status").path
+    let health = staging.appendingPathComponent("health.curl").path
+    let service = shellQuote("system/" + coreLabel)
+    let query = "/bin/launchctl print " + service + " 2>/dev/null | /usr/bin/awk '/^[[:space:]]*pid = [0-9]+$/ {print $3; exit}'"
+    let check = "/usr/bin/ruby -rjson -ripaddr -e " + shellQuote(coreHealthCheckRuby) + " " + shellQuote(context) + " \"$pid\" " + [response, listeners, remote, status].map(shellQuote).joined(separator: " ")
+    let inspect = "/usr/sbin/lsof -nP -a -p \"$pid\" -iTCP:" + String(controllerPort) + " -sTCP:LISTEN -Fptn 2>/dev/null | /usr/bin/head -c 32769 > " + shellQuote(listeners)
+    return """
+    pid=$(\(query))
+    case "$pid" in ''|*[!0-9]*) return 1 ;; esac
+    [ "$pid" -gt 0 ] || return 1
+    \(inspect)
+    verified_url=$(\(check) listener 2>/dev/null) || return 1
+    {
+        if /usr/bin/curl --noproxy '*' --fail --silent --output - --write-out '%{stderr}%{http_code} %{remote_ip}' --max-time 1 --url "$verified_url" --config \(shellQuote(health)); then
+            /usr/bin/printf '0' > \(shellQuote(status))
+        else
+            /usr/bin/printf '1' > \(shellQuote(status))
+        fi
+    } 2> \(shellQuote(remote)) | /usr/bin/head -c 16385 > \(shellQuote(response))
+    \(inspect)
+    \(check) 2>/dev/null || return 1
+    confirmed_pid=$(\(query))
+    [ "$confirmed_pid" = "$pid" ]
+    """
+}
+
 // Kept separate so rollback can be exercised against temporary files without administrator access.
-func coreInstallCommand(staging: URL, seedCommands: [String],
+func coreInstallCommand(staging: URL, seedCommands: [String], controllerPort: Int,
                         rootDirectory: String = MihomoGUICore.rootDirectory, installedCore: String = MihomoGUICore.installedCore,
                         coreLabel: String = MihomoGUICore.coreLabel, destinationPlist: String? = nil) -> String {
     let helperDirectory = URL(fileURLWithPath: installedCore).deletingLastPathComponent().path
@@ -129,7 +265,6 @@ func coreInstallCommand(staging: URL, seedCommands: [String],
     let binary = staging.appendingPathComponent("mihomo")
     let configFile = staging.appendingPathComponent("config.yaml")
     let plist = staging.appendingPathComponent(coreLabel + ".plist")
-    let health = staging.appendingPathComponent("health.curl")
     return """
     set -eu
     /bin/test ! -L \(shellQuote(rootDirectory))
@@ -192,9 +327,12 @@ func coreInstallCommand(staging: URL, seedCommands: [String],
     /usr/bin/install -o root -g wheel -m 644 \(shellQuote(plist.path)) \(shellQuote(destinationPlist))
     /bin/launchctl enable system/\(coreLabel)
     /bin/launchctl bootstrap system \(shellQuote(destinationPlist))
+    check_health() {
+        \(coreHealthCommand(staging: staging, controllerPort: controllerPort, coreLabel: coreLabel))
+    }
     ready=0
     for attempt in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do
-        if /usr/bin/curl --noproxy '*' --fail --silent --output /dev/null --max-time 1 --config \(shellQuote(health.path)); then ready=1; break; fi
+        if check_health; then ready=1; break; fi
         /bin/sleep 1
     done
     if [ "$ready" -ne 1 ]; then
@@ -234,7 +372,7 @@ struct PrivilegedCommandFailure: Error {
 }
 
 // Commands are generated locally. Retain a bounded tail and expose only known diagnostic categories.
-func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120) throws -> (status: Int32, diagnostic: String) {
+func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120, expiresAt: DispatchTime? = nil) throws -> (status: Int32, diagnostic: String) {
     let process = Process()
     process.executableURL = URL(fileURLWithPath: "/bin/sh")
     process.arguments = ["-c", command]
@@ -242,7 +380,7 @@ func runPrivilegedScript(_ command: String, timeout: TimeInterval = 120) throws 
     process.standardOutput = pipe
     process.standardError = pipe
     try process.run()
-    let deadline = ProcessDeadline(process: process, timeout: timeout)
+    let deadline = ProcessDeadline(process: process, timeout: timeout, expiresAt: expiresAt)
     defer { deadline.invalidate() }
     try pipe.fileHandleForWriting.close()
     defer { try? pipe.fileHandleForReading.close() }
@@ -260,6 +398,7 @@ func safePrivilegedDiagnostic(status: Int32, output: String) -> String {
     let categories: [(String, String)] = [
         ("操作超时", "操作超时，结果可能未知，请检查系统服务状态后重试"),
         ("无法读取操作输入", "无法读取安装输入文件，请重新安装应用"),
+        ("操作输入超过大小限制", "安装输入文件超过128MiB限制，请检查资源文件"),
         ("操作输入必须是安装用户拥有的普通文件", "安装输入文件的所有者或文件类型无效"),
         ("系统操作目录权限无效", "系统服务目录所有者或权限无效"),
         ("签名与授权版本不匹配", "内核签名与管理员授权版本不匹配，请重新安装应用"),

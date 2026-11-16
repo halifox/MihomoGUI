@@ -95,7 +95,7 @@ struct CoreLogsView: View {
                 } catch {
                     guard !Task.isCancelled, endpoint == source else { return }
                     connected = false
-                    streamError = "日志连接失败，将自动重试：\(error.localizedDescription)"
+                    streamError = error is URLError ? nil : "日志读取失败：\(error.localizedDescription)"
                 }
                 do { try await Task.sleep(nanoseconds: 3_000_000_000) }
                 catch { return }

@@ -45,25 +45,30 @@ struct MihomoGUIView: View {
                 .navigationSplitViewColumnWidth(min: 170, ideal: 190, max: 230)
         } detail: {
             Group {
-                switch page ?? .dashboard {
-                case .general: GeneralConfigurationView()
-                case .subscriptions: SubscriptionsView()
-                case .outbound: OutboundProxiesView()
-                case .groups: ProxyGroupsView()
-                case .ruleSets: RuleProvidersView()
-                case .rules: RulesView()
-                case .connections: ConnectionsView()
-                case .logs: CoreLogsView()
-                case .dashboard: DashboardView()
+                if model.configurationFormatUnsupported && (page ?? .dashboard) != .dashboard {
+                    Text("配置格式不受支持，当前页面不可用。仍可在仪表盘停止现有服务。")
+                        .foregroundStyle(.secondary).padding()
+                } else {
+                    switch page ?? .dashboard {
+                    case .general: GeneralConfigurationView()
+                    case .subscriptions: SubscriptionsView()
+                    case .outbound: OutboundProxiesView()
+                    case .groups: ProxyGroupsView()
+                    case .ruleSets: RuleProvidersView()
+                    case .rules: RulesView()
+                    case .connections: ConnectionsView()
+                    case .logs: CoreLogsView()
+                    case .dashboard: DashboardView()
+                    }
                 }
-            }.disabled(model.configurationFormatUnsupported)
+            }
                 .navigationTitle((page ?? .dashboard).title)
                 .tableStyle(.inset(alternatesRowBackgrounds: true))
                 .id(page ?? .dashboard)
         }
         .safeAreaInset(edge: .top, spacing: 0) {
             if model.configurationFormatUnsupported {
-                Text("配置格式版本不受支持，已禁用编辑和服务启动。请使用对应版本应用，或备份后恢复兼容的配置文件。")
+                Text("配置格式版本不受支持，已禁用编辑和服务启动；仍可在仪表盘停止现有服务。请使用对应版本应用，或备份后恢复兼容的配置文件。")
                     .font(.caption).foregroundStyle(.orange).padding(8)
             } else if model.runtimeConfigurationUncertain || (model.coreActive && model.hasUnappliedChanges) {
                 HStack {

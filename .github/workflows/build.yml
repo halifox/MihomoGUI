@@ -96,6 +96,8 @@ jobs:
         run: bash scripts/build.sh
       - name: Run interaction checks
         run: bash scripts/check-interactions.sh
+      - name: Run runtime recovery failure checks
+        run: bash scripts/check-runtime-recovery.sh
       - name: Notarize validated application
         if: env.SIGNED_BUILD == 'true'
         run: bash scripts/notarize.sh

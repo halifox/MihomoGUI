@@ -48,7 +48,10 @@ final class PrivilegedRequest {
 }
 
 func privilegedOperation(_ operation: PrivilegedOperation) async throws {
-    let payload = try JSONEncoder().encode(operation)
+    let deadline = PrivilegedOperationDeadline()
+    let payload = try encodePrivilegedOperation(operation)
+    try deadline.check()
+    _ = try await runCommand("/bin/sh", ["-c", serviceOwnershipCheckCommand(owner: getuid())], timeout: min(45, deadline.remaining), expiresAt: deadline.end)
     let source = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/MihomoGUIHelper")
     var applicationCode: SecCode?
     var applicationStaticCode: SecStaticCode?
@@ -61,9 +64,11 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
           SecStaticCodeCreateWithPath(source as CFURL, [], &helperCode) == errSecSuccess,
           let helperCode,
           SecStaticCodeCreateWithPath(core as CFURL, [], &coreCode) == errSecSuccess, let coreCode else { throw MihomoGUIError("特权辅助服务或应用签名缺失，请使用打包后的应用") }
+    try deadline.check()
     let clientRequirement = try signingRequirement(applicationStaticCode)
     let helperRequirement = try signingRequirement(helperCode)
     let coreRequirement = try signingRequirement(coreCode)
+    try deadline.check()
     let installed = "/Library/PrivilegedHelperTools/" + privilegedServiceLabel
     let plistPath = "/Library/LaunchDaemons/" + privilegedServiceLabel + ".plist"
     let plist: [String: Any] = [
@@ -76,10 +81,13 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
     let sourceData = try Data(contentsOf: source)
     let installedPlist = try? Data(contentsOf: URL(fileURLWithPath: plistPath))
     let installedProperties = installedPlist.flatMap { try? PropertyListSerialization.propertyList(from: $0, format: nil) as? NSDictionary }
-    let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + privilegedServiceLabel])) != nil
+    try deadline.check()
+    let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + privilegedServiceLabel], timeout: min(45, deadline.remaining), expiresAt: deadline.end)) != nil
+    try deadline.check()
     if (try? Data(contentsOf: URL(fileURLWithPath: installed))) != sourceData
         || installedProperties != plist as NSDictionary || !registered {
         // Only installation/update asks macOS for authorization. Never retry a submitted command.
+        let authorizationBudget = try deadline.remaining
         try await administratorCommand("""
         set -eu
         /bin/test ! -L /Library/PrivilegedHelperTools
@@ -87,8 +95,15 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
         /bin/test ! -L \(shellQuote(installed))
         /bin/test ! -L \(shellQuote(plistPath))
         /bin/mkdir -p /Library/PrivilegedHelperTools
+        lock=\(shellQuote(installed + ".install-lock"))
+        if ! /bin/mkdir -m 700 "$lock"; then
+            echo '辅助服务安装锁已占用，请等待安装结束；若上次安装中断，请管理员检查后清理安装锁' >&2
+            exit 1
+        fi
+        trap '/bin/rmdir "$lock"' EXIT
+        \(serviceOwnershipCheckCommand(owner: getuid()))
         stage=$(/usr/bin/mktemp -d /private/tmp/MihomoGUIHelper.XXXXXX)
-        trap '/bin/rm -rf "$stage"' EXIT
+        trap '/bin/rm -rf "$stage"; /bin/rmdir "$lock"' EXIT
         /usr/bin/install -o root -g wheel -m 755 \(shellQuote(source.path)) "$stage/helper"
         /usr/bin/codesign --verify --strict -R \(shellQuote("=" + helperRequirement)) "$stage/helper"
         /usr/bin/printf '%s' \(shellQuote(String(decoding: expected, as: UTF8.self))) > "$stage/helper.plist"
@@ -117,6 +132,7 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
                 if [ "$restored" -ne 1 ]; then echo '辅助服务安装失败，恢复旧服务也失败' >&2; fi
             fi
             /bin/rm -rf "$stage"
+            /bin/rmdir "$lock"
             exit "$status"
         }
         trap rollback EXIT
@@ -125,23 +141,25 @@ func privilegedOperation(_ operation: PrivilegedOperation) async throws {
         /usr/bin/install -o root -g wheel -m 644 "$stage/helper.plist" \(shellQuote(plistPath))
         /bin/launchctl enable system/\(privilegedServiceLabel)
         /bin/launchctl bootstrap system \(shellQuote(plistPath))
-        """)
+        """, timeout: authorizationBudget, expiresAt: deadline.end)
     }
+    try deadline.check()
     let connection = NSXPCConnection(machServiceName: privilegedServiceLabel, options: .privileged)
     connection.setCodeSigningRequirement(helperRequirement)
     connection.remoteObjectInterface = NSXPCInterface(with: PrivilegedService.self)
+    let remaining = try deadline.remaining
     try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
         let request = PrivilegedRequest(connection: connection, continuation: continuation)
         let failed = { request.finish(MihomoGUIError("特权辅助服务连接中断；操作结果未知，请检查内核状态后重试。若持续失败，请重新安装应用。")) }
         connection.invalidationHandler = failed
         connection.interruptionHandler = failed
-        request.startTimeout()
+        request.startTimeout(after: remaining)
         connection.resume()
         guard let proxy = connection.remoteObjectProxyWithErrorHandler({ _ in failed() }) as? PrivilegedService else {
             failed()
             return
         }
-        proxy.execute(payload) { status, diagnostic in
+        proxy.execute(payload, deadline: deadline.end.uptimeNanoseconds) { status, diagnostic in
             request.finish(status == 0 ? nil : MihomoGUIError(diagnostic ?? "特权操作失败（\(status)），请检查内核状态和日志"))
         }
     }

@@ -34,7 +34,7 @@ final class MihomoGUIModel: ObservableObject {
     @Published var coreVersion: String?
     @Published var coreServiceLoaded = false
     @Published var corePID: Int?
-    private var runtimeSettings = MihomoGUICore.Settings()
+    private(set) var runtimeSettings = MihomoGUICore.Settings()
     private var diagnosticsDate = Date.distantPast
     private(set) var configurationFormatUnsupported = false
     let directory: URL
@@ -43,17 +43,22 @@ final class MihomoGUIModel: ObservableObject {
     private var configurationSavePending = false
     private var liveUpdateTask: Task<Void, Never>?
     private var liveUpdatePending = false
+    private var requestedGroupSelections: Set<String> = []
+    private var pendingGroupSelections: [String: String] = [:]
+    private var legacyConnectionProxyNames: [String: String] = [:]
     var configurationLocked: Bool { coreActive }
 
     init(directory: URL? = nil) {
         self.directory = directory ?? ((try? dataDirectory()) ?? FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Application Support/MihomoGUI"))
         let directory = self.directory
-        runtimeConfigurationUncertain = FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path)
+        runtimeConfigurationUncertain = FileManager.default.fileExists(atPath: directory.appendingPathComponent("runtime-update-pending").path) || FileManager.default.fileExists(atPath: directory.appendingPathComponent("rule-update-pending.json").path)
         do {
             settings = try loadSettings(from: directory)
+            settings.stableProxyAliases = true
             let bundledCore = Bundle.main.bundleURL.appendingPathComponent("Contents/Helpers/mihomo")
             settings.corePath = bundledCore.path
             runtimeSettings = try loadRuntimeSettings(from: directory)
+            pendingGroupSelections = try loadRuntimeUpdateSelections(directory: directory)
             if settings.ruleOrderMigrated == nil {
                 settings.rules = settings.rules.filter { $0.kind.isProcess } + settings.rules.filter { !$0.kind.isProcess }
                 settings.ruleOrderMigrated = true
@@ -69,12 +74,12 @@ final class MihomoGUIModel: ObservableObject {
         }
     }
     func startMonitor() {
-        guard monitor == nil, !configurationFormatUnsupported else { return }
+        guard monitor == nil else { return }
         monitor = Task { [weak self] in
             if let self {
                 await self.refresh()
             }
-            if let self, self.settings.subscriptionProxies == nil {
+            if let self, !self.configurationFormatUnsupported, self.settings.subscriptionProxies == nil {
                 let snapshot = self.settings; let folder = self.directory
                 do {
                     let cached = try await Task.detached {
@@ -88,7 +93,7 @@ final class MihomoGUIModel: ObservableObject {
                     }
                 } catch { self.error = error.localizedDescription }
             }
-            if let self, self.nodes.contains(where: { $0.server == nil }) {
+            if let self, !self.configurationFormatUnsupported, self.nodes.contains(where: { $0.server == nil }) {
                 let folder = self.directory
                 do {
                     let populated = try await Task.detached { try loadNodeCache(directory: folder) }.value
@@ -100,7 +105,7 @@ final class MihomoGUIModel: ObservableObject {
                     }
                 } catch { self.error = error.localizedDescription }
             }
-            if let self, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty, !self.settings.corePath.isEmpty { self.refreshSubscriptions() }
+            if let self, !self.configurationFormatUnsupported, self.nodes.isEmpty, !self.settings.subscriptions.isEmpty, !self.settings.corePath.isEmpty { self.refreshSubscriptions() }
             while !Task.isCancelled {
                 guard let self else { return }
                 await self.refresh()
@@ -111,9 +116,9 @@ final class MihomoGUIModel: ObservableObject {
     var api: CoreAPI { get throws { try CoreAPI(settings: runtimeSettings) } }
     var allNodes: [Node] { (settings.manualProxies ?? []).map(\.node) + nodes }
     var coreActive: Bool { coreRunning || coreServiceLoaded || corePID != nil }
-    var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
+    var hasUnappliedChanges: Bool { runtimeConfigurationUncertain || !requestedGroupSelections.isEmpty || runtimeConfigurationChanged(settings, applied: runtimeSettings) }
     func toggleCore() {
-        if !coreActive { startCore(); return }
+        if !coreActive && !configurationFormatUnsupported { startCore(); return }
         perform {
             self.serviceOperation = .stopping
             defer { self.serviceOperation = nil }
@@ -129,13 +134,20 @@ final class MihomoGUIModel: ObservableObject {
         for (sourceIndex, subscription) in runtimeSettings.subscriptions.enumerated() {
             for (proxyIndex, proxy) in (runtimeSettings.subscriptionProxies?[subscription.id] ?? []).enumerated() {
                 if let name = proxy.object["name"]?.text {
-                    names[subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)] = name
+                    let alias = runtimeSettings.stableProxyAliases == true
+                        ? subscriptionProxyAlias(subscriptionID: subscription.id, proxyName: name)
+                        : subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)
+                    names[alias] = name
                 }
             }
         }
-        return names
+        return names.merging(legacyConnectionProxyNames, uniquingKeysWith: { current, _ in current })
     }
     func refresh() async {
+        if configurationFormatUnsupported {
+            await refreshDiagnostics()
+            return
+        }
         let refreshID = UUID()
         connectionsRefreshID = refreshID
         do {
@@ -159,6 +171,8 @@ final class MihomoGUIModel: ObservableObject {
             connectionsDate = now
             uploadTotal = snapshot.uploadTotal; downloadTotal = snapshot.downloadTotal
             connections = live; coreRunning = true; connectionsError = nil; connectionsLoaded = true
+            let activeNames = Set(live.flatMap { $0.chains ?? [] })
+            legacyConnectionProxyNames = legacyConnectionProxyNames.filter { activeNames.contains($0.key) }
         } catch {
             guard !Task.isCancelled, connectionsRefreshID == refreshID else { return }
             let registered = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
@@ -172,7 +186,7 @@ final class MihomoGUIModel: ObservableObject {
             uploadTotal = nil; downloadTotal = nil
             if stopped { connections = [] }
             connectionsDate = nil; connectionSpeedsAvailable = false; connectionsLoaded = true
-            connectionsError = stopped ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
+            connectionsError = stopped || (serviceOperation == .starting && error is URLError) ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
         }
         if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
     }
@@ -180,6 +194,11 @@ final class MihomoGUIModel: ObservableObject {
         diagnosticsDate = Date()
         coreServiceLoaded = (try? await runCommand("/bin/launchctl", ["print", "system/" + coreLabel])) != nil
         async let core = servicePID(domain: "system", label: coreLabel)
+        if configurationFormatUnsupported {
+            corePID = await core
+            coreRunning = false; coreMemory = nil; coreVersion = nil
+            return
+        }
         async let memory = try? api.memory()
         async let version = try? api.version()
         corePID = await core
@@ -255,10 +274,10 @@ final class MihomoGUIModel: ObservableObject {
             merged[index].delayMilliseconds = previous[merged[index].id]?.delayMilliseconds
             merged[index].delayFailed = previous[merged[index].id]?.delayFailed
         }
-        rejectUnavailableRouteNodes(&updated, nodes: merged)
+        let adjustedReferences = rejectUnavailableRouteNodes(&updated, nodes: merged)
         try await commitSubscriptionUpdate(updated, nodes: merged, sources: updated.subscriptions, staging: staging)
         settings = updated; nodes = merged
-        message = "已拉取并保存 \(nodes.count) 个节点。可在规则表修改 MATCH 的出口。"
+        message = "已拉取并保存 \(nodes.count) 个节点。" + (adjustedReferences ? "失效节点引用已调整为拒绝出口，请检查代理组与规则集下载出口。" : "可在规则表修改 MATCH 的出口。")
     }
     func saveSubscription(_ subscription: Subscription) async throws {
         try Task.checkCancellation()
@@ -297,15 +316,16 @@ final class MihomoGUIModel: ObservableObject {
         let entries = try await Task.detached { try readSubscriptionProxies(sourceFile).map { ConfigValue(native: $0) } }.value
         var cached = updated.subscriptionProxies ?? [:]; cached[subscription.id] = entries
         updated.subscriptionProxies = cached
-        rejectUnavailableRouteNodes(&updated, nodes: merged)
+        let adjustedReferences = rejectUnavailableRouteNodes(&updated, nodes: merged)
         try await commitSubscriptionUpdate(updated, nodes: merged, sources: [subscription], staging: staging)
         settings = updated; nodes = merged
-        message = "订阅已保存，共 \(imported.count) 个节点。"
+        message = "订阅已保存，共 \(imported.count) 个节点。" + (adjustedReferences ? "失效节点引用已调整为拒绝出口，请检查代理组与规则集下载出口。" : "")
     }
     private func commitSubscriptionUpdate(_ updated: MihomoGUICore.Settings, nodes: [Node], sources: [Subscription], staging: URL) async throws {
         let folder = directory
         let files = try await Task.detached {
-            _ = try generateConfig(updated)
+            let config = try generateConfig(updated)
+            try validatePrivilegedConfiguration(updated, config: config, directory: folder)
             var files = try sources.map { ("providers/" + $0.id + ".yaml", try Data(contentsOf: providerFile($0, directory: staging))) }
             files.append(("nodes.json", try JSONEncoder().encode(nodes)))
             files.append(("settings.json", try JSONEncoder().encode(updated)))
@@ -456,6 +476,18 @@ final class MihomoGUIModel: ObservableObject {
         }
     }
     func cancelDelayTests() { delayTask?.cancel() }
+    private func recoverRuleFileUpdate(reload: Bool) async throws {
+        guard let update = try RuleFileUpdate.load(directory: directory) else { return }
+        try await update.finish(restore: !update.committed)
+        if !update.committed {
+            let previous = try generateConfig(update.previousSettings)
+            if reload { try await CoreAPI(settings: update.previousSettings).reload(previous) }
+            try await persistCoreConfiguration(previous)
+            try saveRuntimeSettings(update.previousSettings, to: directory)
+            runtimeSettings = update.previousSettings
+        }
+        try update.clear(directory: directory)
+    }
     func startCore() {
         guard !coreActive, !configurationFormatUnsupported else { return }
         perform {
@@ -464,15 +496,51 @@ final class MihomoGUIModel: ObservableObject {
             self.serviceOperation = .starting
             defer { self.serviceOperation = nil }
             if self.nodes.isEmpty, !self.settings.subscriptions.isEmpty { try await self.importSubscriptions(self.settings) }
+            try await self.recoverRuleFileUpdate(reload: false)
             let snapshot = self.settings
             try validateFieldValues(snapshot.options ?? [:], schema: documentSchemas.sections.flatMap(\.fields))
             _ = try controllerEndpoint(snapshot)
-            try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory)
             let pending = self.directory.appendingPathComponent("runtime-update-pending")
-            if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
-            self.runtimeSettings = snapshot
-            self.runtimeConfigurationUncertain = false
-            self.message = "配置已校验并启动。"
+            do {
+                let selections = self.pendingGroupSelections.filter { name, _ in
+                    guard let old = self.runtimeSettings.proxyGroups?.first(where: { $0.name == name }),
+                          let current = snapshot.proxyGroups?.first(where: { $0.id == old.id }) else { return true }
+                    return old.fields["default-selected"] == current.fields["default-selected"]
+                }
+                try await installAndStartCore(settings: snapshot, config: generateConfig(snapshot), directory: self.directory, groupSelections: selections)
+                if FileManager.default.fileExists(atPath: pending.path) { try FileManager.default.removeItem(at: pending) }
+                self.runtimeSettings = snapshot
+                self.requestedGroupSelections.removeAll()
+                self.pendingGroupSelections.removeAll()
+                self.runtimeConfigurationUncertain = false
+                self.message = "配置已校验并启动。"
+            } catch {
+                if FileManager.default.fileExists(atPath: pending.path) {
+                    self.runtimeConfigurationUncertain = true
+                    await self.refreshDiagnostics()
+                    throw MihomoGUIError("启动结果尚未确认：" + error.localizedDescription + "。服务可能已运行，请修复保存问题后停止并重新启动内核。")
+                }
+                throw error
+            }
+        }
+    }
+    func selectProxyGroup(_ group: ProxyGroup, target: String) throws {
+        guard !busy else { throw MihomoGUIError("正在执行其他操作，请稍后重试") }
+        guard let group = settings.proxyGroups?.first(where: { $0.id == group.id }), group.type == "select" else {
+            throw MihomoGUIError("代理组已更改，请重新选择")
+        }
+        guard proxyGroupTargets(group, settings: settings).contains(target) else { throw MihomoGUIError("所选代理组成员已失效") }
+        var updated = group
+        updated.fields["default-selected"] = .string(target)
+        try saveProxyGroup(updated)
+        if pendingGroupSelections[group.name] != nil {
+            pendingGroupSelections[group.name] = try proxyTargetName(target, settings: settings)
+            try saveRuntimeUpdateSelections(pendingGroupSelections, directory: directory)
+        }
+        if coreActive {
+            // An explicit user choice is meaningful even when its saved default is unchanged.
+            requestedGroupSelections.insert(group.id)
+            scheduleLiveUpdate()
         }
     }
     func retryLiveUpdate() {
@@ -492,51 +560,78 @@ final class MihomoGUIModel: ObservableObject {
                 self.liveUpdatePending = false
                 guard self.configurationLocked, self.hasUnappliedChanges else { continue }
                 let snapshot = self.settings
+                self.requestedGroupSelections.formIntersection(Set((snapshot.proxyGroups ?? []).filter { $0.type == "select" }.map(\.id)))
+                let requestedSelections = self.requestedGroupSelections
                 self.busy = true
                 var ruleFiles: RuleFileUpdate?
-                var applied = false
                 do {
+                    try await self.recoverRuleFileUpdate(reload: true)
                     let config = try generateConfig(snapshot)
+                    try validatePrivilegedConfiguration(snapshot, config: config, directory: self.directory)
                     let previousSettings = self.runtimeSettings
                     let previous = try generateConfig(previousSettings)
                     let controller = try self.api
+                    var selections = try applicableProxyGroupSelections(self.pendingGroupSelections, settings: snapshot)
+                    if previousSettings.stableProxyAliases != true, snapshot.stableProxyAliases == true, !previousSettings.subscriptions.isEmpty {
+                        let migrated = try migratedSubscriptionSelections(await controller.proxyGroupSelections(), from: previousSettings, to: snapshot)
+                        selections.merge(migrated, uniquingKeysWith: { pending, _ in pending })
+                    }
+                    for group in snapshot.proxyGroups ?? [] where group.type == "select" {
+                        guard let selected = group.fields["default-selected"]?.text, !selected.isEmpty else { continue }
+                        let old = previousSettings.proxyGroups?.first(where: { $0.id == group.id })
+                        if (self.runtimeConfigurationUncertain && selections[group.name] == nil) || requestedSelections.contains(group.id) || old?.type != "select" || old?.name != group.name || old?.fields["default-selected"] != group.fields["default-selected"] {
+                            selections[group.name] = try proxyTargetName(selected, settings: snapshot)
+                        }
+                    }
                     // This marker survives GUI termination between reload and durable confirmation.
                     let pending = self.directory.appendingPathComponent("runtime-update-pending")
-                    try Data().write(to: pending, options: .atomic)
-                    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: pending.path)
+                    try saveRuntimeUpdateSelections(selections, directory: self.directory)
+                    self.pendingGroupSelections = selections
                     if self.runtimeConfigurationUncertain || snapshot.options?["rule-providers"] != previousSettings.options?["rule-providers"] {
-                        ruleFiles = try await prepareRuleFileUpdate(snapshot)
+                        ruleFiles = try await prepareRuleFileUpdate(snapshot, previousSettings: previousSettings, directory: self.directory)
                     }
                     // A lost response cannot prove that the core kept its previous configuration.
                     self.runtimeConfigurationUncertain = true
                     try await controller.reload(config)
-                    var configurationPersisted = false
                     var runtimeSaveAttempted = false
                     do {
                         try await persistCoreConfiguration(config)
-                        configurationPersisted = true
                         runtimeSaveAttempted = true
                         try saveRuntimeSettings(snapshot, to: self.directory)
+                        if var update = ruleFiles {
+                            update.committed = true
+                            try update.save(directory: self.directory)
+                            ruleFiles = update
+                        }
                     } catch {
                         let persistenceError = error
                         var failures: [String] = []
+                        if var update = ruleFiles {
+                            update.committed = false
+                            try update.save(directory: self.directory)
+                            ruleFiles = update
+                        }
                         if let update = ruleFiles {
-                            do { try await update.finish(restore: true); ruleFiles = nil }
+                            do { try await update.finish(restore: true) }
                             catch { failures.append("规则文件恢复失败：" + error.localizedDescription) }
                         }
                         do { try await controller.reload(previous) }
                         catch { failures.append("内核回滚失败：" + error.localizedDescription) }
-                        if configurationPersisted {
-                            do { try await persistCoreConfiguration(previous) }
-                            catch { failures.append("系统配置恢复失败：" + error.localizedDescription) }
-                        }
+                        // A transport failure can follow a successful write; always restore
+                        // the previous disk configuration before declaring rollback complete.
+                        do { try await persistCoreConfiguration(previous) }
+                        catch { failures.append("系统配置恢复失败：" + error.localizedDescription) }
                         if runtimeSaveAttempted {
                             do { try saveRuntimeSettings(previousSettings, to: self.directory) }
                             catch { failures.append("运行配置恢复失败：" + error.localizedDescription) }
                         }
                         if failures.isEmpty {
-                            do { try FileManager.default.removeItem(at: pending) }
-                            catch { failures.append("更新标记清理失败：" + error.localizedDescription) }
+                            do {
+                                try ruleFiles?.clear(directory: self.directory)
+                                ruleFiles = nil
+                                try FileManager.default.removeItem(at: pending)
+                                self.pendingGroupSelections.removeAll()
+                            } catch { failures.append("更新标记清理失败：" + error.localizedDescription) }
                         }
                         self.runtimeConfigurationUncertain = !failures.isEmpty
                         if !failures.isEmpty {
@@ -544,28 +639,52 @@ final class MihomoGUIModel: ObservableObject {
                         }
                         throw persistenceError
                     }
-                    try FileManager.default.removeItem(at: pending)
+                    // Core, disk and runtime snapshot now agree. Cleanup failures must
+                    // not send only the rule files back to their previous contents.
+                    if self.runtimeSettings.stableProxyAliases != true, snapshot.stableProxyAliases == true {
+                        self.legacyConnectionProxyNames = self.connectionProxyNames
+                    }
                     self.runtimeSettings = snapshot
-                    self.runtimeConfigurationUncertain = false
-                    self.message = "修改已自动应用。"
-                    applied = true
+                    var selectionsConfirmed = false
+                    do {
+                        let appliedController = try CoreAPI(settings: snapshot)
+                        for name in selections.keys.sorted() {
+                            if let target = selections[name] { try await appliedController.selectProxyGroup(name, target: target) }
+                        }
+                        self.requestedGroupSelections.subtract(requestedSelections)
+                        selectionsConfirmed = true
+                        if let update = ruleFiles {
+                            try await update.finish(restore: false)
+                            try update.clear(directory: self.directory)
+                            ruleFiles = nil
+                        }
+                        do {
+                            try FileManager.default.removeItem(at: pending)
+                            self.pendingGroupSelections.removeAll()
+                            self.runtimeConfigurationUncertain = false
+                            self.message = "修改已自动应用。"
+                        } catch {
+                            self.message = "配置已应用，恢复标记尚未清理。"
+                            self.error = "配置已应用，但恢复标记清理失败：" + error.localizedDescription + "。请重新应用以完成确认。"
+                        }
+                    } catch {
+                        let phase = selectionsConfirmed ? "规则事务清理尚未完成" : "代理组选择尚未确认"
+                        self.message = "配置已保存，" + phase + "。"
+                        self.error = "配置已应用，但" + phase + "：" + error.localizedDescription + "。请重新应用以完成确认。"
+                    }
                 } catch {
                     var detail = error.localizedDescription
-                    if let update = ruleFiles {
-                        do { try await update.finish(restore: true); ruleFiles = nil }
-                        catch {
-                            self.runtimeConfigurationUncertain = true
-                            detail += "；规则文件恢复失败：" + error.localizedDescription
-                        }
+                    // Preparation can finish while its reply is lost; recover using the
+                    // persisted ID even when no in-memory result was returned.
+                    do { try await self.recoverRuleFileUpdate(reload: true); ruleFiles = nil }
+                    catch {
+                        self.runtimeConfigurationUncertain = true
+                        detail += "；规则事务恢复失败：" + error.localizedDescription
                     }
                     if FileManager.default.fileExists(atPath: self.directory.appendingPathComponent("runtime-update-pending").path) {
                         self.runtimeConfigurationUncertain = true
                     }
                     self.error = "修改已保存在本地，但自动应用失败：\(detail)"
-                }
-                if applied, let update = ruleFiles {
-                    do { try await update.finish(restore: false) }
-                    catch { self.error = "配置已应用，但规则文件备份清理失败：" + error.localizedDescription }
                 }
                 self.busy = false
             }

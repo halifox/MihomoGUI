@@ -28,7 +28,14 @@ struct ResourceEditorView: View {
         _fields = State(initialValue: original?.fields ?? (groups ? [:] : ["behavior": .string("domain"), "format": .string("yaml"), "interval": .integer(600)]))
         _targets = State(initialValue: original?.group?.targets ?? [])
     }
-    var schema: [EditorField] { groups ? groupEditorFields(type) : ruleProviderEditorFields(type) }
+    var schema: [EditorField] {
+        if groups { return groupEditorFields(type) }
+        return ruleProviderEditorFields(type).map { field in
+            var field = field
+            if field.path == "url" { field.kind = "secret" }
+            return field
+        }
+    }
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text((original == nil ? "添加" : "编辑") + (groups ? "代理组" : "规则集")).font(.title2.bold())
@@ -216,7 +223,7 @@ extension MihomoGUIModel {
                       !candidate.rules.contains(where: { $0.proxyGroup == row.name }),
                       !(candidate.proxyGroups ?? []).contains(where: { $0.id != row.id && $0.targets.contains("group:" + row.name) }),
                       !(candidate.options?["rule-providers"]?.object.values.contains(where: { $0.object["proxy"] == .string("group:" + row.name) || $0.object["proxy"] == .string(row.name) }) ?? false),
-                      !subRules.contains(where: { $0.hasSuffix("," + row.name) }) else { throw MihomoGUIError("代理组仍被引用，请先调整引用") }
+                      !subRules.contains(where: { replacingSubRuleTarget($0, old: row.name, new: row.name + ".reference-check") != $0 }) else { throw MihomoGUIError("代理组仍被引用，请先调整引用") }
                 candidate.proxyGroups?.removeAll { $0.id == row.id }
             } else {
                 guard !candidate.rules.contains(where: { ($0.kind == .ruleSet && $0.value == row.name) || replacingProvider($0.value, old: row.name, new: "__check__") != $0.value }),

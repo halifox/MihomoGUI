@@ -7,6 +7,7 @@ struct RuleProvidersView: View {
     @EnvironmentObject var model: MihomoGUIModel
     @State private var selection: String?
     @State private var adding = false
+    @State private var showURLs = false
     @State private var editing: ResourceRow?
     @State private var deleting: ResourceRow?
     var rows: [ResourceRow] {
@@ -29,7 +30,7 @@ struct RuleProvidersView: View {
             TableColumn("名称", sortUsing: columnSort("名称")) { row in Text(row.name).textSelection(.enabled) }.width(min: 40, ideal: tableColumnWidth("名称", rows.map(\.name)), max: nil)
             TableColumn("类型", sortUsing: columnSort("类型")) { row in Text(row.type) }.width(min: 40, ideal: tableColumnWidth("类型", rows.map(\.type)), max: nil)
             TableColumn("行为", sortUsing: columnSort("行为")) { row in Text(detail(row)) }.width(min: 40, ideal: tableColumnWidth("行为", rows.map(detail)), max: nil)
-            TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)) }
+            TableColumn("来源 / 内容", sortUsing: columnSort("来源 / 内容")) { row in Text(source(row)).textSelection(.enabled).help(source(row)).privacySensitive(!showURLs && row.type == "http") }
                 .width(min: 40, ideal: tableColumnWidth("来源 / 内容", rows.map(source)), max: nil)
         }
         .background(TableColumnAutoFit(widths: [
@@ -53,7 +54,14 @@ struct RuleProvidersView: View {
         } message: {
             Text("确定删除“\(deleting?.name ?? "")”吗？此操作无法撤销。")
         }
+        .onDisappear { showURLs = false }
         .toolbar {
+            ToolbarItem {
+                Button { showURLs.toggle() } label: {
+                    Label(showURLs ? "隐藏规则集地址" : "显示规则集地址", systemImage: showURLs ? "eye.slash" : "eye")
+                }.labelStyle(.iconOnly)
+                    .help(showURLs ? "隐藏规则集地址" : "临时显示规则集地址，离开页面后重新隐藏")
+            }
             ToolbarItem(placement: .primaryAction) {
                 Button { adding = true } label: { Label("新建规则集合", systemImage: "plus") }
                     .disabled(model.busy)
@@ -69,6 +77,7 @@ struct RuleProvidersView: View {
     }
     func source(_ row: ResourceRow) -> String {
         if row.type == "inline" { return "\(row.fields["payload"]?.array.count ?? 0) 条规则" }
-        return row.fields[row.type == "http" ? "url" : "path"]?.text ?? "—"
+        guard let source = row.fields[row.type == "http" ? "url" : "path"]?.text, !source.isEmpty else { return "—" }
+        return row.type == "http" && !showURLs ? "••••••••" : source
     }
 }

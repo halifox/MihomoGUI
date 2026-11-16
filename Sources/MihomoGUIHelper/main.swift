@@ -1,6 +1,29 @@
 import Foundation
 import MihomoGUICore
 
+// The timer can reply while a system API is blocked; every later phase still
+// checks the same deadline before it may change the live service or files.
+private final class PrivilegedReply {
+    private let lock = NSLock()
+    private let reply: (Int32, String?) -> Void
+    private var completed = false
+    private var timeout: DispatchWorkItem?
+    init(deadline: PrivilegedOperationDeadline, reply: @escaping (Int32, String?) -> Void) {
+        self.reply = reply
+        let timeout = DispatchWorkItem { [weak self] in self?.finish(-1, "操作超时，结果可能未知，请检查系统服务状态后重试") }
+        self.timeout = timeout
+        DispatchQueue.global(qos: .utility).asyncAfter(deadline: deadline.end, execute: timeout)
+    }
+    func finish(_ status: Int32, _ diagnostic: String?) {
+        lock.lock()
+        guard !completed else { lock.unlock(); return }
+        completed = true
+        timeout?.cancel(); timeout = nil
+        lock.unlock()
+        reply(status, diagnostic)
+    }
+}
+
 // launchd owns this process; GUI connections may disappear without stopping the core.
 final class Service: NSObject, NSXPCListenerDelegate, PrivilegedService {
     let owner: uid_t
@@ -24,12 +47,18 @@ final class Service: NSObject, NSXPCListenerDelegate, PrivilegedService {
         return true
     }
 
-    func execute(_ payload: Data, reply: @escaping (Int32, String?) -> Void) {
+    func execute(_ payload: Data, deadline clientDeadline: UInt64, reply: @escaping (Int32, String?) -> Void) {
+        let deadline = PrivilegedOperationDeadline(clientDeadline: clientDeadline)
+        let response = PrivilegedReply(deadline: deadline, reply: reply)
         queue.async {
+            let reply = response.finish
+            do { try deadline.check() }
+            catch { reply(-1, "操作超时，结果可能未知，请检查系统服务状态后重试"); return }
             do {
-                guard payload.count <= 32 * 1024 * 1024 else { reply(64, "特权请求超过大小限制"); return }
+                guard payload.count <= privilegedPayloadMaximumBytes else { reply(64, "特权请求超过大小限制"); return }
                 let operation = try JSONDecoder().decode(PrivilegedOperation.self, from: payload)
-                reply(try executeOperation(operation, owner: self.owner, coreRequirement: self.coreRequirement), nil)
+                try deadline.check()
+                reply(try executeOperation(operation, owner: self.owner, coreRequirement: self.coreRequirement, deadline: deadline), nil)
             } catch let error as PrivilegedCommandFailure {
                 reply(-1, error.diagnostic)
             } catch let error as MihomoGUIError {

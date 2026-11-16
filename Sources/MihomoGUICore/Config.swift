@@ -1,13 +1,37 @@
 import Foundation
+import CryptoKit
+import Darwin
 
 public let coreLabel = "local.MihomoGUI.core"
 public let defaultGroup = "MihomoGUI.Default"
 public let rootDirectory = "/Library/Application Support/MihomoGUI"
 public let installedCore = "/Library/PrivilegedHelperTools/MihomoGUI/mihomo"
 
-// Both config generation and the GUI's reverse name mapping use this alias contract.
+// Historical positional contract, retained for confirmed legacy runtime snapshots.
 public func subscriptionProxyAlias(sourceIndex: Int, proxyIndex: Int) -> String {
     "MihomoGUI.Proxy.\(sourceIndex).\(proxyIndex)"
+}
+
+// The source UUID and original node name are identities; list positions are not.
+public func subscriptionProxyAlias(subscriptionID: String, proxyName: String) -> String {
+    let identity = Data((subscriptionID + "\0" + proxyName).utf8)
+    return "MihomoGUI.Proxy." + SHA256.hash(data: identity).map { String(format: "%02x", $0) }.joined()
+}
+
+// Resolve the same target IDs for generated configuration, runtime selection and display.
+public func proxyTargetName(_ target: String, settings: Settings) throws -> String {
+    if let node = referencedNode(target) {
+        if node.provider == "manual", (settings.manualProxies ?? []).contains(where: { $0.name == node.name }) { return node.name }
+        if let sourceIndex = settings.subscriptions.firstIndex(where: { $0.provider == node.provider }),
+           let proxyIndex = settings.subscriptionProxies?[settings.subscriptions[sourceIndex].id]?.firstIndex(where: { $0.object["name"]?.text == node.name }) {
+            if settings.stableProxyAliases == true { return subscriptionProxyAlias(subscriptionID: settings.subscriptions[sourceIndex].id, proxyName: node.name) }
+            return subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)
+        }
+        throw MihomoGUIError("引用的代理节点已失效，请重新选择出口：" + node.name)
+    }
+    if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
+    if target.hasPrefix("builtin:") { return String(target.dropFirst(8)) }
+    throw MihomoGUIError("代理组成员标识无效")
 }
 
 public func dataDirectory() throws -> URL {
@@ -130,6 +154,8 @@ public struct RouteRule: Codable, Identifiable {
 
 public struct Settings: Codable {
     public var schemaVersion: Int? = 1
+    // Missing in the shipped positional-alias format; runtime snapshots retain that contract.
+    public var stableProxyAliases: Bool? = true
     public var delayTestURL: String?
     public var delayTestTimeoutMilliseconds: Int?
     public var corePath = ""
@@ -163,13 +189,19 @@ public struct Settings: Codable {
 }
 
 // Used before committing subscription changes or deleting a manual proxy.
-public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node]) {
+@discardableResult
+public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node]) -> Bool {
     let available = Set(nodes + (settings.manualProxies ?? []).map(\.node))
+    var adjusted = false
+    func unavailable(_ target: String) -> Bool {
+        referencedNode(target).map { !available.contains($0) } ?? false
+    }
     for index in settings.rules.indices {
         if let node = settings.rules[index].node, !available.contains(node) {
             settings.rules[index].node = nil
             settings.rules[index].proxyGroup = nil
             settings.rules[index].builtin = "REJECT"
+            adjusted = true
         }
     }
     if let node = settings.defaultNode, !available.contains(node) {
@@ -177,7 +209,36 @@ public func rejectUnavailableRouteNodes(_ settings: inout Settings, nodes: [Node
         settings.defaultProxyGroup = nil
         settings.defaultDirect = false
         settings.defaultPolicy = "REJECT"
+        adjusted = true
     }
+    for index in (settings.proxyGroups ?? []).indices {
+        guard var group = settings.proxyGroups?[index] else { continue }
+        let missingDefault = unavailable(group.fields["default-selected"]?.text ?? "")
+        guard missingDefault || group.targets.contains(where: unavailable) else { continue }
+        var seen = Set<String>()
+        group.targets = group.targets.map { unavailable($0) ? "builtin:REJECT" : $0 }.filter { seen.insert($0).inserted }
+        if missingDefault && !group.targets.contains("builtin:REJECT") { group.targets.append("builtin:REJECT") }
+        // A filter can exclude the replacement; the implicit empty-group fallback
+        // must not silently become DIRECT. Preserve an explicitly chosen fallback.
+        if group.fields["empty-fallback"] == nil { group.fields["empty-fallback"] = .string("REJECT") }
+        if missingDefault {
+            group.fields["default-selected"] = proxyGroupTargets(group, settings: settings).contains("builtin:REJECT") ? .string("builtin:REJECT") : nil
+        }
+        settings.proxyGroups?[index] = group
+        adjusted = true
+    }
+    if var providers = settings.options?["rule-providers"]?.object {
+        var changedProviders = false
+        for name in providers.keys.sorted() {
+            guard var fields = providers[name]?.object, unavailable(fields["proxy"]?.text ?? "") else { continue }
+            fields["proxy"] = .string("builtin:REJECT")
+            providers[name] = .object(fields)
+            changedProviders = true
+            adjusted = true
+        }
+        if changedProviders { settings.options?["rule-providers"] = .object(providers) }
+    }
+    return adjusted
 }
 
 public func loadSettings(from directory: URL) throws -> Settings {
@@ -243,6 +304,29 @@ public func saveSettings(_ settings: Settings, to directory: URL) throws {
     try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: url.path)
 }
 
+private struct RuntimeUpdateState: Codable {
+    let schemaVersion: Int
+    let selections: [String: String]
+}
+
+public func loadRuntimeUpdateSelections(directory: URL) throws -> [String: String] {
+    let marker = directory.appendingPathComponent("runtime-update-pending")
+    guard FileManager.default.fileExists(atPath: marker.path) else { return [:] }
+    let data = try Data(contentsOf: marker)
+    // The shipped marker was empty and carried only the uncertainty flag.
+    guard !data.isEmpty else { return [:] }
+    let state = try JSONDecoder().decode(RuntimeUpdateState.self, from: data)
+    guard state.schemaVersion == 1 else { throw MihomoGUIError("运行恢复记录版本不受支持，原文件未修改") }
+    return state.selections
+}
+
+public func saveRuntimeUpdateSelections(_ selections: [String: String], directory: URL) throws {
+    _ = try loadRuntimeUpdateSelections(directory: directory)
+    let marker = directory.appendingPathComponent("runtime-update-pending")
+    try JSONEncoder().encode(RuntimeUpdateState(schemaVersion: 1, selections: selections)).write(to: marker, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: marker.path)
+}
+
 public struct MihomoGUIError: LocalizedError {
     public var message: String
     public init(_ message: String) { self.message = message }
@@ -301,7 +385,9 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
             guard let name = entry.object["name"]?.text, !name.isEmpty, names[name] == nil else {
                 throw MihomoGUIError("订阅包含空名称或重复名称节点")
             }
-            names[name] = subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)
+            names[name] = settings.stableProxyAliases == true
+                ? subscriptionProxyAlias(subscriptionID: subscription.id, proxyName: name)
+                : subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: index)
         }
         for entry in entries {
             var proxy = entry.object.mapValues(\.native)
@@ -318,18 +404,13 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
         guard let alias = aliases[node] else { throw MihomoGUIError("引用的代理节点已失效，请重新选择出口：" + node.name) }
         return alias
     }
-    func resolve(_ target: String) throws -> String {
-        if let node = referencedNode(target) { return try nodeTarget(node) }
-        if target.hasPrefix("group:") { return String(target.dropFirst(6)) }
-        return String(target.dropFirst(8))
-    }
     for group in settings.proxyGroups ?? [] {
         var object = group.fields.filter { $0.value != .string("") }.mapValues(\.native)
         object["name"] = group.name; object["type"] = group.type
         // Resolve filters against original names and protocol types before alias translation.
-        object["proxies"] = try proxyGroupTargets(group, settings: settings).map(resolve)
+        object["proxies"] = try proxyGroupTargets(group, settings: settings).map { try proxyTargetName($0, settings: settings) }
         for key in ["include-all-proxies", "filter", "exclude-filter", "exclude-type"] { object.removeValue(forKey: key) }
-        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try resolve(selected) }
+        if let selected = group.fields["default-selected"]?.text, !selected.isEmpty { object["default-selected"] = try proxyTargetName(selected, settings: settings) }
         groups.append(object)
     }
     let defaultTarget: String?
@@ -392,7 +473,7 @@ public func configurationObject(_ settings: Settings) throws -> [String: Any] {
     }
     if var resources = config["rule-providers"] as? [String: [String: Any]] {
         for (index, name) in resources.keys.sorted().enumerated() {
-            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = try resolve(target) }
+            if let target = resources[name]?["proxy"] as? String, target.hasPrefix("node:") || target.hasPrefix("group:") || target.hasPrefix("builtin:") { resources[name]?["proxy"] = try proxyTargetName(target, settings: settings) }
             if resources[name]?["type"] as? String == "file" {
                 let format = resources[name]?["format"] as? String ?? "yaml"
                 resources[name]?["path"] = "./rules/set-\(index)." + format
@@ -418,6 +499,36 @@ public func generateConfig(_ settings: Settings) throws -> Data {
     ])
 }
 
+// Recovery intent is replayed only for selectors and members still present in the draft.
+public func applicableProxyGroupSelections(_ selections: [String: String], settings: Settings) throws -> [String: String] {
+    guard !selections.isEmpty else { return [:] }
+    let config = try configurationObject(settings)
+    let groups = config["proxy-groups"] as? [[String: Any]] ?? []
+    let proxies = config["proxies"] as? [[String: Any]] ?? []
+    let globalMembers = Set(proxies.compactMap { $0["name"] as? String } + groups.compactMap { $0["name"] as? String } + ["DIRECT", "REJECT", "REJECT-DROP", "COMPATIBLE"])
+    return selections.filter { name, target in
+        if name == "GLOBAL" { return globalMembers.contains(target) }
+        return groups.contains { $0["type"] as? String == "select" && $0["name"] as? String == name && ($0["proxies"] as? [String])?.contains(target) == true }
+    }
+}
+
+// Only the known positional format needs this one-time migration. Read actual choices
+// before reloading so an old cached alias cannot silently select the first new member.
+public func migratedSubscriptionSelections(_ selections: [String: String], from previous: Settings, to settings: Settings) throws -> [String: String] {
+    guard previous.stableProxyAliases != true, settings.stableProxyAliases == true else { return [:] }
+    var renamed: [String: String] = [:]
+    for (sourceIndex, source) in previous.subscriptions.enumerated() {
+        for (proxyIndex, entry) in (previous.subscriptionProxies?[source.id] ?? []).enumerated() {
+            guard let name = entry.object["name"]?.text else { continue }
+            let target = "node:" + Node(provider: source.provider, name: name).id
+            if let resolved = try? proxyTargetName(target, settings: settings) {
+                renamed[subscriptionProxyAlias(sourceIndex: sourceIndex, proxyIndex: proxyIndex)] = resolved
+            }
+        }
+    }
+    return try applicableProxyGroupSelections(selections.compactMapValues { renamed[$0] }, settings: settings)
+}
+
 public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings) -> Bool {
     if settings.corePath != applied.corePath { return true }
     // File provider source paths are rewritten in generated YAML, but changing
@@ -427,11 +538,50 @@ public func runtimeConfigurationChanged(_ settings: Settings, applied: Settings)
     return current != previous
 }
 
+// lstat rejects links (including dangling ones) without following their targets.
+private func checkFileCommitItem(_ url: URL, directory: Bool) throws -> Bool {
+    var info = stat()
+    if lstat(url.path, &info) != 0 {
+        if errno == ENOENT { return false }
+        throw MihomoGUIError("无法检查文件事务路径")
+    }
+    guard info.st_mode & S_IFMT == (directory ? S_IFDIR : S_IFREG) else {
+        throw MihomoGUIError("文件事务路径不是预期的普通文件或目录")
+    }
+    return true
+}
+
+private func validateFileCommitPaths(_ names: [String], directory: URL) throws {
+    let paths = Set(names)
+    guard paths.count == names.count else { throw MihomoGUIError("文件事务包含重复或无效路径") }
+    for name in names {
+        let parts = name.split(separator: "/", omittingEmptySubsequences: false).map(String.init)
+        guard !name.contains("\0"), parts.allSatisfy({ !$0.isEmpty && $0 != "." && $0 != ".." }),
+              let first = parts.first, first != "file-commit", !first.hasPrefix("file-commit-done-") else {
+            throw MihomoGUIError("文件事务包含重复或无效路径")
+        }
+        var target = directory
+        var prefix: [String] = []
+        for (index, part) in parts.enumerated() {
+            prefix.append(part)
+            let isParent = index < parts.count - 1
+            guard !isParent || !paths.contains(prefix.joined(separator: "/")) else { throw MihomoGUIError("文件事务目标路径互相包含") }
+            target.appendPathComponent(part)
+            _ = try checkFileCommitItem(target, directory: isParent)
+        }
+    }
+}
+
 // A journal survives interrupted commits; readers recover before loading settings.
 public func recoverFileCommit(directory: URL) throws {
     let journal = directory.appendingPathComponent("file-commit")
-    guard FileManager.default.fileExists(atPath: journal.appendingPathComponent("ready").path) else { return }
+    guard try checkFileCommitItem(journal, directory: true),
+          try checkFileCommitItem(journal.appendingPathComponent("ready"), directory: false) else { return }
+    guard try checkFileCommitItem(journal.appendingPathComponent("manifest.json"), directory: false) else { throw MihomoGUIError("文件事务缺少恢复清单") }
     let names = try JSONDecoder().decode([String].self, from: Data(contentsOf: journal.appendingPathComponent("manifest.json")))
+    // Validate the entire journal before restoring or deleting even the first target.
+    try validateFileCommitPaths(names, directory: directory)
+    for index in names.indices { _ = try checkFileCommitItem(journal.appendingPathComponent("old-\(index)"), directory: false) }
     for (index, name) in names.enumerated() {
         let target = directory.appendingPathComponent(name)
         let backup = journal.appendingPathComponent("old-\(index)")
@@ -448,16 +598,7 @@ public func recoverFileCommit(directory: URL) throws {
 public func commitFiles(_ files: [(String, Data)], directory: URL, removing: [String] = [], write: (Data, URL) throws -> Void = { try $0.write(to: $1, options: .atomic) }) throws {
     try recoverFileCommit(directory: directory)
     let names = files.map { $0.0 } + removing
-    guard Set(names).count == names.count, names.allSatisfy({ name in
-        !name.hasPrefix("/") && !name.isEmpty && name.split(separator: "/", omittingEmptySubsequences: false).allSatisfy { !$0.isEmpty && $0 != "." && $0 != ".." }
-    }) else { throw MihomoGUIError("文件事务包含重复或无效路径") }
-    for name in names {
-        let target = directory.appendingPathComponent(name)
-        if FileManager.default.fileExists(atPath: target.path),
-           try target.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile != true {
-            throw MihomoGUIError("保存目标不是普通文件：" + name)
-        }
-    }
+    try validateFileCommitPaths(names, directory: directory)
     let journal = directory.appendingPathComponent("file-commit")
     if FileManager.default.fileExists(atPath: journal.path) { try FileManager.default.removeItem(at: journal) }
     try FileManager.default.createDirectory(at: journal, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])

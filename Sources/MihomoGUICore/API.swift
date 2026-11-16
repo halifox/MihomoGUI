@@ -198,6 +198,25 @@ public struct CoreAPI {
         struct Response: Decodable { let version: String }
         return try JSONDecoder().decode(Response.self, from: await request("/version")).version
     }
+    public func proxyGroupSelections() async throws -> [String: String] {
+        struct Proxy: Decodable { let type: String; let now: String? }
+        struct Response: Decodable { let proxies: [String: Proxy] }
+        let response = try JSONDecoder().decode(Response.self, from: await request("/proxies"))
+        var selections: [String: String] = [:]
+        for (name, proxy) in response.proxies where proxy.type == "Selector" {
+            guard let selected = proxy.now, !selected.isEmpty else { throw MihomoGUIError("内核代理组缺少实际选择") }
+            selections[name] = selected
+        }
+        return selections
+    }
+    public func selectProxyGroup(_ name: String, target: String) async throws {
+        guard let encoded = name.addingPercentEncoding(withAllowedCharacters: .alphanumerics) else { throw MihomoGUIError("代理组名称无效") }
+        let body = try JSONSerialization.data(withJSONObject: ["name": target])
+        _ = try await request("/proxies/" + encoded, method: "PUT", body: body)
+        struct Selection: Decodable { let now: String }
+        let confirmed = try JSONDecoder().decode(Selection.self, from: await request("/proxies/" + encoded))
+        guard confirmed.now == target else { throw MihomoGUIError("内核未确认代理组选择，请重试") }
+    }
     public func reload(_ config: Data) async throws {
         try validateConfigurationCoreVersion(await version())
         guard let payload = String(data: config, encoding: .utf8) else { throw MihomoGUIError("配置编码错误") }
