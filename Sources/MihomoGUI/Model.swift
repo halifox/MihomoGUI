@@ -186,7 +186,7 @@ final class MihomoGUIModel: ObservableObject {
             uploadTotal = nil; downloadTotal = nil
             if stopped { connections = [] }
             connectionsDate = nil; connectionSpeedsAvailable = false; connectionsLoaded = true
-            connectionsError = stopped ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
+            connectionsError = stopped || (serviceOperation == .starting && error is URLError) ? nil : "连接读取失败：" + (error is URLError ? "控制接口无法连接或请求超时" : error.localizedDescription)
         }
         if Date().timeIntervalSince(diagnosticsDate) > 10 { await refreshDiagnostics() }
     }
