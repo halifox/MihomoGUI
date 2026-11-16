@@ -10,6 +10,7 @@ trap 'if [ -n "$SERVER_PID" ]; then kill "$SERVER_PID" 2>/dev/null || true; wait
 python3 - "$CHECK_DIR" <<'PY' &
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from socketserver import TCPServer
 import json
 import re
 import sys
@@ -46,7 +47,14 @@ class Handler(BaseHTTPRequestHandler):
             (root / 'running.yaml').write_text(body['payload'])
         self.send_response(204)
         self.end_headers()
-server = ThreadingHTTPServer(('127.0.0.1', 0), Handler)
+class RecoveryServer(ThreadingHTTPServer):
+    def server_bind(self):
+        # This loopback fixture must not depend on the runner's reverse DNS.
+        TCPServer.server_bind(self)
+        self.server_name = 'localhost'
+        self.server_port = self.server_address[1]
+
+server = RecoveryServer(('127.0.0.1', 0), Handler)
 (root / 'port').write_text(str(server.server_port))
 server.serve_forever()
 PY
