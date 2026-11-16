@@ -38,7 +38,7 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.5.app/Contents/Developer
       SIGNED_BUILD: ${{ github.event_name != 'pull_request' && (inputs.signed_release || ((inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')) && vars.ENABLE_SIGNED_RELEASES == 'true')) }}
     steps:
-      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.release_tag || github.ref }}
       - name: Verify build toolchain
@@ -113,14 +113,27 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/MihomoGUI-signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/notary-key.p8"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: MihomoGUI-macos-arm64
           path: dist/release/*
           if-no-files-found: error
           retention-days: 7
-  provenance:
+  verify-artifact:
     needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: MihomoGUI-macos-arm64
+          path: release
+      - name: Verify downloaded build checksums
+        working-directory: release
+        run: sha256sum --check SHA256SUMS
+  provenance:
+    needs: [build, verify-artifact]
     if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
@@ -128,7 +141,7 @@ jobs:
       id-token: write
       attestations: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: MihomoGUI-macos-arm64
           path: release
@@ -146,24 +159,24 @@ jobs:
         env:
           ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: cp "$ATTESTATION_BUNDLE" provenance.sigstore.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: MihomoGUI-provenance
           path: provenance.sigstore.json
           if-no-files-found: error
           retention-days: 7
   upload:
-    needs: [build, provenance]
+    needs: [build, verify-artifact, provenance]
     if: inputs.release_tag != '' || startsWith(github.ref, 'refs/tags/')
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: MihomoGUI-macos-arm64
           path: release
-      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: MihomoGUI-provenance
           path: release
