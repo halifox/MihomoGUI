@@ -113,7 +113,7 @@ jobs:
         run: |
           security delete-keychain "$RUNNER_TEMP/MihomoGUI-signing.keychain-db" || true
           rm -f "$RUNNER_TEMP/signing.p12" "$RUNNER_TEMP/notary-key.p8"
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: MihomoGUI-macos-arm64
           path: dist/release/*
@@ -146,7 +146,7 @@ jobs:
         env:
           ATTESTATION_BUNDLE: ${{ steps.attest.outputs.bundle-path }}
         run: cp "$ATTESTATION_BUNDLE" provenance.sigstore.json
-      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: MihomoGUI-provenance
           path: provenance.sigstore.json
