@@ -10,7 +10,7 @@
   "geodata/Country.mmdb": {
     "repository": "MetaCubeX/meta-rules-dat",
     "tag": "latest",
-    "asset_id": 749487900,
+    "asset_id": 753124332,
     "name": "country.mmdb",
     "url": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/country.mmdb",
     "sha256": "bbedba6ef8584c484e35acdee4153ecf4bc9aa5e22b25d3982870ec1e780f681"
@@ -18,7 +18,7 @@
   "geodata/geoip.dat": {
     "repository": "MetaCubeX/meta-rules-dat",
     "tag": "latest",
-    "asset_id": 749487955,
+    "asset_id": 753124375,
     "name": "geoip.dat",
     "url": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geoip.dat",
     "sha256": "304ac8a1cbcc8166e4f5a4f32955e4d0fb77a1bd713583e371b30ee27f3659d8"
@@ -26,10 +26,10 @@
   "geodata/geosite.dat": {
     "repository": "MetaCubeX/meta-rules-dat",
     "tag": "latest",
-    "asset_id": 749488085,
+    "asset_id": 753124448,
     "name": "geosite.dat",
     "url": "https://github.com/MetaCubeX/meta-rules-dat/releases/download/latest/geosite.dat",
-    "sha256": "acb166b2846dc86a89d85c5cf78ca96c001a411531cdf146244a5f5a15d3736f"
+    "sha256": "03996897044b01466b85c6f109f47b9d10405b80aa02aaca56e1624be7257d2a"
   },
   "geodata/ASN.mmdb": {
     "repository": "xishang0128/geoip",
